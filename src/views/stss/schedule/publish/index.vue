@@ -1,153 +1,155 @@
 <template>
-  <SchedulePageShell
-    v-model="detailVisible"
-    title="课表发布"
-    description="负责课表版本发布、目标范围确认与回滚记录管理，为第七阶段调课结果和第九阶段自动排课结果提供统一出口。"
-    :tags="['版本管理', '发布确认', '回滚记录']"
-    :stats="stats"
-    content-title="发布记录"
-    content-description="页面已拆成独立发布服务层和页面层，后续接入正式发布接口时只需要替换本地 service。"
-    :data-count="tableData.length"
-    empty-description="当前筛选条件下没有发布记录。"
-    dialog-title="发布详情"
-  >
-    <template #actions>
-      <el-space wrap>
-        <el-button @click="resetFilters">重置筛选</el-button>
-        <el-button type="primary" @click="openPublishDialog">发布新版本</el-button>
-      </el-space>
-    </template>
+  <div class="schedule-page-view">
+    <SchedulePageShell
+      v-model="detailVisible"
+      title="课表发布"
+      description="负责课表版本发布、目标范围确认与回滚记录管理，为调课结果与自动排课结果提供统一发布出口。"
+      :tags="['版本管理', '发布确认', '回滚记录']"
+      :stats="stats"
+      content-title="发布记录"
+      content-description="页面已拆成独立发布服务层和页面层，后续接入正式发布接口时只需要替换本地 service。"
+      :data-count="tableData.length"
+      empty-description="当前筛选条件下没有发布记录。"
+      dialog-title="发布详情"
+    >
+      <template #actions>
+        <el-space wrap>
+          <el-button @click="resetFilters">重置筛选</el-button>
+          <el-button type="primary" @click="openPublishDialog">发布新版本</el-button>
+        </el-space>
+      </template>
 
-    <template #filters>
-      <div class="filters-stack">
-        <el-form :inline="true" :model="searchParam" class="filter-form">
-          <el-form-item label="发布状态">
-            <el-select v-model="searchParam.status" placeholder="全部状态" clearable style="width: 180px">
-              <el-option label="待确认" value="pending" />
-              <el-option label="已发布" value="published" />
-              <el-option label="已回滚" value="rolledBack" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="关键字">
-            <el-input v-model="searchParam.keyword" placeholder="版本号 / 学期 / 发布范围" clearable style="width: 240px" />
-          </el-form-item>
-          <el-form-item>
+      <template #filters>
+        <div class="filters-stack">
+          <el-form :inline="true" :model="searchParam" class="filter-form">
+            <el-form-item label="发布状态">
+              <el-select v-model="searchParam.status" placeholder="全部状态" clearable style="width: 180px">
+                <el-option label="待确认" value="pending" />
+                <el-option label="已发布" value="published" />
+                <el-option label="已回滚" value="rolledBack" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="关键字">
+              <el-input v-model="searchParam.keyword" placeholder="版本号 / 学期 / 发布范围" clearable style="width: 240px" />
+            </el-form-item>
+            <el-form-item>
+              <el-space>
+                <el-button type="primary" @click="handleSearch">查询</el-button>
+                <el-button @click="resetFilters">重置</el-button>
+              </el-space>
+            </el-form-item>
+          </el-form>
+
+          <el-alert
+            title="发布页数据与回滚交互均独立落在 publish 目录，便于后续切换真实发布接口并维持页面边界清晰。"
+            type="info"
+            :closable="false"
+          />
+        </div>
+      </template>
+
+      <el-table :data="tableData" border>
+        <el-table-column prop="version" label="版本号" min-width="150" />
+        <el-table-column prop="semesterName" label="学期" min-width="220" />
+        <el-table-column prop="targetScope" label="发布范围" min-width="140" />
+        <el-table-column prop="publishedBy" label="发布人" min-width="120" />
+        <el-table-column prop="publishedAt" label="发布时间" min-width="170" />
+        <el-table-column label="状态" min-width="110">
+          <template #default="{ row }">
+            <el-tag :type="statusTagTypeMap[row.status]">{{ statusLabelMap[row.status] }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="180" fixed="right">
+          <template #default="{ row }">
             <el-space>
-              <el-button type="primary" @click="handleSearch">查询</el-button>
-              <el-button @click="resetFilters">重置</el-button>
+              <el-button link type="primary" @click="openDetail(row)">详情</el-button>
+              <el-button v-if="row.status !== 'rolledBack'" link type="danger" @click="openRollbackDialog(row)">回滚</el-button>
             </el-space>
-          </el-form-item>
-        </el-form>
+          </template>
+        </el-table-column>
+      </el-table>
 
-        <el-alert
-          title="发布页数据与回滚交互均独立落在 publish 目录，避免与第七阶段 manual 和第九阶段 auto 的并行修改冲突。"
-          type="info"
-          :closable="false"
-        />
-      </div>
-    </template>
+      <template #detail>
+        <div v-if="currentRecord" class="detail-stack">
+          <el-descriptions :column="1" border>
+            <el-descriptions-item label="版本号">{{ currentRecord.version }}</el-descriptions-item>
+            <el-descriptions-item label="学期">{{ currentRecord.semesterName }}</el-descriptions-item>
+            <el-descriptions-item label="发布范围">{{ currentRecord.targetScope }}</el-descriptions-item>
+            <el-descriptions-item label="发布人">{{ currentRecord.publishedBy }}</el-descriptions-item>
+            <el-descriptions-item label="发布时间">{{ currentRecord.publishedAt }}</el-descriptions-item>
+            <el-descriptions-item label="状态">{{ statusLabelMap[currentRecord.status] }}</el-descriptions-item>
+            <el-descriptions-item label="备注">{{ currentRecord.note || "无" }}</el-descriptions-item>
+          </el-descriptions>
+        </div>
+      </template>
+    </SchedulePageShell>
 
-    <el-table :data="tableData" border>
-      <el-table-column prop="version" label="版本号" min-width="150" />
-      <el-table-column prop="semesterName" label="学期" min-width="220" />
-      <el-table-column prop="targetScope" label="发布范围" min-width="140" />
-      <el-table-column prop="publishedBy" label="发布人" min-width="120" />
-      <el-table-column prop="publishedAt" label="发布时间" min-width="170" />
-      <el-table-column label="状态" min-width="110">
-        <template #default="{ row }">
-          <el-tag :type="statusTagTypeMap[row.status]">{{ statusLabelMap[row.status] }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" width="180" fixed="right">
-        <template #default="{ row }">
-          <el-space>
-            <el-button link type="primary" @click="openDetail(row)">详情</el-button>
-            <el-button v-if="row.status !== 'rolledBack'" link type="danger" @click="openRollbackDialog(row)">回滚</el-button>
-          </el-space>
-        </template>
-      </el-table-column>
-    </el-table>
+    <div class="pagination-wrap">
+      <el-pagination
+        background
+        layout="total, sizes, prev, pager, next"
+        :total="pageable.total"
+        :current-page="pageable.pageNum"
+        :page-size="pageable.pageSize"
+        :page-sizes="[5, 10, 20]"
+        @size-change="onPageSizeChange"
+        @current-change="onPageCurrentChange"
+      />
+    </div>
 
-    <template #detail>
-      <div v-if="currentRecord" class="detail-stack">
-        <el-descriptions :column="1" border>
-          <el-descriptions-item label="版本号">{{ currentRecord.version }}</el-descriptions-item>
-          <el-descriptions-item label="学期">{{ currentRecord.semesterName }}</el-descriptions-item>
-          <el-descriptions-item label="发布范围">{{ currentRecord.targetScope }}</el-descriptions-item>
-          <el-descriptions-item label="发布人">{{ currentRecord.publishedBy }}</el-descriptions-item>
-          <el-descriptions-item label="发布时间">{{ currentRecord.publishedAt }}</el-descriptions-item>
-          <el-descriptions-item label="状态">{{ statusLabelMap[currentRecord.status] }}</el-descriptions-item>
-          <el-descriptions-item label="备注">{{ currentRecord.note || "无" }}</el-descriptions-item>
-        </el-descriptions>
-      </div>
-    </template>
-  </SchedulePageShell>
+    <el-dialog v-model="publishVisible" title="发布新版本" width="720px">
+      <el-form ref="publishFormRef" :model="publishForm" :rules="publishRules" label-width="96px" class="publish-form">
+        <el-form-item label="学期" prop="semesterId">
+          <el-select v-model="publishForm.semesterId" placeholder="选择学期">
+            <el-option v-for="item in semesterOptions" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="发布范围" prop="targetScope">
+          <el-select v-model="publishForm.targetScope" placeholder="选择发布范围">
+            <el-option v-for="item in publishScopeOptions" :key="item.value" :label="item.label" :value="item.label" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="发布对象" prop="targetIds">
+          <el-select v-model="publishForm.targetIds" multiple placeholder="选择对象">
+            <el-option v-for="item in currentTargetOptions" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="发布说明" prop="note">
+          <el-input v-model="publishForm.note" type="textarea" :rows="4" placeholder="填写本次发布说明、影响范围或注意事项" />
+        </el-form-item>
+      </el-form>
 
-  <div class="pagination-wrap">
-    <el-pagination
-      background
-      layout="total, sizes, prev, pager, next"
-      :total="pageable.total"
-      :current-page="pageable.pageNum"
-      :page-size="pageable.pageSize"
-      :page-sizes="[5, 10, 20]"
-      @size-change="onPageSizeChange"
-      @current-change="onPageCurrentChange"
-    />
+      <template #footer>
+        <el-space>
+          <el-button @click="publishVisible = false">取消</el-button>
+          <el-button type="primary" @click="submitPublish">确认发布</el-button>
+        </el-space>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="rollbackVisible" title="回滚确认" width="560px">
+      <el-alert
+        title="回滚将把当前版本标记为已回滚，并保留记录供后续调课复核和自动排课复跑时追踪。"
+        type="warning"
+        :closable="false"
+      />
+      <el-form ref="rollbackFormRef" :model="rollbackForm" :rules="rollbackRules" label-width="84px" class="rollback-form">
+        <el-form-item label="回滚版本">
+          <el-input :model-value="rollbackTarget?.version || ''" disabled />
+        </el-form-item>
+        <el-form-item label="回滚原因" prop="note">
+          <el-input v-model="rollbackForm.note" type="textarea" :rows="4" placeholder="填写回滚原因，便于后续复盘和联调" />
+        </el-form-item>
+      </el-form>
+
+      <template #footer>
+        <el-space>
+          <el-button @click="rollbackVisible = false">取消</el-button>
+          <el-button type="danger" @click="submitRollback">确认回滚</el-button>
+        </el-space>
+      </template>
+    </el-dialog>
   </div>
-
-  <el-dialog v-model="publishVisible" title="发布新版本" width="720px">
-    <el-form ref="publishFormRef" :model="publishForm" :rules="publishRules" label-width="96px" class="publish-form">
-      <el-form-item label="学期" prop="semesterId">
-        <el-select v-model="publishForm.semesterId" placeholder="选择学期">
-          <el-option v-for="item in semesterOptions" :key="item.value" :label="item.label" :value="item.value" />
-        </el-select>
-      </el-form-item>
-      <el-form-item label="发布范围" prop="targetScope">
-        <el-select v-model="publishForm.targetScope" placeholder="选择发布范围">
-          <el-option v-for="item in publishScopeOptions" :key="item.value" :label="item.label" :value="item.label" />
-        </el-select>
-      </el-form-item>
-      <el-form-item label="发布对象" prop="targetIds">
-        <el-select v-model="publishForm.targetIds" multiple placeholder="选择对象">
-          <el-option v-for="item in currentTargetOptions" :key="item.value" :label="item.label" :value="item.value" />
-        </el-select>
-      </el-form-item>
-      <el-form-item label="发布说明" prop="note">
-        <el-input v-model="publishForm.note" type="textarea" :rows="4" placeholder="填写本次发布说明、影响范围或注意事项" />
-      </el-form-item>
-    </el-form>
-
-    <template #footer>
-      <el-space>
-        <el-button @click="publishVisible = false">取消</el-button>
-        <el-button type="primary" @click="submitPublish">确认发布</el-button>
-      </el-space>
-    </template>
-  </el-dialog>
-
-  <el-dialog v-model="rollbackVisible" title="回滚确认" width="560px">
-    <el-alert
-      title="回滚将把当前版本标记为已回滚，并保留记录供第七阶段调课审批和第九阶段自动排课复跑时追踪。"
-      type="warning"
-      :closable="false"
-    />
-    <el-form ref="rollbackFormRef" :model="rollbackForm" :rules="rollbackRules" label-width="84px" class="rollback-form">
-      <el-form-item label="回滚版本">
-        <el-input :model-value="rollbackTarget?.version || ''" disabled />
-      </el-form-item>
-      <el-form-item label="回滚原因" prop="note">
-        <el-input v-model="rollbackForm.note" type="textarea" :rows="4" placeholder="填写回滚原因，便于后续复盘和联调" />
-      </el-form-item>
-    </el-form>
-
-    <template #footer>
-      <el-space>
-        <el-button @click="rollbackVisible = false">取消</el-button>
-        <el-button type="danger" @click="submitRollback">确认回滚</el-button>
-      </el-space>
-    </template>
-  </el-dialog>
 </template>
 
 <script setup lang="ts" name="schedulePublish">
@@ -158,7 +160,7 @@ import type { Schedule } from "@/api/interface/schedule";
 import { useTable } from "@/hooks/useTable";
 import SchedulePageShell from "../components/SchedulePageShell.vue";
 import { publishScopeOptions, publishTargetOptions, semesterOptions } from "./mock";
-import { createLocalPublishRecord, getLocalPublishPage, rollbackLocalPublishRecord } from "./service";
+import { createPublishRecord, getPublishPage, rollbackPublishRecord } from "./service";
 import type { PublishFilters } from "./types";
 
 const detailVisible = ref(false);
@@ -176,7 +178,7 @@ const searchInitParam: PublishFilters = {
 
 const { tableData, pageable, searchParam, search, handleSizeChange, handleCurrentChange, getTableList } = useTable(
   async (params: Schedule.PublishQuery) => {
-    const result = await getLocalPublishPage(params);
+    const result = await getPublishPage(params);
     return { data: result.data };
   },
   {},
@@ -274,7 +276,7 @@ const submitPublish = async () => {
   if (!valid) return;
 
   const semesterName = semesterOptions.find(item => item.value === publishForm.semesterId)?.label ?? publishForm.semesterId;
-  await createLocalPublishRecord({
+  await createPublishRecord({
     ...publishForm,
     targetIds: [...publishForm.targetIds],
     semesterName,
@@ -297,7 +299,7 @@ const submitRollback = async () => {
   const valid = await rollbackFormRef.value?.validate().catch(() => false);
   if (!valid || !rollbackTarget.value) return;
 
-  const { data } = await rollbackLocalPublishRecord({
+  const { data } = await rollbackPublishRecord({
     id: rollbackTarget.value.id,
     note: rollbackForm.note
   });
@@ -318,6 +320,7 @@ onMounted(async () => {
 </script>
 
 <style scoped lang="scss">
+.schedule-page-view,
 .filters-stack,
 .detail-stack {
   display: flex;

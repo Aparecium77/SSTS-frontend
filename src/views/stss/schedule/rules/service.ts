@@ -102,7 +102,7 @@ export const fetchRuleDetails = async (filters?: RulePageFilters) => {
 export const fetchRuleDetailById = async (id: string) => {
   if (USE_REMOTE_API) {
     const response = await getRuleDetailApi(id);
-    return response.data;
+    return response.data.data;
   }
   const record = localRuleRecords.find(item => item.id === id);
   return record ? cloneRuleDetail(record) : null;

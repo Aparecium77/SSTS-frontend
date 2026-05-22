@@ -75,9 +75,7 @@ const syncDetailRecord = (record: Schedule.ResourceRecord) => {
   };
 };
 
-export const getLocalResourcePage = async (
-  params: Schedule.ResourceQuery
-): Promise<ResultData<ResPage<Schedule.ResourceRecord>>> => {
+export const getResourcePage = async (params: Schedule.ResourceQuery): Promise<ResultData<ResPage<Schedule.ResourceRecord>>> => {
   return {
     code: "200",
     msg: "success",
@@ -85,7 +83,7 @@ export const getLocalResourcePage = async (
   };
 };
 
-export const getLocalResourceStats = async (params: Schedule.ResourceQuery): Promise<ResultData<Schedule.ResourceStats>> => {
+export const getResourceStats = async (params: Schedule.ResourceQuery): Promise<ResultData<Schedule.ResourceStats>> => {
   return {
     code: "200",
     msg: "success",
@@ -93,7 +91,7 @@ export const getLocalResourceStats = async (params: Schedule.ResourceQuery): Pro
   };
 };
 
-export const getLocalResourceDetail = async (id: string): Promise<ResultData<Schedule.ResourceDetail>> => {
+export const getResourceDetail = async (id: string): Promise<ResultData<Schedule.ResourceDetail>> => {
   const detail = resourceDetailMap[id];
   const record = resourceStore.find(item => item.id === id);
   const data =
@@ -113,7 +111,7 @@ export const getLocalResourceDetail = async (id: string): Promise<ResultData<Sch
   };
 };
 
-export const createLocalResource = async (params: ResourceMutationPayload): Promise<ResultData<Schedule.ResourceRecord>> => {
+export const createResourceRecord = async (params: ResourceMutationPayload): Promise<ResultData<Schedule.ResourceRecord>> => {
   const record: Schedule.ResourceRecord = {
     id: `res-${Date.now()}`,
     category: params.category,
@@ -138,7 +136,7 @@ export const createLocalResource = async (params: ResourceMutationPayload): Prom
   };
 };
 
-export const updateLocalResource = async (params: ResourceMutationPayload): Promise<ResultData<Schedule.ResourceRecord>> => {
+export const updateResourceRecord = async (params: ResourceMutationPayload): Promise<ResultData<Schedule.ResourceRecord>> => {
   const index = resourceStore.findIndex(item => item.id === params.id);
   const record: Schedule.ResourceRecord = {
     id: params.id ?? `res-${Date.now()}`,
@@ -168,7 +166,7 @@ export const updateLocalResource = async (params: ResourceMutationPayload): Prom
   };
 };
 
-export const changeLocalResourceStatus = async (params: {
+export const changeResourceRecordStatus = async (params: {
   id: string;
   status: Schedule.ResourceStatus;
 }): Promise<ResultData<Schedule.ResourceRecord | null>> => {
@@ -192,4 +190,4 @@ export const changeLocalResourceStatus = async (params: {
   };
 };
 
-export const getLocalResourceStatsSeed = () => ({ ...resourceStatsSeed });
+export const getResourceStatsSeed = () => ({ ...resourceStatsSeed });
