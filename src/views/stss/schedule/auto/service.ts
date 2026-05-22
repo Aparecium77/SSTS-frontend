@@ -159,7 +159,7 @@ export const fetchAutoTaskResult = async (taskId: string) => {
   if (USE_REMOTE_API) {
     const response = await getAutoTaskResultApi(taskId);
     return {
-      ...response.data,
+      ...response.data.data,
       taskName: "",
       semesterName: "",
       successRate: 0,

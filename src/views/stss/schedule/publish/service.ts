@@ -19,9 +19,7 @@ const filterRecords = (params: Schedule.PublishQuery) => {
   });
 };
 
-export const getLocalPublishPage = async (
-  params: Schedule.PublishQuery
-): Promise<ResultData<ResPage<Schedule.PublishRecord>>> => {
+export const getPublishPage = async (params: Schedule.PublishQuery): Promise<ResultData<ResPage<Schedule.PublishRecord>>> => {
   const filtered = filterRecords(params);
   const pageNum = params.pageNum ?? 1;
   const pageSize = params.pageSize ?? 10;
@@ -39,7 +37,7 @@ export const getLocalPublishPage = async (
   };
 };
 
-export const createLocalPublishRecord = async (
+export const createPublishRecord = async (
   params: Schedule.PublishForm & { semesterName: string; publishedBy: string }
 ): Promise<ResultData<Schedule.PublishRecord>> => {
   const nextIndex = publishStore.length + 1;
@@ -64,7 +62,7 @@ export const createLocalPublishRecord = async (
   };
 };
 
-export const rollbackLocalPublishRecord = async (params: {
+export const rollbackPublishRecord = async (params: {
   id: string;
   note?: string;
 }): Promise<ResultData<Schedule.PublishRecord | null>> => {

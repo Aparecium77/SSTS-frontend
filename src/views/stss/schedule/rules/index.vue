@@ -1,197 +1,199 @@
 <template>
-  <SchedulePageShell
-    v-model="detailVisible"
-    title="排课规则"
-    description="集中配置时间约束、教师冲突、教室容量和连排策略，为排课执行和调课审批建立统一规则口径。"
-    :tags="['规则分类', '优先级', '启停状态']"
-    :stats="stats"
-    content-title="规则列表"
-    content-description="统一展示规则优先级、影响范围和启停状态，后续阶段可直接切换到真实接口返回。"
-    :data-count="ruleRecords.length"
-    empty-description="当前筛选条件下没有规则记录。"
-    dialog-title="规则详情"
-  >
-    <template #actions>
-      <div class="header-actions">
-        <el-button :loading="loading">刷新数据</el-button>
-        <el-button type="primary" @click="openCreate">新增规则</el-button>
-      </div>
-    </template>
+  <div class="schedule-page-view">
+    <SchedulePageShell
+      v-model="detailVisible"
+      title="排课规则"
+      description="集中配置时间约束、教师冲突、教室容量和连排策略，为排课执行和调课审批建立统一规则口径。"
+      :tags="['规则分类', '优先级', '启停状态']"
+      :stats="stats"
+      content-title="规则列表"
+      content-description="统一展示规则优先级、影响范围和启停状态，后续阶段可直接切换到真实接口返回。"
+      :data-count="ruleRecords.length"
+      empty-description="当前筛选条件下没有规则记录。"
+      dialog-title="规则详情"
+    >
+      <template #actions>
+        <div class="header-actions">
+          <el-button :loading="loading">刷新数据</el-button>
+          <el-button type="primary" @click="openCreate">新增规则</el-button>
+        </div>
+      </template>
 
-    <template #filters>
-      <el-form :inline="true" :model="filters" class="filter-form">
-        <el-form-item label="规则分类">
-          <el-segmented v-model="filters.category" :options="categorySegments" />
+      <template #filters>
+        <el-form :inline="true" :model="filters" class="filter-form">
+          <el-form-item label="规则分类">
+            <el-segmented v-model="filters.category" :options="categorySegments" />
+          </el-form-item>
+          <el-form-item label="启停状态">
+            <el-select v-model="filters.status" placeholder="全部状态" clearable style="width: 160px" @change="loadRules">
+              <el-option label="启用" value="enabled" />
+              <el-option label="停用" value="disabled" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="优先级">
+            <el-select v-model="filters.priority" placeholder="全部优先级" clearable style="width: 160px" @change="loadRules">
+              <el-option label="P1" :value="1" />
+              <el-option label="P2" :value="2" />
+              <el-option label="P3" :value="3" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="关键词">
+            <el-input
+              v-model="filters.keyword"
+              placeholder="规则名称 / 编号 / 作用范围"
+              clearable
+              style="width: 260px"
+              @change="loadRules"
+            />
+          </el-form-item>
+        </el-form>
+      </template>
+
+      <div class="overview-grid">
+        <article v-for="item in categoryCards" :key="item.value" class="overview-card">
+          <div class="overview-card__header">
+            <strong>{{ item.label }}</strong>
+            <el-tag size="small" effect="plain">{{ item.count }} 条</el-tag>
+          </div>
+          <p>{{ item.description }}</p>
+        </article>
+      </div>
+
+      <el-table v-loading="loading" :data="ruleRecords" border>
+        <el-table-column label="规则分类" min-width="120">
+          <template #default="{ row }">
+            <el-tag size="small" :type="getRuleCategoryTagType(row.category)" effect="light">
+              {{ getRuleCategoryLabel(row.category) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="name" label="规则名称" min-width="200" />
+        <el-table-column prop="code" label="规则编号" min-width="120" />
+        <el-table-column label="优先级" min-width="90">
+          <template #default="{ row }">
+            <span class="priority-badge" :class="`priority-badge--p${row.priority}`">P{{ row.priority }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="scope" label="作用范围" min-width="150" />
+        <el-table-column label="规则说明" min-width="240" show-overflow-tooltip>
+          <template #default="{ row }">
+            {{ row.description }}
+          </template>
+        </el-table-column>
+        <el-table-column label="状态" min-width="110">
+          <template #default="{ row }">
+            <el-switch
+              :model-value="row.status === 'enabled'"
+              inline-prompt
+              active-text="启用"
+              inactive-text="停用"
+              @change="toggleStatus(row)"
+            />
+          </template>
+        </el-table-column>
+        <el-table-column prop="updatedAt" label="更新时间" min-width="160" />
+        <el-table-column label="操作" width="160" fixed="right">
+          <template #default="{ row }">
+            <el-space>
+              <el-button link type="primary" @click="openDetail(row)">详情</el-button>
+              <el-button link @click="openEdit(row)">编辑</el-button>
+            </el-space>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <template #detail>
+        <div v-if="currentRecord" class="detail-stack">
+          <el-descriptions :column="2" border>
+            <el-descriptions-item label="规则名称">{{ currentRecord.name }}</el-descriptions-item>
+            <el-descriptions-item label="规则编号">{{ currentRecord.code }}</el-descriptions-item>
+            <el-descriptions-item label="规则分类">{{ getRuleCategoryLabel(currentRecord.category) }}</el-descriptions-item>
+            <el-descriptions-item label="优先级">P{{ currentRecord.priority }}</el-descriptions-item>
+            <el-descriptions-item label="作用范围">{{ currentRecord.scope }}</el-descriptions-item>
+            <el-descriptions-item label="状态">{{ currentRecord.status === "enabled" ? "启用" : "停用" }}</el-descriptions-item>
+          </el-descriptions>
+          <el-alert :title="currentRecord.description" type="info" :closable="false" />
+          <div class="detail-panel">
+            <h4>规则条件</h4>
+            <el-timeline>
+              <el-timeline-item v-for="(condition, index) in currentRecord.conditions" :key="`${currentRecord.id}-${index}`">
+                {{ formatCondition(condition) }}
+              </el-timeline-item>
+            </el-timeline>
+          </div>
+          <div class="detail-panel">
+            <h4>生效说明</h4>
+            <el-space wrap>
+              <el-tag v-for="summary in currentRecord.effectSummary" :key="summary" effect="plain">
+                {{ summary }}
+              </el-tag>
+            </el-space>
+          </div>
+        </div>
+      </template>
+    </SchedulePageShell>
+
+    <el-drawer v-model="formVisible" :title="formMode === 'create' ? '新增规则' : '编辑规则'" size="620px">
+      <el-form ref="formRef" :model="formModel" :rules="formRules" label-width="96px" class="rule-form">
+        <el-form-item label="规则分类" prop="category">
+          <el-radio-group v-model="formModel.category">
+            <el-radio-button v-for="item in categoryOptionItems" :key="item.value" :label="item.value">
+              {{ item.label }}
+            </el-radio-button>
+          </el-radio-group>
         </el-form-item>
-        <el-form-item label="启停状态">
-          <el-select v-model="filters.status" placeholder="全部状态" clearable style="width: 160px" @change="loadRules">
-            <el-option label="启用" value="enabled" />
-            <el-option label="停用" value="disabled" />
+        <el-form-item label="规则名称" prop="name">
+          <el-input v-model="formModel.name" maxlength="40" show-word-limit placeholder="例如：教师同一时段不可重复授课" />
+        </el-form-item>
+        <el-form-item label="规则编号" prop="code">
+          <el-input v-model="formModel.code" placeholder="例如：TEACHER-002" />
+        </el-form-item>
+        <el-form-item label="优先级" prop="priority">
+          <el-select v-model="formModel.priority" style="width: 160px">
+            <el-option label="P1 - 硬约束" :value="1" />
+            <el-option label="P2 - 重要约束" :value="2" />
+            <el-option label="P3 - 优化约束" :value="3" />
           </el-select>
         </el-form-item>
-        <el-form-item label="优先级">
-          <el-select v-model="filters.priority" placeholder="全部优先级" clearable style="width: 160px" @change="loadRules">
-            <el-option label="P1" :value="1" />
-            <el-option label="P2" :value="2" />
-            <el-option label="P3" :value="3" />
+        <el-form-item label="作用范围" prop="scope">
+          <el-select v-model="formModel.scope" filterable allow-create default-first-option placeholder="选择或输入作用范围">
+            <el-option v-for="item in scopeOptionItems" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </el-form-item>
-        <el-form-item label="关键词">
-          <el-input
-            v-model="filters.keyword"
-            placeholder="规则名称 / 编号 / 作用范围"
-            clearable
-            style="width: 260px"
-            @change="loadRules"
-          />
+        <el-form-item label="启停状态" prop="status">
+          <el-radio-group v-model="formModel.status">
+            <el-radio label="enabled">启用</el-radio>
+            <el-radio label="disabled">停用</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="规则说明" prop="description">
+          <el-input v-model="formModel.description" type="textarea" :rows="3" maxlength="120" show-word-limit />
+        </el-form-item>
+        <el-form-item label="规则条件">
+          <div class="condition-list">
+            <div v-for="(condition, index) in formModel.conditions" :key="`condition-${index}`" class="condition-row">
+              <el-input v-model="condition.field" placeholder="字段" />
+              <el-input v-model="condition.operator" placeholder="运算符" />
+              <el-input
+                v-model="conditionValueText[index]"
+                placeholder="值，数组请用 / 分隔"
+                @input="updateConditionValue(index)"
+              />
+              <el-button link type="danger" @click="removeCondition(index)">删除</el-button>
+            </div>
+            <el-button plain @click="addCondition">新增条件</el-button>
+          </div>
         </el-form-item>
       </el-form>
-    </template>
 
-    <div class="overview-grid">
-      <article v-for="item in categoryCards" :key="item.value" class="overview-card">
-        <div class="overview-card__header">
-          <strong>{{ item.label }}</strong>
-          <el-tag size="small" effect="plain">{{ item.count }} 条</el-tag>
+      <template #footer>
+        <div class="drawer-footer">
+          <el-button @click="formVisible = false">取消</el-button>
+          <el-button type="primary" @click="submitForm">保存规则</el-button>
         </div>
-        <p>{{ item.description }}</p>
-      </article>
-    </div>
-
-    <el-table v-loading="loading" :data="ruleRecords" border>
-      <el-table-column label="规则分类" min-width="120">
-        <template #default="{ row }">
-          <el-tag size="small" :type="getRuleCategoryTagType(row.category)" effect="light">
-            {{ getRuleCategoryLabel(row.category) }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="name" label="规则名称" min-width="200" />
-      <el-table-column prop="code" label="规则编号" min-width="120" />
-      <el-table-column label="优先级" min-width="90">
-        <template #default="{ row }">
-          <span class="priority-badge" :class="`priority-badge--p${row.priority}`">P{{ row.priority }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column prop="scope" label="作用范围" min-width="150" />
-      <el-table-column label="规则说明" min-width="240" show-overflow-tooltip>
-        <template #default="{ row }">
-          {{ row.description }}
-        </template>
-      </el-table-column>
-      <el-table-column label="状态" min-width="110">
-        <template #default="{ row }">
-          <el-switch
-            :model-value="row.status === 'enabled'"
-            inline-prompt
-            active-text="启用"
-            inactive-text="停用"
-            @change="toggleStatus(row)"
-          />
-        </template>
-      </el-table-column>
-      <el-table-column prop="updatedAt" label="更新时间" min-width="160" />
-      <el-table-column label="操作" width="160" fixed="right">
-        <template #default="{ row }">
-          <el-space>
-            <el-button link type="primary" @click="openDetail(row)">详情</el-button>
-            <el-button link @click="openEdit(row)">编辑</el-button>
-          </el-space>
-        </template>
-      </el-table-column>
-    </el-table>
-
-    <template #detail>
-      <div v-if="currentRecord" class="detail-stack">
-        <el-descriptions :column="2" border>
-          <el-descriptions-item label="规则名称">{{ currentRecord.name }}</el-descriptions-item>
-          <el-descriptions-item label="规则编号">{{ currentRecord.code }}</el-descriptions-item>
-          <el-descriptions-item label="规则分类">{{ getRuleCategoryLabel(currentRecord.category) }}</el-descriptions-item>
-          <el-descriptions-item label="优先级">P{{ currentRecord.priority }}</el-descriptions-item>
-          <el-descriptions-item label="作用范围">{{ currentRecord.scope }}</el-descriptions-item>
-          <el-descriptions-item label="状态">{{ currentRecord.status === "enabled" ? "启用" : "停用" }}</el-descriptions-item>
-        </el-descriptions>
-        <el-alert :title="currentRecord.description" type="info" :closable="false" />
-        <div class="detail-panel">
-          <h4>规则条件</h4>
-          <el-timeline>
-            <el-timeline-item v-for="(condition, index) in currentRecord.conditions" :key="`${currentRecord.id}-${index}`">
-              {{ formatCondition(condition) }}
-            </el-timeline-item>
-          </el-timeline>
-        </div>
-        <div class="detail-panel">
-          <h4>生效说明</h4>
-          <el-space wrap>
-            <el-tag v-for="summary in currentRecord.effectSummary" :key="summary" effect="plain">
-              {{ summary }}
-            </el-tag>
-          </el-space>
-        </div>
-      </div>
-    </template>
-  </SchedulePageShell>
-
-  <el-drawer v-model="formVisible" :title="formMode === 'create' ? '新增规则' : '编辑规则'" size="620px">
-    <el-form ref="formRef" :model="formModel" :rules="formRules" label-width="96px" class="rule-form">
-      <el-form-item label="规则分类" prop="category">
-        <el-radio-group v-model="formModel.category">
-          <el-radio-button v-for="item in categoryOptionItems" :key="item.value" :label="item.value">
-            {{ item.label }}
-          </el-radio-button>
-        </el-radio-group>
-      </el-form-item>
-      <el-form-item label="规则名称" prop="name">
-        <el-input v-model="formModel.name" maxlength="40" show-word-limit placeholder="例如：教师同一时段不可重复授课" />
-      </el-form-item>
-      <el-form-item label="规则编号" prop="code">
-        <el-input v-model="formModel.code" placeholder="例如：TEACHER-002" />
-      </el-form-item>
-      <el-form-item label="优先级" prop="priority">
-        <el-select v-model="formModel.priority" style="width: 160px">
-          <el-option label="P1 - 硬约束" :value="1" />
-          <el-option label="P2 - 重要约束" :value="2" />
-          <el-option label="P3 - 优化约束" :value="3" />
-        </el-select>
-      </el-form-item>
-      <el-form-item label="作用范围" prop="scope">
-        <el-select v-model="formModel.scope" filterable allow-create default-first-option placeholder="选择或输入作用范围">
-          <el-option v-for="item in scopeOptionItems" :key="item.value" :label="item.label" :value="item.value" />
-        </el-select>
-      </el-form-item>
-      <el-form-item label="启停状态" prop="status">
-        <el-radio-group v-model="formModel.status">
-          <el-radio label="enabled">启用</el-radio>
-          <el-radio label="disabled">停用</el-radio>
-        </el-radio-group>
-      </el-form-item>
-      <el-form-item label="规则说明" prop="description">
-        <el-input v-model="formModel.description" type="textarea" :rows="3" maxlength="120" show-word-limit />
-      </el-form-item>
-      <el-form-item label="规则条件">
-        <div class="condition-list">
-          <div v-for="(condition, index) in formModel.conditions" :key="`condition-${index}`" class="condition-row">
-            <el-input v-model="condition.field" placeholder="字段" />
-            <el-input v-model="condition.operator" placeholder="运算符" />
-            <el-input
-              v-model="conditionValueText[index]"
-              placeholder="值，数组请用 / 分隔"
-              @input="updateConditionValue(index)"
-            />
-            <el-button link type="danger" @click="removeCondition(index)">删除</el-button>
-          </div>
-          <el-button plain @click="addCondition">新增条件</el-button>
-        </div>
-      </el-form-item>
-    </el-form>
-
-    <template #footer>
-      <div class="drawer-footer">
-        <el-button @click="formVisible = false">取消</el-button>
-        <el-button type="primary" @click="submitForm">保存规则</el-button>
-      </div>
-    </template>
-  </el-drawer>
+      </template>
+    </el-drawer>
+  </div>
 </template>
 
 <script setup lang="ts" name="scheduleRules">
@@ -431,6 +433,7 @@ onMounted(async () => {
 </script>
 
 <style scoped lang="scss">
+.schedule-page-view,
 .header-actions,
 .filter-form {
   display: flex;
