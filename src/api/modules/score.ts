@@ -1,6 +1,229 @@
-/**
- * 成绩管理组的同学在这里封装成绩管理相关接口。
- * 可继续补充成绩录入、成绩查询、改分申请、改分审批、学分进展、统计分析等请求方法。
- * 页面中不要直接写 axios，请统一从这个文件导出请求函数。
- */
-export {};
+import http from "@/api";
+import type { ResultData } from "@/api/interface";
+import type { Score } from "@/api/interface/score";
+import { ResultEnum } from "@/enums/httpEnum";
+import { useUserStore } from "@/stores/modules/user";
+
+const SCORE_PREFIX = "/v1/grade";
+const SCORE_SUCCESS = 10000;
+
+export interface ScoreRequestOptions {
+  loading?: boolean;
+  cancel?: boolean;
+  headers?: Record<string, string>;
+  [key: string]: unknown;
+}
+
+export const toScoreBackendRole = (role?: string): Score.BackendRole => {
+  if (role === "academic_admin") return "admin";
+  if (role === "dean") return "dean";
+  if (role === "admin") return "admin";
+  if (role === "teacher") return "teacher";
+  return "student";
+};
+
+export const scoreRequestOptions = (options: ScoreRequestOptions = {}) => {
+  const userStore = useUserStore();
+  const userInfo = userStore.userInfo;
+
+  return {
+    ...options,
+    skipCodeCheck: true,
+    headers: {
+      ...(options.headers ?? {}),
+      "X-User-ID": userStore.token || "anonymous",
+      "X-User-Role": toScoreBackendRole(userInfo.role),
+      "X-User-Name": userInfo.name || ""
+    }
+  };
+};
+
+const adaptScoreResp = <T>(resp: Score.BackendResp<T>): ResultData<T> => {
+  if (resp.code !== SCORE_SUCCESS) {
+    return Promise.reject({
+      code: String(resp.code),
+      msg: resp.message,
+      data: resp.data
+    }) as never;
+  }
+
+  return {
+    code: String(ResultEnum.SUCCESS),
+    msg: resp.message,
+    data: resp.data
+  };
+};
+
+const scorePath = (url: string) => `${SCORE_PREFIX}${url}`;
+
+const scoreHttp = {
+  async get<T>(url: string, params?: object, options: ScoreRequestOptions = {}) {
+    const resp = (await http.get<Score.BackendResp<T>>(
+      scorePath(url),
+      params,
+      scoreRequestOptions(options)
+    )) as unknown as Score.BackendResp<T>;
+    return adaptScoreResp(resp);
+  },
+  async post<T>(url: string, body?: object | FormData, options: ScoreRequestOptions = {}) {
+    const resp = (await http.post<Score.BackendResp<T>>(
+      scorePath(url),
+      body,
+      scoreRequestOptions(options)
+    )) as unknown as Score.BackendResp<T>;
+    return adaptScoreResp(resp);
+  },
+  async put<T>(url: string, body?: object, options: ScoreRequestOptions = {}) {
+    const resp = (await http.put<Score.BackendResp<T>>(
+      scorePath(url),
+      body,
+      scoreRequestOptions(options)
+    )) as unknown as Score.BackendResp<T>;
+    return adaptScoreResp(resp);
+  }
+};
+
+const encodePath = (value: string | number) => encodeURIComponent(String(value));
+
+export const getGradeCourses = () => scoreHttp.get<Score.CourseList>("/courses");
+
+export const getCourseStudents = (courseId: string, params: { semester: string }) =>
+  scoreHttp.get<Score.CourseStudentList>(`/courses/${encodePath(courseId)}/students`, params);
+
+export const getGradeConfig = (courseId: string, params: { semester: string }) =>
+  scoreHttp.get<Score.GradeConfig>(`/courses/${encodePath(courseId)}/grade-config`, params);
+
+export const saveGradeConfig = (courseId: string, body: Score.SaveGradeConfigReq) =>
+  scoreHttp.put<Score.SaveGradeConfigResp>(`/courses/${encodePath(courseId)}/grade-config`, body);
+
+export const createComponentConfigsLegacy = (body: Score.LegacyComponentConfigReq) =>
+  scoreHttp.post<Score.SaveGradeConfigResp>("/component-configs", body);
+
+export const getGradeRecords = (params: Score.GradeRecordListReq = {}) =>
+  scoreHttp.get<Score.GradeRecordList>("/grade-records", params);
+
+export const getGradeSheet = (courseId: string, params: { semester: string; page?: number; page_size?: number }) =>
+  scoreHttp.get<Score.GradeSheet>(`/courses/${encodePath(courseId)}/grade-sheet`, params);
+
+export const getCourseRecords = (courseId: string, params: { semester: string }) =>
+  scoreHttp.get<Score.GradeSheet>(`/grade-records/courses/${encodePath(courseId)}/records`, params);
+
+export const createGradeRecord = (body: Score.SaveGradeRecordReq) =>
+  scoreHttp.post<Score.SaveGradeRecordResp>("/grade-records", body);
+
+export const updateGradeRecord = (recordId: number, body: Score.UpdateGradeRecordReq) =>
+  scoreHttp.put<Score.UpdateGradeRecordResp>(`/grade-records/${encodePath(recordId)}`, body);
+
+export const batchCreateGradeRecords = (body: Score.BatchSaveGradeRecordsReq) =>
+  scoreHttp.post<Score.BatchResult>("/grade-records/batch", body);
+
+export const importGradeExcel = (file: File) => {
+  const formData = new FormData();
+  formData.append("file", file);
+  return scoreHttp.post<Score.BatchResult>("/grade-records/import-excel", formData);
+};
+
+export const upsertExternalMappings = (body: Score.ExternalMappingsReq) =>
+  scoreHttp.post<Score.ExternalMappingsResp>("/grade-records/external-mappings", body);
+
+export const importExamScores = (body: Score.ImportExternalScoresReq) =>
+  scoreHttp.post<Score.ImportExternalScoresResp>("/grade-records/import-exam", body);
+
+export const importForumScores = (body: Score.ImportExternalScoresReq) =>
+  scoreHttp.post<Score.ImportExternalScoresResp>("/grade-records/import-forum", body);
+
+export const getGradeRecordLogs = (
+  params: {
+    course_id?: string;
+    operator_id?: string;
+    operation_type?: string;
+    target_id?: number;
+    page?: number;
+    page_size?: number;
+  } = {}
+) => scoreHttp.get<Score.GradeRecordLogList>("/grade-record-logs", params);
+
+export const calculatePreview = (courseId: string, body: Score.CalculateGradeReq) =>
+  scoreHttp.post<Score.CalculateGradeResp>(`/courses/${encodePath(courseId)}/grade-calculations`, body);
+
+export const submitCourseGrades = (courseId: string, body: Score.SubmitCourseGradesReq) =>
+  scoreHttp.post<Score.Submission>(`/courses/${encodePath(courseId)}/grade-submissions`, body);
+
+export const getGradeSubmissions = (params: { course_id?: string; semester?: string } = {}) =>
+  scoreHttp.get<Score.SubmissionList>("/grade-submissions", params);
+
+export const approveSubmission = (submissionId: number, body: Score.ReviewSubmissionReq = {}) =>
+  scoreHttp.put<Score.Submission>(`/grade-submissions/${encodePath(submissionId)}/approve`, body);
+
+export const rejectSubmission = (submissionId: number, body: Score.ReviewSubmissionReq = {}) =>
+  scoreHttp.put<Score.Submission>(`/grade-submissions/${encodePath(submissionId)}/reject`, body);
+
+export const publishSubmission = (submissionId: number) =>
+  scoreHttp.put<Score.PublishSubmissionResp>(`/grade-submissions/${encodePath(submissionId)}/publish`, {});
+
+export const publishTotalsLegacy = (body: Score.PublishTotalsReq) =>
+  scoreHttp.post<Score.PublishSubmissionResp>("/grade-submissions/totals/publish", body);
+
+export const createModifyRequest = (body: Score.ModifyRequestReq) =>
+  scoreHttp.post<Score.ModifyRequestCreateResp>("/grade-record-modify-requests", body);
+
+export const getModifyRequests = (params: Score.ModifyRequestListReq = {}) =>
+  scoreHttp.get<Score.ModifyRequestList>("/grade-record-modify-requests", params);
+
+export const approveModifyRequest = (requestId: number, body: Score.ReviewModifyRequestReq = {}) =>
+  scoreHttp.put<Score.ModifyRequestReviewResp>(`/grade-record-modify-requests/${encodePath(requestId)}/approve`, body);
+
+export const rejectModifyRequest = (requestId: number, body: Score.ReviewModifyRequestReq = {}) =>
+  scoreHttp.put<Score.ModifyRequestReviewResp>(`/grade-record-modify-requests/${encodePath(requestId)}/reject`, body);
+
+export const getModifyRequestLogs = (requestId: number) =>
+  scoreHttp.get<Score.ModifyRequestLogList>(`/grade-record-modify-requests/${encodePath(requestId)}/logs`);
+
+export const getMyGrades = (params: { semester?: string } = {}) =>
+  scoreHttp.get<Score.StudentGradeList>("/students/me/grades", params);
+
+export const getMyCredits = () => scoreHttp.get<Score.CreditProgress>("/students/me/credits");
+
+export const getMyStatistics = () => scoreHttp.get<Score.StudentStatistics>("/students/me/statistics");
+
+export const getStudentGrades = (studentId: string, params: { semester?: string } = {}) =>
+  scoreHttp.get<Score.StudentGradeList>(`/students/${encodePath(studentId)}/grades`, params);
+
+export const getStudentStatistics = (studentId: string) =>
+  scoreHttp.get<Score.StudentStatistics>(`/students/${encodePath(studentId)}/statistics`);
+
+export const getStudentGpa = (studentId: string) => scoreHttp.get<Score.StudentGpa>(`/students/${encodePath(studentId)}/gpa`);
+
+export const getSemesterGpa = (studentId: string) =>
+  scoreHttp.get<Score.SemesterGpa[]>(`/students/${encodePath(studentId)}/semester-gpa`);
+
+export const refreshGpa = (body: Score.RefreshGpaReq) => scoreHttp.post<Score.RefreshGpaResp>("/gpa-refresh", body);
+
+export const getCourseAnalysis = (courseId: string, params: { semester: string }) =>
+  scoreHttp.get<Score.CourseAnalysis>(`/courses/${encodePath(courseId)}/analysis`, params);
+
+export const syncRoster = (body: Score.SyncRosterReq) => scoreHttp.post<Score.SyncRosterResp>("/sync-roster", body);
+
+export const exportCourseAnalysis = (courseId: string, params: { semester: string; format?: "xlsx" }) =>
+  http.service.get(scorePath(`/courses/${encodePath(courseId)}/analysis/export`), {
+    params: { ...params, format: params.format ?? "xlsx" },
+    responseType: "blob",
+    ...scoreRequestOptions({ loading: true })
+  });
+
+export const exportGradeRecords = (params: {
+  course_id: string;
+  semester: string;
+  format?: "excel" | "xlsx" | "pdf";
+  student_no?: string;
+  student_name?: string;
+  min_score?: number;
+  max_score?: number;
+  status?: string;
+  sort_order?: "asc" | "desc";
+}) =>
+  http.service.get(scorePath("/grade-records/export"), {
+    params,
+    responseType: "blob",
+    ...scoreRequestOptions({ loading: true })
+  });
