@@ -23,7 +23,7 @@
         @change="handleCourseChange"
       >
         <el-option
-          v-for="course in courses"
+          v-for="course in availableCourses"
           :key="`${course.course_id}-${course.semester}`"
           :label="courseLabel(course)"
           :value="course.course_id"
@@ -122,8 +122,10 @@ const selectedCourseId = ref("");
 const selectedSemester = ref("");
 const analysis = ref<Score.CourseAnalysis | null>(null);
 
+const availableCourses = computed(() => courses.value.filter(course => course.course_id && course.semester));
+
 const semesterOptions = computed(() => {
-  const semesters = courses.value
+  const semesters = availableCourses.value
     .filter(course => !selectedCourseId.value || course.course_id === selectedCourseId.value)
     .map(course => course.semester);
   return Array.from(new Set(semesters));
@@ -136,9 +138,13 @@ const courseLabel = (course: Score.Course) => `${course.course_name || course.co
 const loadCourses = async () => {
   const resp = await getGradeCourses();
   courses.value = resp.data.courses;
-  if (!selectedCourseId.value && courses.value.length) {
-    selectedCourseId.value = courses.value[0].course_id;
-    selectedSemester.value = courses.value[0].semester;
+  const currentCourse = availableCourses.value.find(
+    course => course.course_id === selectedCourseId.value && course.semester === selectedSemester.value
+  );
+  const fallbackCourse = availableCourses.value[0];
+  if (!currentCourse && fallbackCourse) {
+    selectedCourseId.value = fallbackCourse.course_id;
+    selectedSemester.value = fallbackCourse.semester;
   }
 };
 
@@ -162,7 +168,7 @@ const reload = async () => {
 };
 
 const handleCourseChange = () => {
-  const matched = courses.value.find(course => course.course_id === selectedCourseId.value);
+  const matched = availableCourses.value.find(course => course.course_id === selectedCourseId.value);
   selectedSemester.value = matched?.semester || "";
   loadAnalysis();
 };

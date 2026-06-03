@@ -73,6 +73,13 @@ const scoreHttp = {
     )) as unknown as Score.BackendResp<T>;
     return adaptScoreResp(resp);
   },
+  async postResolved<T>(url: string, body?: object | FormData, options: ScoreRequestOptions = {}) {
+    const resp = (await http.service.post<Score.BackendResp<T>>(scorePath(url), body, {
+      validateStatus: () => true,
+      ...scoreRequestOptions(options)
+    })) as unknown as { data: Score.BackendResp<T> };
+    return adaptScoreResp(resp.data);
+  },
   async put<T>(url: string, body?: object, options: ScoreRequestOptions = {}) {
     const resp = (await http.put<Score.BackendResp<T>>(
       scorePath(url),
@@ -91,7 +98,7 @@ export const getCourseStudents = (courseId: string, params: { semester: string }
   scoreHttp.get<Score.CourseStudentList>(`/courses/${encodePath(courseId)}/students`, params);
 
 export const getGradeConfig = (courseId: string, params: { semester: string }) =>
-  scoreHttp.get<Score.GradeConfig>(`/courses/${encodePath(courseId)}/grade-config`, params);
+  scoreHttp.get<Score.GradeConfig>(`/courses/${encodePath(courseId)}/grade-config`, params, { cancel: false });
 
 export const saveGradeConfig = (courseId: string, body: Score.SaveGradeConfigReq) =>
   scoreHttp.put<Score.SaveGradeConfigResp>(`/courses/${encodePath(courseId)}/grade-config`, body);
@@ -106,7 +113,7 @@ export const getGradeSheet = (courseId: string, params: { semester: string; page
   scoreHttp.get<Score.GradeSheet>(`/courses/${encodePath(courseId)}/grade-sheet`, params);
 
 export const getCourseRecords = (courseId: string, params: { semester: string }) =>
-  scoreHttp.get<Score.GradeSheet>(`/grade-records/courses/${encodePath(courseId)}/records`, params);
+  scoreHttp.get<Score.GradeSheet>(`/grade-records/courses/${encodePath(courseId)}/records`, params, { cancel: false });
 
 export const createGradeRecord = (body: Score.SaveGradeRecordReq) =>
   scoreHttp.post<Score.SaveGradeRecordResp>("/grade-records", body);
@@ -117,9 +124,12 @@ export const updateGradeRecord = (recordId: number, body: Score.UpdateGradeRecor
 export const batchCreateGradeRecords = (body: Score.BatchSaveGradeRecordsReq) =>
   scoreHttp.post<Score.BatchResult>("/grade-records/batch", body);
 
-export const importGradeExcel = (file: File) => {
+export const importGradeExcel = (file: File, body: Score.ImportGradeExcelReq) => {
   const formData = new FormData();
   formData.append("file", file);
+  formData.append("course_id", body.course_id);
+  formData.append("semester", body.semester);
+  formData.append("component_config_id", String(body.component_config_id));
   return scoreHttp.post<Score.BatchResult>("/grade-records/import-excel", formData);
 };
 
@@ -147,7 +157,7 @@ export const calculatePreview = (courseId: string, body: Score.CalculateGradeReq
   scoreHttp.post<Score.CalculateGradeResp>(`/courses/${encodePath(courseId)}/grade-calculations`, body);
 
 export const submitCourseGrades = (courseId: string, body: Score.SubmitCourseGradesReq) =>
-  scoreHttp.post<Score.Submission>(`/courses/${encodePath(courseId)}/grade-submissions`, body);
+  scoreHttp.postResolved<Score.Submission>(`/courses/${encodePath(courseId)}/grade-submissions`, body);
 
 export const getGradeSubmissions = (params: { course_id?: string; semester?: string } = {}) =>
   scoreHttp.get<Score.SubmissionList>("/grade-submissions", params);

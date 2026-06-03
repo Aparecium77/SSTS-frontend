@@ -6,7 +6,7 @@ import { scheduleMenu } from "@/views/stss/schedule/menu";
 import { courseSelectionMenu } from "@/views/stss/course-selection/menu";
 import { forumMenu } from "@/views/stss/forum/menu";
 import { onlineTestMenu } from "@/views/stss/online-test/menu";
-import { scoreMenu } from "@/views/stss/score/menu";
+import { scoreMenu, type ScoreMenuName } from "@/views/stss/score/menu";
 import { cloneMenuList, createGroup, createMenu } from "@/views/stss/menu";
 
 type RoleKey = "student" | "teacher" | "academic_admin";
@@ -20,6 +20,22 @@ interface MockUser {
 }
 
 const homeMenu = createMenu("/home/index", "home", "/home/index", "首页", "HomeFilled", { isAffix: true });
+
+const scoreMenuNamesByRole: Record<RoleKey, ScoreMenuName[]> = {
+  student: ["scoreQuery", "creditProgress", "personalScoreAnalytics"],
+  teacher: ["scoreEntry", "scoreQuery", "scoreChangeRequest", "courseScoreAnalytics"],
+  academic_admin: [
+    "scoreEntry",
+    "scoreQuery",
+    "scoreChangeRequest",
+    "scoreChangeApproval",
+    "creditProgress",
+    "personalScoreAnalytics",
+    "courseScoreAnalytics"
+  ]
+};
+
+const scoreMenuForRole = (role: RoleKey) => scoreMenu(scoreMenuNamesByRole[role]);
 
 export const mockUsers: MockUser[] = [
   {
@@ -46,7 +62,7 @@ export const mockUsers: MockUser[] = [
 ];
 
 const menuMap: Record<RoleKey, Menu.MenuOptions[]> = {
-  student: [homeMenu, courseSelectionMenu(), forumMenu(), onlineTestMenu(), scoreMenu()],
+  student: [homeMenu, courseSelectionMenu(), forumMenu(), onlineTestMenu(), scoreMenuForRole("student")],
   teacher: [
     homeMenu,
     createGroup(
@@ -65,9 +81,17 @@ const menuMap: Record<RoleKey, Menu.MenuOptions[]> = {
     ),
     forumMenu(),
     onlineTestMenu(),
-    scoreMenu()
+    scoreMenuForRole("teacher")
   ],
-  academic_admin: [homeMenu, baseInfoMenu(), scheduleMenu(), courseSelectionMenu(), forumMenu(), onlineTestMenu(), scoreMenu()]
+  academic_admin: [
+    homeMenu,
+    baseInfoMenu(),
+    scheduleMenu(),
+    courseSelectionMenu(),
+    forumMenu(),
+    onlineTestMenu(),
+    scoreMenuForRole("academic_admin")
+  ]
 };
 
 const buttonMap: Record<RoleKey, Login.ResAuthButtons> = {

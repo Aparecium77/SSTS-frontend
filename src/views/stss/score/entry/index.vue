@@ -99,9 +99,19 @@
           <el-button :icon="Operation" :disabled="!canOperateCourse" :loading="calculating" @click="handleCalculate">
             计算检查
           </el-button>
-          <el-button type="primary" :icon="Promotion" :disabled="!canOperateCourse" :loading="submitting" @click="handleSubmit">
-            提交审批
-          </el-button>
+          <el-tooltip :disabled="!submitDisabledReason" :content="submitDisabledReason" placement="top">
+            <span class="submit-action-wrapper">
+              <el-button
+                type="primary"
+                :icon="Promotion"
+                :disabled="!canOperateCourse || Boolean(submitDisabledReason)"
+                :loading="submitting"
+                @click="handleSubmit"
+              >
+                提交审批
+              </el-button>
+            </span>
+          </el-tooltip>
         </div>
       </div>
     </section>
@@ -123,7 +133,7 @@
               <el-option
                 v-for="course in courses"
                 :key="`filter-${course.course_id}-${course.semester}`"
-                :label="course.course_name || course.course_id"
+                :label="courseLabel(course)"
                 :value="course.course_id"
               />
             </el-select>
@@ -145,8 +155,8 @@
             <el-radio-group v-model="statusFilter">
               <el-radio-button label="all">全部</el-radio-button>
               <el-radio-button label="unsaved">未保存</el-radio-button>
-              <el-radio-button label="draft">草稿</el-radio-button>
-              <el-radio-button label="submitted">已提交</el-radio-button>
+              <el-radio-button label="draft">已保存未提交</el-radio-button>
+              <el-radio-button label="submitted">审批中</el-radio-button>
               <el-radio-button label="approved">已审批</el-radio-button>
               <el-radio-button label="abnormal">异常</el-radio-button>
             </el-radio-group>
@@ -297,7 +307,18 @@
           </el-button>
           <el-button :disabled="!filteredRows.length" :loading="savingDraft" @click="saveVisibleDrafts">保存草稿</el-button>
           <el-button :disabled="!canOperateCourse" :loading="calculating" @click="handleCalculate">计算预览</el-button>
-          <el-button type="primary" :disabled="!canOperateCourse" :loading="submitting" @click="handleSubmit">提交审批</el-button>
+          <el-tooltip :disabled="!submitDisabledReason" :content="submitDisabledReason" placement="top">
+            <span class="submit-action-wrapper">
+              <el-button
+                type="primary"
+                :disabled="!canOperateCourse || Boolean(submitDisabledReason)"
+                :loading="submitting"
+                @click="handleSubmit"
+              >
+                提交审批
+              </el-button>
+            </span>
+          </el-tooltip>
         </div>
 
         <el-table
@@ -361,6 +382,24 @@
           </el-table-column>
         </el-table>
       </section>
+
+      <el-dialog v-model="excelImportDialogVisible" title="Excel 导入" width="520px">
+        <div class="excel-import-dialog">
+          <p>文件：{{ pendingExcelImport?.name || "未选择文件" }}</p>
+          <el-select v-model="selectedExcelComponentId" placeholder="选择导入目标成绩项" class="mapping-component">
+            <el-option
+              v-for="component in excelImportComponents"
+              :key="component.id"
+              :label="excelImportComponentLabel(component)"
+              :value="component.id"
+            />
+          </el-select>
+        </div>
+        <template #footer>
+          <el-button @click="excelImportDialogVisible = false">取消</el-button>
+          <el-button type="primary" :loading="importing" @click="confirmExcelImport">开始导入</el-button>
+        </template>
+      </el-dialog>
 
       <el-dialog v-model="mappingDialogVisible" title="外部成绩映射" width="760px">
         <div class="mapping-toolbar">
@@ -448,6 +487,11 @@ type MappingDraftItem = {
   component_config_id: number | null;
 };
 
+type PendingExcelImport = {
+  file: File;
+  name: string;
+};
+
 const courses = ref<Score.Course[]>([]);
 const components = ref<Score.GradeComponent[]>([]);
 const configDrafts = ref<ConfigDraftItem[]>([]);
@@ -469,6 +513,9 @@ const savingMappings = ref(false);
 const externalImportingSource = ref<ExternalSource | "">("");
 const importFailCount = ref(0);
 const currentMappingKey = ref("");
+const excelImportDialogVisible = ref(false);
+const pendingExcelImport = ref<PendingExcelImport | null>(null);
+const selectedExcelComponentId = ref<number | null>(null);
 
 let localSeed = 0;
 const nextLocalId = () => `local-${Date.now()}-${localSeed++}`;
@@ -485,6 +532,24 @@ const currentCourse = computed(() =>
 );
 
 const canOperateCourse = computed(() => Boolean(selectedCourseId.value && selectedSemester.value && components.value.length));
+const currentCourseWorkflowStatus = computed(() => {
+  const statuses = rows.value.map(row => row.workflow_status).filter(Boolean);
+  if (statuses.includes("published")) return "published";
+  if (statuses.includes("approved")) return "approved";
+  if (statuses.includes("submitted") || statuses.includes("pending")) return "submitted";
+  if (statuses.includes("rejected")) return "rejected";
+  return statuses[0] || "draft";
+});
+const submitDisabledReason = computed(() => {
+  if (!canOperateCourse.value) return "请先选择课程和学期，并确保当前课程已有成绩项。";
+  if (currentCourseWorkflowStatus.value === "published" || currentCourseWorkflowStatus.value === "approved") {
+    return "该课程已有历史总评，不能重复提交，请走改分申请流程。";
+  }
+  if (currentCourseWorkflowStatus.value === "submitted") {
+    return "该课程正在审批中，请等待审批结果。";
+  }
+  return "";
+});
 const courseScopeTip = computed(() => Boolean(courses.value.length));
 const totalWeight = computed(() => configDrafts.value.reduce((sum, component) => sum + Number(component.weight || 0), 0));
 const weightAbnormal = computed(() => configDrafts.value.length > 0 && totalWeight.value !== 100);
@@ -539,8 +604,17 @@ const filteredRows = computed(() => {
   });
 });
 
-const courseLabel = (course: Score.Course) =>
-  `${course.course_name || course.course_id} · ${course.semester} · ${course.student_count}人`;
+const courseLabel = (course: Score.Course) => {
+  const name = course.course_name || course.course_id || "未命名课程";
+  if (!course.course_id || !course.course_name || course.course_name === course.course_id) return name;
+  return `${course.course_name}（${course.course_id}）`;
+};
+
+const excelImportComponents = computed(() =>
+  components.value.filter(component => component.data_source === "manual" && component.is_locked !== 1)
+);
+const excelImportComponentLabel = (component: Score.GradeComponent) =>
+  `${component.component_type}${component.component_sub_id ? ` / ${component.component_sub_id}` : ""} / ${component.weight}%`;
 
 const sourceLabel = (source: string) => {
   if (source === "manual") return "Manual";
@@ -584,6 +658,23 @@ const maybeResetMappingDrafts = () => {
   }
 };
 
+const resetExcelImportState = () => {
+  pendingExcelImport.value = null;
+  selectedExcelComponentId.value = excelImportComponents.value.length === 1 ? excelImportComponents.value[0].id : null;
+};
+
+const reloadEntryData = async (successMessage?: string) => {
+  try {
+    await loadEntryData();
+  } catch (error: any) {
+    if (successMessage) {
+      ElMessage.warning(successMessage);
+      return;
+    }
+    throw error;
+  }
+};
+
 const buildRows = (sheetRows: Score.GradeSheetRow[], configItems: Score.GradeComponent[]): EntryRow[] =>
   sheetRows.map(sheetRow => {
     const records: Record<number, Score.GradeRecord> = {};
@@ -622,7 +713,7 @@ const buildRows = (sheetRows: Score.GradeSheetRow[], configItems: Score.GradeCom
       major: sheetRow.major,
       records,
       total_score: sheetRow.total_score ?? null,
-      workflow_status: sheetRow.status,
+      workflow_status: sheetRow.status || "draft",
       submitted_at: sheetRow.submitted_at,
       approved_at: sheetRow.approved_at,
       published_at: sheetRow.published_at,
@@ -652,6 +743,9 @@ const loadEntryData = async () => {
     syncConfigDrafts(configResp.data.components);
     maybeResetMappingDrafts();
     rows.value = buildRows(gradebookResp.data.rows, configResp.data.components);
+    if (!excelImportDialogVisible.value || !pendingExcelImport.value) {
+      resetExcelImportState();
+    }
   } finally {
     loading.value = false;
   }
@@ -802,7 +896,7 @@ const cellReadonlyReason = (row: EntryRow, component: Score.GradeComponent) => {
   if (component.data_source !== "manual") return "外部来源成绩不能手工编辑";
   if (component.is_locked) return "成绩项已锁定";
   if (record?.is_locked) return "成绩记录已锁定";
-  if (record?.status === "submitted") return "已提交成绩不能编辑";
+  if (record?.status === "submitted" || record?.status === "pending") return "审批中的成绩不能编辑";
   if (record?.status === "approved") return "已审批成绩需走改分流程";
   return "";
 };
@@ -813,12 +907,12 @@ const rowRecords = (row: EntryRow) => components.value.map(component => row.reco
 
 const rowStatus = (row: EntryRow): StatusFilter => {
   if (row.workflow_status === "published" || row.workflow_status === "approved") return "approved";
-  if (row.workflow_status === "submitted") return "submitted";
+  if (row.workflow_status === "submitted" || row.workflow_status === "pending") return "submitted";
   if (row.workflow_status === "draft") return "draft";
   const records = rowRecords(row);
   if (!records.length) return "unsaved";
   if (records.some(record => record.status === "approved")) return "approved";
-  if (records.some(record => record.status === "submitted")) return "submitted";
+  if (records.some(record => record.status === "submitted" || record.status === "pending")) return "submitted";
   if (records.some(record => record.status === "draft")) return "draft";
   return "unsaved";
 };
@@ -826,14 +920,14 @@ const rowStatus = (row: EntryRow): StatusFilter => {
 const rowStatusLabel = (row: EntryRow) => {
   if (row.workflow_status === "published") return "已发布";
   if (row.workflow_status === "approved") return "已审批";
-  if (row.workflow_status === "submitted") return "已提交";
-  if (row.workflow_status === "draft") return rowRecords(row).length ? "草稿" : "未保存";
+  if (row.workflow_status === "submitted" || row.workflow_status === "pending") return "审批中";
+  if (row.workflow_status === "draft") return rowRecords(row).length ? "已保存未提交" : "未保存";
   return "未保存";
 };
 
 const rowStatusType = (row: EntryRow) => {
   if (row.workflow_status === "published" || row.workflow_status === "approved") return "success";
-  if (row.workflow_status === "submitted") return "primary";
+  if (row.workflow_status === "submitted" || row.workflow_status === "pending") return "primary";
   if (row.workflow_status === "draft") return rowRecords(row).length ? "warning" : "info";
   return "info";
 };
@@ -903,7 +997,7 @@ const saveRow = async (row: EntryRow) => {
       await saveCell(row, component);
     }
     ElMessage.success("该学生成绩已保存。");
-    await loadEntryData();
+    await reloadEntryData("保存已成功，但页面刷新失败，请手动刷新查看最新状态。");
   } catch (error: any) {
     ElMessage.error(error?.msg || "保存学生成绩失败。");
   } finally {
@@ -933,8 +1027,9 @@ const saveVisibleDrafts = async () => {
       });
       saveGroups += 1;
     }
-    ElMessage.success(saveGroups ? "当前筛选结果已批量保存。" : "当前没有可保存的草稿成绩。");
-    await loadEntryData();
+    const successMessage = saveGroups ? "当前筛选结果已批量保存。" : "当前没有可保存的草稿成绩。";
+    ElMessage.success(successMessage);
+    await reloadEntryData("草稿已保存，但页面刷新失败，请手动刷新查看最新状态。");
   } catch (error: any) {
     ElMessage.error(error?.msg || "批量保存草稿失败。");
   } finally {
@@ -944,12 +1039,39 @@ const saveVisibleDrafts = async () => {
 
 const handleExcelChange = async (uploadFile: UploadFile) => {
   if (!uploadFile.raw) return;
+  if (!selectedCourseId.value || !selectedSemester.value) {
+    ElMessage.warning("请先选择课程和学期。");
+    return;
+  }
+  if (!excelImportComponents.value.length) {
+    ElMessage.warning("当前课程没有可用于 Excel 导入的手工成绩项。");
+    return;
+  }
+  pendingExcelImport.value = {
+    file: uploadFile.raw,
+    name: uploadFile.name
+  };
+  selectedExcelComponentId.value = excelImportComponents.value.length === 1 ? excelImportComponents.value[0].id : null;
+  excelImportDialogVisible.value = true;
+};
+
+const confirmExcelImport = async () => {
+  if (!pendingExcelImport.value || !selectedExcelComponentId.value) {
+    ElMessage.warning("请选择要导入到的成绩项。");
+    return;
+  }
   importing.value = true;
   try {
-    const resp = await importGradeExcel(uploadFile.raw);
+    const resp = await importGradeExcel(pendingExcelImport.value.file, {
+      course_id: selectedCourseId.value,
+      semester: selectedSemester.value,
+      component_config_id: selectedExcelComponentId.value
+    });
     importFailCount.value = resp.data.fail_count;
     ElMessage.success(`导入完成：成功 ${resp.data.success_count} 条，失败 ${resp.data.fail_count} 条`);
-    await loadEntryData();
+    excelImportDialogVisible.value = false;
+    resetExcelImportState();
+    await reloadEntryData("Excel 已导入，但页面刷新失败，请手动刷新查看最新状态。");
   } catch (error: any) {
     ElMessage.error(error?.msg || "Excel 导入失败。");
   } finally {
@@ -989,7 +1111,7 @@ const handleExternalImport = async (source: ExternalSource) => {
 
     const resp = source === "exam" ? await importExamScores(payload) : await importForumScores(payload);
     ElMessage.success(`${source === "exam" ? "考试" : "论坛"}成绩导入完成：共导入 ${resp.data.imported} 条。`);
-    await loadEntryData();
+    await reloadEntryData(`${source === "exam" ? "考试" : "论坛"}成绩已导入，但页面刷新失败，请手动刷新查看最新状态。`);
   } catch (error: any) {
     ElMessage.error(error?.msg || "外部成绩导入失败。");
   } finally {
@@ -1005,7 +1127,7 @@ const handleCalculate = async () => {
       semester: selectedSemester.value
     });
     ElMessage.success(`计算检查完成：已计算 ${resp.data.calculated_count} 名学生`);
-    await loadEntryData();
+    await reloadEntryData("计算检查已完成，但页面刷新失败，请手动刷新查看最新状态。");
   } catch (error: any) {
     ElMessage.error(error?.msg || "计算检查失败。");
   } finally {
@@ -1014,6 +1136,10 @@ const handleCalculate = async () => {
 };
 
 const handleSubmit = async () => {
+  if (submitDisabledReason.value) {
+    ElMessage.warning(submitDisabledReason.value);
+    return;
+  }
   await ElMessageBox.confirm("提交后成绩记录会进入审批流程，已提交或已审批记录将不能直接编辑。", "提交审批", {
     type: "warning"
   });
@@ -1024,7 +1150,7 @@ const handleSubmit = async () => {
       semester: selectedSemester.value
     });
     ElMessage.success("已提交审批。");
-    await loadEntryData();
+    await reloadEntryData("提交已成功，但页面刷新失败，请手动刷新查看最新状态。");
   } catch (error: any) {
     ElMessage.error(error?.msg || "提交审批失败。");
   } finally {
@@ -1216,6 +1342,13 @@ onMounted(reloadAll);
   flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
+}
+.submit-action-wrapper {
+  display: inline-flex;
+}
+.excel-import-dialog {
+  display: grid;
+  gap: 12px;
 }
 .entry-grid {
   display: grid;
