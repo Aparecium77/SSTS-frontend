@@ -216,8 +216,9 @@ const page = ref(1);
 const pageSize = ref(20);
 
 const isStudent = computed(() => userStore.userInfo.role === "student");
-const selectedCourseId = computed(() => parseCourseKey(selectedCourseKey.value).courseId);
-const selectedSemester = computed(() => parseCourseKey(selectedCourseKey.value).semester);
+const parsedSelectedCourse = computed(() => parseCourseKey(selectedCourseKey.value || ""));
+const selectedCourseId = computed(() => parsedSelectedCourse.value.courseId);
+const selectedSemester = computed(() => parsedSelectedCourse.value.semester);
 const studentSemesters = computed(() => Array.from(new Set(studentGrades.value.map(item => item.semester))));
 
 const pagedRows = computed(() => {

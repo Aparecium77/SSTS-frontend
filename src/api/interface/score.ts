@@ -155,6 +155,7 @@ export namespace Score {
     weight: number;
     data_source: DataSource;
     score: number | null;
+    result_type?: string;
     version_no?: number | null;
     is_locked?: 0 | 1;
     status?: GradeRecordStatus;

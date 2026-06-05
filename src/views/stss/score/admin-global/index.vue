@@ -272,9 +272,9 @@ const loadComparison = async () => {
 };
 
 const loadOverrideComponents = async () => {
+  createForm.component_config_id = null;
   if (!createForm.course_id.trim() || !createForm.semester.trim()) {
     overrideComponents.value = [];
-    createForm.component_config_id = null;
     return;
   }
   try {
@@ -415,6 +415,7 @@ const reloadActiveTab = async () => {
 .override-card h3 {
   margin: 0 0 12px;
 }
+
 @media (width <= 900px) {
   .override-grid {
     grid-template-columns: 1fr;

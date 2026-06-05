@@ -124,8 +124,9 @@ const dialogVisible = ref(false);
 const courses = ref<Score.Course[]>([]);
 const records = ref<CandidateRecord[]>([]);
 const selectedCourseKey = ref("");
-const selectedCourseId = computed(() => parseCourseKey(selectedCourseKey.value).courseId);
-const selectedSemester = computed(() => parseCourseKey(selectedCourseKey.value).semester);
+const parsedSelectedCourse = computed(() => parseCourseKey(selectedCourseKey.value || ""));
+const selectedCourseId = computed(() => parsedSelectedCourse.value.courseId);
+const selectedSemester = computed(() => parsedSelectedCourse.value.semester);
 const activeRecord = ref<CandidateRecord | null>(null);
 const form = reactive({
   new_score: null as number | null,
@@ -165,7 +166,7 @@ const loadRecords = async () => {
         component_type: record.component_type,
         component_sub_id: record.component_sub_id,
         score: record.score,
-        result_type: "normal",
+        result_type: record.result_type ?? "normal",
         status: record.status ?? row.status,
         is_locked: record.is_locked ?? 0,
         updated_at: record.updated_at ?? row.last_modified_at ?? null

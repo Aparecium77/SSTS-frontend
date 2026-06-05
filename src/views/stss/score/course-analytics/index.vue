@@ -143,8 +143,9 @@ const selectedCourseKey = ref("");
 const analysis = ref<Score.CourseAnalysis | null>(null);
 
 const availableCourses = computed(() => courses.value.filter(course => course.course_id && course.semester));
-const selectedCourseId = computed(() => parseCourseKey(selectedCourseKey.value).courseId);
-const selectedSemester = computed(() => parseCourseKey(selectedCourseKey.value).semester);
+const parsedSelectedCourse = computed(() => parseCourseKey(selectedCourseKey.value || ""));
+const selectedCourseId = computed(() => parsedSelectedCourse.value.courseId);
+const selectedSemester = computed(() => parsedSelectedCourse.value.semester);
 
 const rankingSummaryEntries = computed(() => Object.entries(analysis.value?.ranking_summary ?? {}));
 

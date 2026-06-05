@@ -527,7 +527,8 @@ const configDrafts = ref<ConfigDraftItem[]>([]);
 const rows = ref<EntryRow[]>([]);
 const selectedCourseKey = ref("");
 const selectedSemester = ref("");
-const selectedCourseId = computed(() => parseCourseKey(selectedCourseKey.value).courseId);
+const parsedSelectedCourse = computed(() => parseCourseKey(selectedCourseKey.value || ""));
+const selectedCourseId = computed(() => parsedSelectedCourse.value.courseId);
 const statusFilter = ref<StatusFilter>("all");
 const studentKeyword = ref("");
 const loading = ref(false);
@@ -613,17 +614,23 @@ const courseWorkflowTagType = computed(() => {
   if (status === "rejected") return "danger";
   return "info";
 });
+
+const hasDraftScoreInput = (row: EntryRow, component: Score.GradeComponent) => {
+  const draft = row.draftScores[component.id];
+  return draft !== null && draft !== undefined;
+};
+
+const hasDraftScoreChange = (row: EntryRow, component: Score.GradeComponent) => {
+  const record = row.records[component.id];
+  const draft = row.draftScores[component.id];
+  const saved = record?.score ?? null;
+  if (draft === null || draft === undefined) return saved !== null && saved !== undefined;
+  if (saved === null || saved === undefined) return true;
+  return Number(draft) !== Number(saved);
+};
+
 const hasUnsavedDraftChanges = computed(() =>
-  rows.value.some(row =>
-    components.value.some(component => {
-      const record = row.records[component.id];
-      const draft = row.draftScores[component.id];
-      const saved = record?.score ?? null;
-      if (draft === null || draft === undefined) return false;
-      if (saved === null || saved === undefined) return true;
-      return Number(draft) !== Number(saved);
-    })
-  )
+  rows.value.some(row => components.value.some(component => hasDraftScoreChange(row, component)))
 );
 
 const submitDisabledReason = computed(() => {
@@ -875,7 +882,7 @@ const reloadAll = async () => {
 };
 
 const handleCourseChange = () => {
-  const { semester } = parseCourseKey(selectedCourseKey.value);
+  const { semester } = parsedSelectedCourse.value;
   if (semester) selectedSemester.value = semester;
   loadEntryData();
 };
@@ -1148,26 +1155,40 @@ const saveRow = async (row: EntryRow) => {
 const saveVisibleDrafts = async () => {
   savingDraft.value = true;
   try {
-    let saveGroups = 0;
+    let createGroups = 0;
+    let updateCount = 0;
     for (const component of components.value) {
-      const records = filteredRows.value
-        .filter(row => !isCellReadonly(row, component))
-        .filter(row => row.draftScores[component.id] !== null || row.records[component.id])
+      const editableRows = filteredRows.value.filter(row => !isCellReadonly(row, component));
+      const createRecords = editableRows
+        .filter(row => !row.records[component.id]?.id)
+        .filter(row => hasDraftScoreInput(row, component))
         .map(row => ({
           student_id: row.student_id,
           score: row.draftScores[component.id],
           result_type: "normal"
         }));
-      if (!records.length) continue;
-      await batchCreateGradeRecords({
-        course_id: selectedCourseId.value,
-        semester: selectedSemester.value,
-        component_config_id: component.id,
-        records
-      });
-      saveGroups += 1;
+      if (createRecords.length) {
+        await batchCreateGradeRecords({
+          course_id: selectedCourseId.value,
+          semester: selectedSemester.value,
+          component_config_id: component.id,
+          records: createRecords
+        });
+        createGroups += 1;
+      }
+
+      const updateRows = editableRows.filter(row => row.records[component.id]?.id && hasDraftScoreChange(row, component));
+      for (const row of updateRows) {
+        const existing = row.records[component.id];
+        if (!existing?.id) continue;
+        await updateGradeRecord(existing.id, {
+          score: row.draftScores[component.id],
+          version_no: existing.version_no
+        });
+        updateCount += 1;
+      }
     }
-    const successMessage = saveGroups ? "当前筛选结果已批量保存。" : "当前没有可保存的草稿成绩。";
+    const successMessage = createGroups || updateCount ? "当前筛选结果已批量保存。" : "当前没有可保存的草稿成绩。";
     ElMessage.success(successMessage);
     await reloadEntryData("草稿已保存，但页面刷新失败，请手动刷新查看最新状态。");
   } catch (error: any) {
@@ -1376,7 +1397,6 @@ onMounted(reloadAll);
 .workflow-alert {
   margin-bottom: 12px;
 }
-
 .score-entry-page {
   --score-ink: #111827;
   --score-muted: #667085;
@@ -1548,8 +1568,8 @@ onMounted(reloadAll);
   margin-bottom: 12px;
 }
 .flow-guide-list {
-  margin: 6px 0 0;
   padding-left: 18px;
+  margin: 6px 0 0;
   font-size: 13px;
   line-height: 1.65;
   color: var(--score-muted);
@@ -1565,13 +1585,17 @@ onMounted(reloadAll);
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
+  margin: 12px 0 10px;
 }
 .batch-label {
   margin-right: 4px;
   font-size: 13px;
   font-weight: 700;
   color: var(--score-muted);
+}
+.batch-actions > span {
+  font-weight: 700;
 }
 .import-hint {
   margin-left: 4px;
@@ -1591,21 +1615,28 @@ onMounted(reloadAll);
 }
 .entry-grid {
   display: grid;
-  grid-template-columns: minmax(300px, 1fr) minmax(260px, 0.82fr);
   grid-template-areas:
     "filter exception"
     "config config";
+  grid-template-columns: minmax(300px, 1fr) minmax(260px, 0.82fr);
   gap: 16px;
   margin-top: 16px;
 }
 .filter-panel {
   grid-area: filter;
+  min-height: 230px;
 }
 .config-panel {
+  position: relative;
   grid-area: config;
+  min-height: auto;
 }
 .exception-panel {
   grid-area: exception;
+  min-height: 230px;
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 96%), rgb(250 252 255 / 96%)),
+    linear-gradient(135deg, rgb(19 104 196 / 8%), transparent);
 }
 .panel {
   padding: 16px;
@@ -1629,9 +1660,6 @@ onMounted(reloadAll);
       color: var(--score-danger);
     }
   }
-}
-.filter-panel {
-  min-height: 230px;
 }
 .filter-row {
   display: grid;
@@ -1685,10 +1713,6 @@ onMounted(reloadAll);
   font-weight: 700;
   color: #5b3413;
 }
-.config-panel {
-  position: relative;
-  min-height: auto;
-}
 .component-list {
   display: grid;
   gap: 9px;
@@ -1715,17 +1739,17 @@ onMounted(reloadAll);
   max-width: 120px;
 }
 .config-field-activity {
-  max-width: 120px;
   min-width: 0;
+  max-width: 120px;
 }
 .config-field-source {
-  max-width: 150px;
   min-width: 0;
+  max-width: 150px;
 }
 .config-weight-input {
   width: 110px;
   :deep(.el-input__wrapper) {
-    padding-inline: 6px 6px;
+    padding-inline: 6px;
   }
   :deep(.el-input__inner) {
     text-align: center;
@@ -1752,11 +1776,11 @@ onMounted(reloadAll);
   justify-self: end;
 }
 .component-item {
+  min-width: 0;
   padding: 8px 10px;
   background: #fbfcfe;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
-  min-width: 0;
 }
 .component-item :deep(.el-button) {
   padding: 0;
@@ -1794,12 +1818,6 @@ onMounted(reloadAll);
 }
 .mini-empty {
   --el-empty-padding: 12px 0;
-}
-.exception-panel {
-  min-height: 230px;
-  background:
-    linear-gradient(180deg, rgb(255 255 255 / 96%), rgb(250 252 255 / 96%)),
-    linear-gradient(135deg, rgb(19 104 196 / 8%), transparent);
 }
 .exception-list {
   display: grid;
@@ -1868,14 +1886,6 @@ onMounted(reloadAll);
 }
 .table-alert {
   min-width: 0;
-}
-.batch-actions {
-  align-items: center;
-  justify-content: flex-start;
-  margin: 12px 0 10px;
-  > span {
-    font-weight: 700;
-  }
 }
 .entry-table {
   :deep(.el-table__header th) {
@@ -1963,11 +1973,11 @@ onMounted(reloadAll);
     grid-template-columns: 1fr;
   }
   .entry-grid {
-    grid-template-columns: 1fr;
     grid-template-areas:
       "filter"
       "config"
       "exception";
+    grid-template-columns: 1fr;
   }
   .toolbar-actions {
     justify-content: flex-start;
@@ -2006,13 +2016,13 @@ onMounted(reloadAll);
     width: 100%;
   }
   .component-row {
-    grid-template-columns: 1fr;
     grid-template-areas:
       "name"
       "subid"
       "weight"
       "source"
       "delete";
+    grid-template-columns: 1fr;
   }
   .hero-select,
   .semester-select {

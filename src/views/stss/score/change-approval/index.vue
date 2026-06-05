@@ -208,8 +208,10 @@ const modifyRequests = ref<Score.ModifyRequest[]>([]);
 const modifyLogs = ref<Score.ModifyRequestLog[]>([]);
 const selectedCourseKey = ref("");
 const selectedSemester = ref("");
-const filterCourseId = computed(() => parseCourseKey(selectedCourseKey.value).courseId);
-const filterSemester = computed(() => parseCourseKey(selectedCourseKey.value).semester || selectedSemester.value);
+const parsedSelectedCourse = computed(() => parseCourseKey(selectedCourseKey.value || ""));
+const filterCourseId = computed(() => parsedSelectedCourse.value.courseId);
+const selectedCourseSemester = computed(() => parsedSelectedCourse.value.semester);
+const filterSemester = computed(() => selectedSemester.value || selectedCourseSemester.value);
 const modifyStatus = ref("pending");
 const activeTab = ref("submissions");
 const loading = ref(false);
@@ -288,7 +290,7 @@ const reloadAll = async () => {
 };
 
 const handleCourseChange = () => {
-  const { semester } = parseCourseKey(selectedCourseKey.value);
+  const { semester } = parsedSelectedCourse.value;
   if (semester) selectedSemester.value = semester;
   else if (selectedSemester.value && !semesterOptions.value.includes(selectedSemester.value)) {
     selectedSemester.value = "";
@@ -297,17 +299,22 @@ const handleCourseChange = () => {
 };
 
 const askOpinion = async (title: string, placeholder: string) => {
-  const { value } = await ElMessageBox.prompt(placeholder, title, {
-    confirmButtonText: "确认",
-    cancelButtonText: "取消",
-    inputType: "textarea",
-    inputPlaceholder: placeholder
-  });
-  return String(value || "");
+  try {
+    const { value } = await ElMessageBox.prompt(placeholder, title, {
+      confirmButtonText: "确认",
+      cancelButtonText: "取消",
+      inputType: "textarea",
+      inputPlaceholder: placeholder
+    });
+    return String(value || "");
+  } catch {
+    return null;
+  }
 };
 
 const reviewSubmission = async (row: Score.Submission, action: ReviewAction) => {
   const opinion = await askOpinion(action === "approve" ? "通过成绩提交" : "驳回成绩提交", "请输入审批意见");
+  if (opinion === null) return;
   actingId.value = `submission-${action}-${row.id}`;
   try {
     if (action === "approve") await approveSubmission(row.id, reviewerPayload(opinion));
@@ -320,7 +327,11 @@ const reviewSubmission = async (row: Score.Submission, action: ReviewAction) => 
 };
 
 const publishApprovedSubmission = async (row: Score.Submission) => {
-  await ElMessageBox.confirm("发布后学生端才能查询到该课程成绩。", "发布成绩", { type: "warning" });
+  try {
+    await ElMessageBox.confirm("发布后学生端才能查询到该课程成绩。", "发布成绩", { type: "warning" });
+  } catch {
+    return;
+  }
   actingId.value = `submission-publish-${row.id}`;
   try {
     const resp = await publishSubmission(row.id);
@@ -333,6 +344,7 @@ const publishApprovedSubmission = async (row: Score.Submission) => {
 
 const reviewModify = async (row: Score.ModifyRequest, action: ReviewAction) => {
   const opinion = await askOpinion(action === "approve" ? "通过改分申请" : "驳回改分申请", "请输入审批意见");
+  if (opinion === null) return;
   actingId.value = `modify-${action}-${row.id}`;
   try {
     if (action === "approve") await approveModifyRequest(row.id, reviewerPayload(opinion));
