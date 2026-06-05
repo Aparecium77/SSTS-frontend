@@ -14,6 +14,11 @@ export interface ScoreRequestOptions {
   [key: string]: unknown;
 }
 
+export const getScoreUserId = () => {
+  const userStore = useUserStore();
+  return userStore.userInfo.userId || userStore.token || "anonymous";
+};
+
 export const toScoreBackendRole = (role?: string): Score.BackendRole => {
   if (role === "academic_admin") return "admin";
   if (role === "dean") return "dean";
@@ -31,7 +36,7 @@ export const scoreRequestOptions = (options: ScoreRequestOptions = {}) => {
     skipCodeCheck: true,
     headers: {
       ...(options.headers ?? {}),
-      "X-User-ID": userStore.token || "anonymous",
+      "X-User-ID": getScoreUserId(),
       "X-User-Role": toScoreBackendRole(userInfo.role),
       "X-User-Name": userInfo.name || ""
     }
@@ -74,11 +79,12 @@ const scoreHttp = {
     return adaptScoreResp(resp);
   },
   async postResolved<T>(url: string, body?: object | FormData, options: ScoreRequestOptions = {}) {
+    // 响应拦截器已返回 body（{ code, message, data }），不是 AxiosResponse
     const resp = (await http.service.post<Score.BackendResp<T>>(scorePath(url), body, {
       validateStatus: () => true,
       ...scoreRequestOptions(options)
-    })) as unknown as { data: Score.BackendResp<T> };
-    return adaptScoreResp(resp.data);
+    })) as unknown as Score.BackendResp<T>;
+    return adaptScoreResp(resp);
   },
   async put<T>(url: string, body?: object, options: ScoreRequestOptions = {}) {
     const resp = (await http.put<Score.BackendResp<T>>(
@@ -103,6 +109,15 @@ export const getGradeConfig = (courseId: string, params: { semester: string }) =
 export const saveGradeConfig = (courseId: string, body: Score.SaveGradeConfigReq) =>
   scoreHttp.put<Score.SaveGradeConfigResp>(`/courses/${encodePath(courseId)}/grade-config`, body);
 
+/** 联调：回退单门课流程数据（默认删分项配置；keep_config 仅清成绩与审批） */
+export const resetCourseWorkflow = (courseId: string, params: { semester: string; keep_config?: boolean }) => {
+  const query = new URLSearchParams({
+    semester: params.semester,
+    keep_config: params.keep_config ? "true" : "false"
+  });
+  return scoreHttp.post<Score.CourseWorkflowResetResp>(`/courses/${encodePath(courseId)}/workflow-reset?${query.toString()}`);
+};
+
 export const createComponentConfigsLegacy = (body: Score.LegacyComponentConfigReq) =>
   scoreHttp.post<Score.SaveGradeConfigResp>("/component-configs", body);
 
@@ -112,8 +127,21 @@ export const getGradeRecords = (params: Score.GradeRecordListReq = {}) =>
 export const getGradeSheet = (courseId: string, params: { semester: string; page?: number; page_size?: number }) =>
   scoreHttp.get<Score.GradeSheet>(`/courses/${encodePath(courseId)}/grade-sheet`, params);
 
-export const getCourseRecords = (courseId: string, params: { semester: string }) =>
-  scoreHttp.get<Score.GradeSheet>(`/grade-records/courses/${encodePath(courseId)}/records`, params, { cancel: false });
+export const getCourseRecords = (
+  courseId: string,
+  params: {
+    semester: string;
+    student_no?: string;
+    student_name?: string;
+    min_score?: number;
+    max_score?: number;
+    status?: string;
+    sort_order?: "asc" | "desc";
+  }
+) => scoreHttp.get<Score.GradeSheet>(`/grade-records/courses/${encodePath(courseId)}/records`, params, { cancel: false });
+
+export const getMyGradeRecords = (courseId: string, params: { semester: string }) =>
+  scoreHttp.get<Score.StudentGradeComponentDetail>(`/students/me/grades/${encodePath(courseId)}/records`, params);
 
 export const createGradeRecord = (body: Score.SaveGradeRecordReq) =>
   scoreHttp.post<Score.SaveGradeRecordResp>("/grade-records", body);
@@ -130,7 +158,8 @@ export const importGradeExcel = (file: File, body: Score.ImportGradeExcelReq) =>
   formData.append("course_id", body.course_id);
   formData.append("semester", body.semester);
   formData.append("component_config_id", String(body.component_config_id));
-  return scoreHttp.post<Score.BatchResult>("/grade-records/import-excel", formData);
+  // 校验失败时后端返回 400 + JSON body，需 postResolved 避免 axios 4xx 被当成网络错误
+  return scoreHttp.postResolved<Score.BatchResult>("/grade-records/import-excel", formData);
 };
 
 export const upsertExternalMappings = (body: Score.ExternalMappingsReq) =>
@@ -189,6 +218,10 @@ export const rejectModifyRequest = (requestId: number, body: Score.ReviewModifyR
 export const getModifyRequestLogs = (requestId: number) =>
   scoreHttp.get<Score.ModifyRequestLogList>(`/grade-record-modify-requests/${encodePath(requestId)}/logs`);
 
+/** 登录前按学号或 student_id 查名册（Mock 登录与正式网关均可复用） */
+export const resolveStudentLogin = (login: string) =>
+  scoreHttp.get<Score.StudentLoginResolve>("/students/login-resolve", { login }, { loading: false, cancel: false });
+
 export const getMyGrades = (params: { semester?: string } = {}) =>
   scoreHttp.get<Score.StudentGradeList>("/students/me/grades", params);
 
@@ -214,12 +247,59 @@ export const getCourseAnalysis = (courseId: string, params: { semester: string }
 
 export const syncRoster = (body: Score.SyncRosterReq) => scoreHttp.post<Score.SyncRosterResp>("/sync-roster", body);
 
-export const exportCourseAnalysis = (courseId: string, params: { semester: string; format?: "xlsx" }) =>
+export const exportCourseAnalysis = (courseId: string, params: { semester: string; format?: "xlsx" | "pdf" }) =>
   http.service.get(scorePath(`/courses/${encodePath(courseId)}/analysis/export`), {
     params: { ...params, format: params.format ?? "xlsx" },
     responseType: "blob",
     ...scoreRequestOptions({ loading: true })
   });
+
+export const queryAdminGradeRecords = (
+  params: {
+    course_id?: string;
+    semester?: string;
+    student_id?: string;
+    student_no?: string;
+    major?: string;
+    college?: string;
+    grade?: string;
+  } = {}
+) => scoreHttp.get<Score.AdminGradeQueryList>("/admin/grade-query/records", params);
+
+export const queryAdminStudentArchive = (studentId: string) =>
+  scoreHttp.get<Score.AdminStudentArchive>(`/admin/grade-query/student/${encodePath(studentId)}`);
+
+export const queryAdminCourseComparison = (
+  params: {
+    semester?: string;
+    major?: string;
+    college?: string;
+    grade?: string;
+  } = {}
+) => scoreHttp.get<Score.AdminCourseComparisonList>("/admin/grade-query/course-comparison", params);
+
+export const exportAdminGradeQuery = (
+  params: {
+    course_id?: string;
+    semester?: string;
+    student_id?: string;
+    student_no?: string;
+    major?: string;
+    college?: string;
+    grade?: string;
+  } = {}
+) =>
+  http.service.get(scorePath("/admin/grade-query/export"), {
+    params,
+    responseType: "blob",
+    ...scoreRequestOptions({ loading: true })
+  });
+
+export const adminCreateGradeRecord = (body: Score.AdminCreateGradeRecordReq) =>
+  scoreHttp.post<Score.AdminCreateGradeRecordResp>("/admin/grade-records", body);
+
+export const adminOverrideGradeRecord = (recordId: number, body: Score.AdminOverrideGradeRecordReq) =>
+  scoreHttp.post<Score.AdminOverrideGradeRecordResp>(`/admin/grade-records/${encodePath(recordId)}/override`, body);
 
 export const exportGradeRecords = (params: {
   course_id: string;

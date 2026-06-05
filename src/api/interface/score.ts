@@ -25,6 +25,13 @@ export namespace Score {
     credit: number | null;
   }
 
+  /** 登录时按学号/学生 ID 解析名册（GET /students/login-resolve） */
+  export interface StudentLoginResolve {
+    student_id: string;
+    student_no: string;
+    student_name: string;
+  }
+
   export interface CourseList {
     total: number;
     courses: Course[];
@@ -76,6 +83,14 @@ export namespace Score {
     updated: number;
     total_weight: number;
     components: GradeComponent[];
+  }
+
+  export interface CourseWorkflowResetResp {
+    course_id: string;
+    semester: string;
+    keep_config: boolean;
+    deleted: Record<string, number>;
+    message: string;
   }
 
   export interface LegacyComponentConfigReq extends SaveGradeConfigReq {
@@ -570,6 +585,23 @@ export namespace Score {
     semester?: string;
   }
 
+  export interface AnalysisRanking {
+    rank: number;
+    student_id: string;
+    student_no?: string | null;
+    student_name?: string | null;
+    total_score: number;
+    gpa: number;
+  }
+
+  export interface HistoricalComparison {
+    semester: string;
+    average_score: number;
+    pass_rate: number;
+    excellent_rate: number;
+    student_count: number;
+  }
+
   export interface CourseAnalysis {
     course_id: string;
     course_name?: string;
@@ -578,12 +610,103 @@ export namespace Score {
     average_score: number;
     max_score: number;
     min_score: number;
-    median_score: number;
+    median_score?: number;
+    std_deviation?: number;
     pass_rate: number;
     excellent_rate: number;
+    fail_rate?: number;
     distribution: Array<{ range: string; count: number; percentage: number }>;
     grade_levels: Array<{ level: string; count: number; percentage: number }>;
     ranking_summary: Record<string, number>;
+    rankings?: AnalysisRanking[];
+    historical_comparison?: HistoricalComparison[];
+  }
+
+  export interface StudentGradeComponentItem {
+    component_type: string;
+    component_sub_id?: string | null;
+    weight?: number | null;
+    score?: number | null;
+    data_source?: string | null;
+  }
+
+  export interface StudentGradeComponentDetail {
+    student_id: string;
+    course_id: string;
+    semester: string;
+    components: StudentGradeComponentItem[];
+  }
+
+  export interface AdminGradeRecordRow {
+    student_id: string;
+    student_no?: string | null;
+    student_name?: string | null;
+    course_id: string;
+    course_name?: string | null;
+    semester: string;
+    major?: string | null;
+    grade?: string | null;
+    college?: string | null;
+    status: string;
+    total_score: number;
+    gpa: number;
+    credit?: number | null;
+    local_roster_shadow_id?: number | null;
+  }
+
+  export interface AdminGradeQueryList {
+    total: number;
+    records: AdminGradeRecordRow[];
+  }
+
+  export interface AdminStudentArchive {
+    student_id: string;
+    records: AdminGradeRecordRow[];
+  }
+
+  export interface AdminCourseComparisonItem {
+    course_id: string;
+    course_name?: string | null;
+    semester: string;
+    student_count: number;
+    average_score: number;
+    pass_rate: number;
+    excellent_rate: number;
+  }
+
+  export interface AdminCourseComparisonList {
+    total: number;
+    courses: AdminCourseComparisonItem[];
+  }
+
+  export interface AdminCreateGradeRecordReq {
+    student_id: string;
+    student_no?: string;
+    course_id: string;
+    semester: string;
+    component_config_id: number;
+    component_type?: string;
+    component_sub_id?: string;
+    score?: number | null;
+    result_type?: string;
+    status?: string;
+    reason: string;
+  }
+
+  export interface AdminCreateGradeRecordResp {
+    grade_record_id: number;
+    reason: string;
+  }
+
+  export interface AdminOverrideGradeRecordReq {
+    score?: number | null;
+    result_type?: string;
+    reason: string;
+  }
+
+  export interface AdminOverrideGradeRecordResp {
+    grade_record_id: number;
+    reason: string;
   }
 
   export interface SyncRosterReq {

@@ -85,12 +85,16 @@ import { computed, onMounted, ref } from "vue";
 import { Refresh } from "@element-plus/icons-vue";
 import type { Score } from "@/api/interface/score";
 import { getMyStatistics } from "@/api/modules/score";
+import { useStudentOnlyPage } from "@/views/stss/score/_shared/useStudentOnlyPage";
+
+const { ensureStudentAccess } = useStudentOnlyPage();
 
 const loading = ref(false);
 const statistics = ref<Score.StudentStatistics | null>(null);
 const rankings = computed(() => statistics.value?.course_rankings ?? []);
 
 const loadStatistics = async () => {
+  if (!ensureStudentAccess()) return;
   loading.value = true;
   try {
     const resp = await getMyStatistics();

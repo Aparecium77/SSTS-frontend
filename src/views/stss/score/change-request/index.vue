@@ -10,29 +10,19 @@
 
     <section class="request-filters">
       <el-select
-        v-model="selectedCourseId"
-        placeholder="选择课程"
-        clearable
-        filterable
-        class="filter-control"
-        @change="handleCourseChange"
-      >
-        <el-option
-          v-for="course in courses"
-          :key="`${course.course_id}-${course.semester}`"
-          :label="courseLabel(course)"
-          :value="course.course_id"
-        />
-      </el-select>
-      <el-select
-        v-model="selectedSemester"
-        placeholder="选择学期"
+        v-model="selectedCourseKey"
+        placeholder="选择课程与学期"
         clearable
         filterable
         class="filter-control"
         @change="loadRecords"
       >
-        <el-option v-for="semester in semesterOptions" :key="semester" :label="semester" :value="semester" />
+        <el-option
+          v-for="course in courses"
+          :key="toCourseKey(course.course_id, course.semester)"
+          :label="courseOptionLabel(course)"
+          :value="toCourseKey(course.course_id, course.semester)"
+        />
       </el-select>
     </section>
 
@@ -42,7 +32,7 @@
         type="warning"
         :closable="false"
         show-icon
-        title="后端只允许对 approved 且未锁定的分项成绩发起改分申请；submitted、published 或锁定记录不能直接申请。"
+        title="改分申请时机：课程已「提交审批」且教务尚未通过时不能申请；教务审批通过、尚未发布后可对 approved 分项申请。申请后请到「改分审批」标签页处理。"
       />
       <el-table v-loading="loading" :data="candidates" border empty-text="暂无可申请改分的成绩记录">
         <el-table-column prop="student_no" label="学号" min-width="130" />
@@ -60,7 +50,7 @@
         </el-table-column>
         <el-table-column label="操作" width="130" fixed="right">
           <template #default="{ row }">
-            <el-button size="small" type="primary" :icon="EditPen" @click="openDialog(row)">申请改分</el-button>
+            <el-button size="small" type="primary" :icon="EditPen" @click="openDialog(candidateRow(row))">申请改分</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -107,8 +97,9 @@ import { computed, reactive, ref, onMounted } from "vue";
 import { EditPen, Refresh } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import type { Score } from "@/api/interface/score";
-import { createModifyRequest, getCourseRecords, getGradeCourses } from "@/api/modules/score";
+import { createModifyRequest, getCourseRecords, getGradeCourses, getScoreUserId } from "@/api/modules/score";
 import { useUserStore } from "@/stores/modules/user";
+import { courseOptionLabel, parseCourseKey, toCourseKey } from "@/views/stss/score/_shared/courseSelection";
 
 type CandidateRecord = {
   id: number;
@@ -132,8 +123,9 @@ const submitting = ref(false);
 const dialogVisible = ref(false);
 const courses = ref<Score.Course[]>([]);
 const records = ref<CandidateRecord[]>([]);
-const selectedCourseId = ref("");
-const selectedSemester = ref("");
+const selectedCourseKey = ref("");
+const selectedCourseId = computed(() => parseCourseKey(selectedCourseKey.value).courseId);
+const selectedSemester = computed(() => parseCourseKey(selectedCourseKey.value).semester);
 const activeRecord = ref<CandidateRecord | null>(null);
 const form = reactive({
   new_score: null as number | null,
@@ -141,23 +133,16 @@ const form = reactive({
   reason: ""
 });
 
-const semesterOptions = computed(() => {
-  const semesters = courses.value
-    .filter(course => !selectedCourseId.value || course.course_id === selectedCourseId.value)
-    .map(course => course.semester);
-  return Array.from(new Set(semesters));
-});
-
 const candidates = computed(() => records.value.filter(record => record.status === "approved" && record.is_locked === 0));
 
-const courseLabel = (course: Score.Course) => `${course.course_name || course.course_id} · ${course.semester}`;
+const candidateRow = (row: unknown) => row as CandidateRecord;
 
 const loadCourses = async () => {
   const resp = await getGradeCourses();
   courses.value = resp.data.courses;
-  if (!selectedCourseId.value && courses.value.length) {
-    selectedCourseId.value = courses.value[0].course_id;
-    selectedSemester.value = courses.value[0].semester;
+  if (!selectedCourseKey.value && courses.value.length) {
+    const first = courses.value[0];
+    selectedCourseKey.value = toCourseKey(first.course_id, first.semester);
   }
 };
 
@@ -196,12 +181,6 @@ const reload = async () => {
   await loadRecords();
 };
 
-const handleCourseChange = () => {
-  const matched = courses.value.find(course => course.course_id === selectedCourseId.value);
-  selectedSemester.value = matched?.semester || "";
-  loadRecords();
-};
-
 const openDialog = (record: CandidateRecord) => {
   activeRecord.value = record;
   form.new_score = record.score;
@@ -223,12 +202,14 @@ const submitRequest = async () => {
       new_score: form.new_score,
       modify_type: form.modify_type,
       reason: form.reason.trim(),
-      applicant_id: userStore.token || "anonymous",
+      applicant_id: getScoreUserId(),
       applicant_name: userStore.userInfo.name || "申请人"
     });
     ElMessage.success("改分申请已提交");
     dialogVisible.value = false;
     await loadRecords();
+  } catch (error: any) {
+    ElMessage.error(error?.msg || "改分申请提交失败");
   } finally {
     submitting.value = false;
   }

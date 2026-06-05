@@ -70,6 +70,9 @@ import { computed, onMounted, ref } from "vue";
 import { Refresh } from "@element-plus/icons-vue";
 import type { Score } from "@/api/interface/score";
 import { getMyCredits, getMyStatistics } from "@/api/modules/score";
+import { useStudentOnlyPage } from "@/views/stss/score/_shared/useStudentOnlyPage";
+
+const { ensureStudentAccess } = useStudentOnlyPage();
 
 const loading = ref(false);
 const credits = ref<Score.CreditProgress | null>(null);
@@ -81,6 +84,7 @@ const creditPercent = computed(() => {
 });
 
 const loadCreditData = async () => {
+  if (!ensureStudentAccess()) return;
   loading.value = true;
   try {
     const [creditResp, statisticsResp] = await Promise.all([getMyCredits(), getMyStatistics()]);

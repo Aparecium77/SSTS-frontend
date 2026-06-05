@@ -7,15 +7,18 @@
       </div>
       <div class="header-actions">
         <el-button :icon="Refresh" :loading="loading" @click="reload">刷新</el-button>
-        <el-button type="primary" :icon="Download" :disabled="!analysis" :loading="exporting" @click="handleExport">
+        <el-button type="primary" :icon="Download" :disabled="!analysis" :loading="exportingXlsx" @click="handleExport('xlsx')">
           导出 Excel
+        </el-button>
+        <el-button :icon="Download" :disabled="!analysis" :loading="exportingPdf" @click="handleExport('pdf')">
+          导出 PDF
         </el-button>
       </div>
     </section>
 
     <section class="analytics-filters">
       <el-select
-        v-model="selectedCourseId"
+        v-model="selectedCourseKey"
         placeholder="选择课程"
         clearable
         filterable
@@ -24,20 +27,10 @@
       >
         <el-option
           v-for="course in availableCourses"
-          :key="`${course.course_id}-${course.semester}`"
-          :label="courseLabel(course)"
-          :value="course.course_id"
+          :key="toCourseKey(course.course_id, course.semester)"
+          :label="courseOptionLabel(course)"
+          :value="toCourseKey(course.course_id, course.semester)"
         />
-      </el-select>
-      <el-select
-        v-model="selectedSemester"
-        placeholder="选择学期"
-        clearable
-        filterable
-        class="filter-control"
-        @change="loadAnalysis"
-      >
-        <el-option v-for="semester in semesterOptions" :key="semester" :label="semester" :value="semester" />
       </el-select>
     </section>
 
@@ -94,11 +87,37 @@
       <section class="analytics-panel summary-panel">
         <div class="panel-head">
           <h3>排名摘要</h3>
-          <el-tag effect="plain">后端当前不返回学生排名明细表</el-tag>
         </div>
         <div class="summary-tags">
           <el-tag v-for="[key, value] in rankingSummaryEntries" :key="key" effect="dark">{{ key }}：{{ value }}</el-tag>
         </div>
+      </section>
+
+      <section v-if="analysis.rankings?.length" class="analytics-panel table-panel">
+        <div class="panel-head">
+          <h3>完整排名表</h3>
+          <span>共 {{ analysis.rankings.length }} 人</span>
+        </div>
+        <el-table :data="analysis.rankings" border max-height="360" empty-text="暂无排名数据">
+          <el-table-column prop="rank" label="名次" width="80" align="center" />
+          <el-table-column prop="student_no" label="学号" min-width="120" />
+          <el-table-column prop="student_name" label="姓名" min-width="110" />
+          <el-table-column prop="total_score" label="总评" width="100" align="center" />
+          <el-table-column prop="gpa" label="GPA" width="100" align="center" />
+        </el-table>
+      </section>
+
+      <section v-if="analysis.historical_comparison?.length" class="analytics-panel table-panel">
+        <div class="panel-head">
+          <h3>历年同课程对比</h3>
+        </div>
+        <el-table :data="analysis.historical_comparison" border empty-text="暂无历年数据">
+          <el-table-column prop="semester" label="学期" min-width="140" />
+          <el-table-column prop="student_count" label="人数" width="90" align="center" />
+          <el-table-column prop="average_score" label="平均分" width="110" align="center" />
+          <el-table-column prop="pass_rate" label="通过率(%)" width="120" align="center" />
+          <el-table-column prop="excellent_rate" label="优秀率(%)" width="120" align="center" />
+        </el-table>
       </section>
     </template>
 
@@ -114,37 +133,27 @@ import { Download, Refresh } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import type { Score } from "@/api/interface/score";
 import { exportCourseAnalysis, getCourseAnalysis, getGradeCourses } from "@/api/modules/score";
+import { courseOptionLabel, findCourseByKey, parseCourseKey, toCourseKey } from "@/views/stss/score/_shared/courseSelection";
 
 const loading = ref(false);
-const exporting = ref(false);
+const exportingXlsx = ref(false);
+const exportingPdf = ref(false);
 const courses = ref<Score.Course[]>([]);
-const selectedCourseId = ref("");
-const selectedSemester = ref("");
+const selectedCourseKey = ref("");
 const analysis = ref<Score.CourseAnalysis | null>(null);
 
 const availableCourses = computed(() => courses.value.filter(course => course.course_id && course.semester));
-
-const semesterOptions = computed(() => {
-  const semesters = availableCourses.value
-    .filter(course => !selectedCourseId.value || course.course_id === selectedCourseId.value)
-    .map(course => course.semester);
-  return Array.from(new Set(semesters));
-});
+const selectedCourseId = computed(() => parseCourseKey(selectedCourseKey.value).courseId);
+const selectedSemester = computed(() => parseCourseKey(selectedCourseKey.value).semester);
 
 const rankingSummaryEntries = computed(() => Object.entries(analysis.value?.ranking_summary ?? {}));
-
-const courseLabel = (course: Score.Course) => `${course.course_name || course.course_id} · ${course.semester}`;
 
 const loadCourses = async () => {
   const resp = await getGradeCourses();
   courses.value = resp.data.courses;
-  const currentCourse = availableCourses.value.find(
-    course => course.course_id === selectedCourseId.value && course.semester === selectedSemester.value
-  );
-  const fallbackCourse = availableCourses.value[0];
-  if (!currentCourse && fallbackCourse) {
-    selectedCourseId.value = fallbackCourse.course_id;
-    selectedSemester.value = fallbackCourse.semester;
+  if (!findCourseByKey(availableCourses.value, selectedCourseKey.value) && availableCourses.value[0]) {
+    const first = availableCourses.value[0];
+    selectedCourseKey.value = toCourseKey(first.course_id, first.semester);
   }
 };
 
@@ -168,29 +177,27 @@ const reload = async () => {
 };
 
 const handleCourseChange = () => {
-  const matched = availableCourses.value.find(course => course.course_id === selectedCourseId.value);
-  selectedSemester.value = matched?.semester || "";
   loadAnalysis();
 };
 
-const handleExport = async () => {
-  if (!analysis.value) return;
+const handleExport = async (format: "xlsx" | "pdf") => {
+  if (!analysis.value || !selectedCourseId.value || !selectedSemester.value) return;
+  const exporting = format === "pdf" ? exportingPdf : exportingXlsx;
   exporting.value = true;
   try {
     const resp = await exportCourseAnalysis(selectedCourseId.value, {
       semester: selectedSemester.value,
-      format: "xlsx"
+      format
     });
-    const blob = new Blob([resp.data], {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    });
+    const mime = format === "pdf" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    const blob = new Blob([resp.data], { type: mime });
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `${selectedCourseId.value}-${selectedSemester.value}-成绩分析.xlsx`;
+    link.download = `${selectedCourseId.value}-${selectedSemester.value}-成绩分析.${format === "pdf" ? "pdf" : "xlsx"}`;
     link.click();
     window.URL.revokeObjectURL(url);
-    ElMessage.success("导出已开始");
+    ElMessage.success(format === "pdf" ? "PDF 导出已开始" : "Excel 导出已开始");
   } finally {
     exporting.value = false;
   }
@@ -275,7 +282,8 @@ onMounted(reload);
 .empty-panel {
   padding: 16px;
 }
-.summary-panel {
+.summary-panel,
+.table-panel {
   margin-top: 12px;
 }
 .panel-head {

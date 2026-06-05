@@ -10,7 +10,7 @@
 
     <section class="approval-filters">
       <el-select
-        v-model="selectedCourseId"
+        v-model="selectedCourseKey"
         placeholder="全部课程"
         clearable
         filterable
@@ -19,9 +19,9 @@
       >
         <el-option
           v-for="course in courses"
-          :key="`${course.course_id}-${course.semester}`"
-          :label="courseLabel(course)"
-          :value="course.course_id"
+          :key="toCourseKey(course.course_id, course.semester)"
+          :label="courseOptionLabel(course)"
+          :value="toCourseKey(course.course_id, course.semester)"
         />
       </el-select>
       <el-select
@@ -40,12 +40,20 @@
         <el-option label="已驳回" value="rejected" />
         <el-option label="全部" value="" />
       </el-select>
-      <el-button :disabled="!selectedCourseId || !selectedSemester" :loading="refreshingGpa" @click="handleRefreshGpa">
+      <el-button :disabled="!filterCourseId || !filterSemester" :loading="refreshingGpa" @click="handleRefreshGpa">
         刷新 GPA
       </el-button>
     </section>
 
     <section class="approval-surface">
+      <el-alert
+        v-if="pendingModifyCount > 0 && activeTab !== 'modifies'"
+        class="tab-hint"
+        type="warning"
+        :closable="false"
+        show-icon
+        :title="`有 ${pendingModifyCount} 条待审批改分申请，请切换到「改分审批」标签页处理。`"
+      />
       <el-tabs v-model="activeTab">
         <el-tab-pane label="提交审批与发布" name="submissions">
           <el-table v-loading="loading" :data="submissions" border empty-text="暂无成绩提交">
@@ -57,7 +65,9 @@
             <el-table-column prop="opinion" label="审批意见" min-width="180" show-overflow-tooltip />
             <el-table-column label="状态" width="110">
               <template #default="{ row }">
-                <el-tag :type="submissionStatusType(row.status)">{{ submissionStatusText(row.status) }}</el-tag>
+                <el-tag :type="submissionStatusType(submissionRow(row).status)">{{
+                  submissionStatusText(submissionRow(row).status)
+                }}</el-tag>
               </template>
             </el-table-column>
             <el-table-column label="操作" min-width="230" fixed="right">
@@ -69,7 +79,7 @@
                     type="success"
                     :icon="Check"
                     :loading="actingId === `submission-approve-${row.id}`"
-                    @click="reviewSubmission(row, 'approve')"
+                    @click="reviewSubmission(submissionRow(row), 'approve')"
                   >
                     通过
                   </el-button>
@@ -79,7 +89,7 @@
                     type="danger"
                     :icon="Close"
                     :loading="actingId === `submission-reject-${row.id}`"
-                    @click="reviewSubmission(row, 'reject')"
+                    @click="reviewSubmission(submissionRow(row), 'reject')"
                   >
                     驳回
                   </el-button>
@@ -89,7 +99,7 @@
                     type="primary"
                     :icon="Promotion"
                     :loading="actingId === `submission-publish-${row.id}`"
-                    @click="publishApprovedSubmission(row)"
+                    @click="publishApprovedSubmission(submissionRow(row))"
                   >
                     发布
                   </el-button>
@@ -100,7 +110,7 @@
           </el-table>
         </el-tab-pane>
 
-        <el-tab-pane label="改分审批" name="modifies">
+        <el-tab-pane :label="modifyTabLabel" name="modifies">
           <el-table v-loading="loading" :data="visibleModifyRequests" border empty-text="暂无改分申请">
             <el-table-column prop="course_id" label="课程号" min-width="120" />
             <el-table-column prop="semester" label="学期" min-width="120" />
@@ -120,7 +130,7 @@
             <el-table-column prop="applicant_name" label="申请人" min-width="120" />
             <el-table-column label="状态" width="110">
               <template #default="{ row }">
-                <el-tag :type="modifyStatusType(row.status)">{{ modifyStatusText(row.status) }}</el-tag>
+                <el-tag :type="modifyStatusType(modifyRow(row).status)">{{ modifyStatusText(modifyRow(row).status) }}</el-tag>
               </template>
             </el-table-column>
             <el-table-column label="操作" min-width="230" fixed="right">
@@ -132,7 +142,7 @@
                     type="success"
                     :icon="Check"
                     :loading="actingId === `modify-approve-${row.id}`"
-                    @click="reviewModify(row, 'approve')"
+                    @click="reviewModify(modifyRow(row), 'approve')"
                   >
                     通过
                   </el-button>
@@ -142,11 +152,11 @@
                     type="danger"
                     :icon="Close"
                     :loading="actingId === `modify-reject-${row.id}`"
-                    @click="reviewModify(row, 'reject')"
+                    @click="reviewModify(modifyRow(row), 'reject')"
                   >
                     驳回
                   </el-button>
-                  <el-button size="small" @click="openModifyLogs(row)">查看日志</el-button>
+                  <el-button size="small" @click="openModifyLogs(modifyRow(row))">查看日志</el-button>
                 </div>
               </template>
             </el-table-column>
@@ -183,9 +193,11 @@ import {
   publishSubmission,
   refreshGpa,
   rejectModifyRequest,
-  rejectSubmission
+  rejectSubmission,
+  getScoreUserId
 } from "@/api/modules/score";
 import { useUserStore } from "@/stores/modules/user";
+import { courseOptionLabel, parseCourseKey, toCourseKey } from "@/views/stss/score/_shared/courseSelection";
 
 type ReviewAction = "approve" | "reject";
 
@@ -194,8 +206,10 @@ const courses = ref<Score.Course[]>([]);
 const submissions = ref<Score.Submission[]>([]);
 const modifyRequests = ref<Score.ModifyRequest[]>([]);
 const modifyLogs = ref<Score.ModifyRequestLog[]>([]);
-const selectedCourseId = ref("");
+const selectedCourseKey = ref("");
 const selectedSemester = ref("");
+const filterCourseId = computed(() => parseCourseKey(selectedCourseKey.value).courseId);
+const filterSemester = computed(() => parseCourseKey(selectedCourseKey.value).semester || selectedSemester.value);
 const modifyStatus = ref("pending");
 const activeTab = ref("submissions");
 const loading = ref(false);
@@ -206,19 +220,24 @@ const actingId = ref("");
 
 const semesterOptions = computed(() => {
   const semesters = courses.value
-    .filter(course => !selectedCourseId.value || course.course_id === selectedCourseId.value)
+    .filter(course => !filterCourseId.value || course.course_id === filterCourseId.value)
     .map(course => course.semester);
   return Array.from(new Set(semesters));
 });
 
-const visibleModifyRequests = computed(() =>
-  modifyRequests.value.filter(item => !selectedSemester.value || item.semester === selectedSemester.value)
+const pendingModifyCount = computed(() => modifyRequests.value.filter(item => item.status === "pending").length);
+
+const modifyTabLabel = computed(() =>
+  pendingModifyCount.value > 0 ? `改分审批（${pendingModifyCount.value} 待办）` : "改分审批"
 );
 
-const courseLabel = (course: Score.Course) => `${course.course_name || course.course_id} · ${course.semester}`;
+const visibleModifyRequests = computed(() => modifyRequests.value);
+
+const submissionRow = (row: unknown) => row as Score.Submission;
+const modifyRow = (row: unknown) => row as Score.ModifyRequest;
 
 const reviewerPayload = (opinion: string) => ({
-  reviewer_id: userStore.token || "anonymous",
+  reviewer_id: getScoreUserId(),
   reviewer_name: userStore.userInfo.name || "管理员",
   opinion
 });
@@ -230,18 +249,23 @@ const loadCourses = async () => {
 
 const loadSubmissions = async () => {
   const resp = await getGradeSubmissions({
-    course_id: selectedCourseId.value || undefined,
-    semester: selectedSemester.value || undefined
+    course_id: filterCourseId.value || undefined,
+    semester: filterSemester.value || undefined
   });
   submissions.value = resp.data.submissions;
 };
 
 const loadModifyRequests = async () => {
   const resp = await getModifyRequests({
-    course_id: selectedCourseId.value || undefined,
-    status: modifyStatus.value || undefined
+    course_id: filterCourseId.value || undefined,
+    semester: filterSemester.value || undefined,
+    status: modifyStatus.value || undefined,
+    page_size: 100
   });
   modifyRequests.value = resp.data.requests;
+  if (pendingModifyCount.value > 0 && activeTab.value === "submissions") {
+    activeTab.value = "modifies";
+  }
 };
 
 const loadApprovalData = async () => {
@@ -264,7 +288,9 @@ const reloadAll = async () => {
 };
 
 const handleCourseChange = () => {
-  if (selectedSemester.value && !semesterOptions.value.includes(selectedSemester.value)) {
+  const { semester } = parseCourseKey(selectedCourseKey.value);
+  if (semester) selectedSemester.value = semester;
+  else if (selectedSemester.value && !semesterOptions.value.includes(selectedSemester.value)) {
     selectedSemester.value = "";
   }
   loadApprovalData();
@@ -330,12 +356,12 @@ const openModifyLogs = async (row: Score.ModifyRequest) => {
 };
 
 const handleRefreshGpa = async () => {
-  if (!selectedCourseId.value || !selectedSemester.value) return;
+  if (!filterCourseId.value || !filterSemester.value) return;
   refreshingGpa.value = true;
   try {
     const resp = await refreshGpa({
-      course_id: selectedCourseId.value,
-      semester: selectedSemester.value
+      course_id: filterCourseId.value,
+      semester: filterSemester.value
     });
     ElMessage.success(`GPA 刷新请求已提交，影响学生数：${resp.data.refreshed_count ?? resp.data.refreshed ?? 0}`);
   } finally {
@@ -425,6 +451,9 @@ onMounted(reloadAll);
 .approval-surface {
   padding: 14px;
   margin-top: 12px;
+}
+.tab-hint {
+  margin-bottom: 12px;
 }
 .table-actions {
   display: flex;

@@ -9,6 +9,11 @@
     </section>
 
     <section v-if="isStudent" class="query-surface">
+      <el-alert class="student-login-tip" type="info" :closable="false" show-icon>
+        <template #title> 当前登录：{{ userStore.userInfo.name }}（{{ userStore.userInfo.userId }}） </template>
+        仅展示<strong>已发布</strong>总评。若为空，请确认教师已审批发布，且登录学号/学生 ID 与名册一致（可用学号如 20266001
+        登录）。
+      </el-alert>
       <div class="surface-head">
         <h3>我的已发布成绩</h3>
         <el-select
@@ -22,14 +27,26 @@
           <el-option v-for="semester in studentSemesters" :key="semester" :label="semester" :value="semester" />
         </el-select>
       </div>
-      <el-alert
-        class="surface-alert"
-        type="info"
-        :closable="false"
-        show-icon
-        title="当前后端会返回课程名、考核方式、课程类别等摘要字段，但不返回分项成绩明细。"
-      />
-      <el-table v-loading="loading" :data="studentGrades" border empty-text="暂无已发布成绩">
+      <el-table v-loading="loading" :data="studentGrades" border empty-text="暂无已发布成绩" @expand-change="handleStudentExpand">
+        <el-table-column type="expand" width="48">
+          <template #default="{ row }">
+            <div v-loading="detailLoadingKey === detailKey(studentRow(row))" class="grade-detail-panel">
+              <p v-if="!gradeDetailMap[detailKey(studentRow(row))]?.length" class="detail-empty">暂无分项成绩明细</p>
+              <el-table v-else :data="gradeDetailMap[detailKey(studentRow(row))]" border size="small">
+                <el-table-column prop="component_type" label="分项类型" min-width="120" />
+                <el-table-column prop="component_sub_id" label="子项" min-width="100">
+                  <template #default="{ row: item }">{{ item.component_sub_id || "-" }}</template>
+                </el-table-column>
+                <el-table-column prop="score" label="得分" width="100">
+                  <template #default="{ row: item }">{{ item.score ?? "-" }}</template>
+                </el-table-column>
+                <el-table-column prop="data_source" label="来源" min-width="100">
+                  <template #default="{ row: item }">{{ item.data_source || "-" }}</template>
+                </el-table-column>
+              </el-table>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column prop="course_id" label="课程号" min-width="140" />
         <el-table-column prop="course_name" label="课程名" min-width="180" show-overflow-tooltip />
         <el-table-column prop="semester" label="学期" min-width="140" />
@@ -54,37 +71,48 @@
       <div class="surface-head">
         <div>
           <h3>课程成绩明细</h3>
-          <p class="surface-subtitle">使用后端聚合成绩单，支持分页、导出和审计日志查看。</p>
+          <p class="surface-subtitle">支持学号/姓名/分数段筛选与排序，数据来自后端聚合成绩单。</p>
         </div>
         <div class="teacher-filters">
           <el-select
-            v-model="selectedCourseId"
+            v-model="selectedCourseKey"
             placeholder="选择课程"
             clearable
             filterable
-            class="filter-control"
+            class="filter-control course-filter"
             @change="handleCourseChange"
           >
             <el-option
               v-for="course in courses"
-              :key="`${course.course_id}-${course.semester}`"
-              :label="courseLabel(course)"
-              :value="course.course_id"
+              :key="toCourseKey(course.course_id, course.semester)"
+              :label="courseOptionLabel(course)"
+              :value="toCourseKey(course.course_id, course.semester)"
             />
           </el-select>
-          <el-select
-            v-model="selectedSemester"
-            placeholder="选择学期"
-            clearable
-            filterable
-            class="filter-control"
-            @change="loadCourseGrades"
-          >
-            <el-option v-for="semester in teacherSemesters" :key="semester" :label="semester" :value="semester" />
+          <el-input v-model="filterStudentNo" placeholder="学号" clearable class="filter-control narrow" />
+          <el-input v-model="filterStudentName" placeholder="姓名" clearable class="filter-control narrow" />
+          <el-input-number
+            v-model="filterMinScore"
+            :min="0"
+            :max="100"
+            :controls="false"
+            placeholder="最低分"
+            class="filter-control score-input"
+          />
+          <el-input-number
+            v-model="filterMaxScore"
+            :min="0"
+            :max="100"
+            :controls="false"
+            placeholder="最高分"
+            class="filter-control score-input"
+          />
+          <el-select v-model="filterSortOrder" class="filter-control narrow">
+            <el-option label="总分降序" value="desc" />
+            <el-option label="总分升序" value="asc" />
           </el-select>
-          <el-button :disabled="!selectedCourseId || !selectedSemester" :loading="exporting" @click="handleExport">
-            导出成绩
-          </el-button>
+          <el-button type="primary" :disabled="!selectedCourseKey" :loading="loading" @click="searchCourseGrades">查询</el-button>
+          <el-button :disabled="!selectedCourseKey" :loading="exporting" @click="handleExport">导出成绩</el-button>
           <el-button :disabled="!selectedCourseId" @click="openAuditDialog">审计日志</el-button>
         </div>
       </div>
@@ -95,7 +123,7 @@
         show-icon
         :title="gradeSheet?.edition ? `当前展示的是 ${gradeSheet.edition}` : '请选择课程和学期后查看聚合成绩单。'"
       />
-      <el-table v-loading="loading" :data="courseRows" border empty-text="请选择课程和学期">
+      <el-table v-loading="loading" :data="pagedRows" border empty-text="请选择课程并查询">
         <el-table-column prop="student_no" label="学号" min-width="130" fixed />
         <el-table-column prop="student_name" label="姓名" min-width="110" fixed />
         <el-table-column prop="major" label="专业" min-width="140" show-overflow-tooltip />
@@ -107,7 +135,7 @@
             </div>
           </template>
           <template #default="{ row }">
-            {{ getSheetScore(row, component.id) ?? "-" }}
+            {{ getSheetScore(sheetRow(row), component.id) ?? "-" }}
           </template>
         </el-table-column>
         <el-table-column prop="total_score" label="总评" min-width="100" align="center">
@@ -122,10 +150,10 @@
         </el-table-column>
       </el-table>
       <el-pagination
-        v-if="gradeSheet?.total"
+        v-if="courseRows.length"
         class="query-pagination"
         layout="prev, pager, next, sizes, total"
-        :total="gradeSheet.total"
+        :total="courseRows.length"
         :current-page="page"
         :page-size="pageSize"
         :page-sizes="[10, 20, 50]"
@@ -153,19 +181,33 @@ import { computed, onMounted, ref } from "vue";
 import { Refresh } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import type { Score } from "@/api/interface/score";
-import { exportGradeRecords, getGradeRecordLogs, getGradeSheet, getGradeCourses, getMyGrades } from "@/api/modules/score";
+import {
+  exportGradeRecords,
+  getCourseRecords,
+  getGradeRecordLogs,
+  getGradeCourses,
+  getMyGradeRecords,
+  getMyGrades
+} from "@/api/modules/score";
 import { useUserStore } from "@/stores/modules/user";
+import { courseOptionLabel, parseCourseKey, toCourseKey } from "@/views/stss/score/_shared/courseSelection";
 
 const userStore = useUserStore();
 const loading = ref(false);
 const exporting = ref(false);
 const auditLoading = ref(false);
 const auditDialogVisible = ref(false);
+const detailLoadingKey = ref("");
 const studentSemester = ref("");
 const studentGrades = ref<Score.StudentGrade[]>([]);
+const gradeDetailMap = ref<Record<string, Score.StudentGradeComponentItem[]>>({});
 const courses = ref<Score.Course[]>([]);
-const selectedCourseId = ref("");
-const selectedSemester = ref("");
+const selectedCourseKey = ref("");
+const filterStudentNo = ref("");
+const filterStudentName = ref("");
+const filterMinScore = ref<number | undefined>();
+const filterMaxScore = ref<number | undefined>();
+const filterSortOrder = ref<"asc" | "desc">("desc");
 const components = ref<Score.GradeComponent[]>([]);
 const gradeSheet = ref<Score.GradeSheet | null>(null);
 const courseRows = ref<Score.GradeSheetRow[]>([]);
@@ -174,26 +216,53 @@ const page = ref(1);
 const pageSize = ref(20);
 
 const isStudent = computed(() => userStore.userInfo.role === "student");
+const selectedCourseId = computed(() => parseCourseKey(selectedCourseKey.value).courseId);
+const selectedSemester = computed(() => parseCourseKey(selectedCourseKey.value).semester);
 const studentSemesters = computed(() => Array.from(new Set(studentGrades.value.map(item => item.semester))));
-const teacherSemesters = computed(() => {
-  const semesters = courses.value
-    .filter(course => !selectedCourseId.value || course.course_id === selectedCourseId.value)
-    .map(course => course.semester);
-  return Array.from(new Set(semesters));
+
+const pagedRows = computed(() => {
+  const start = (page.value - 1) * pageSize.value;
+  return courseRows.value.slice(start, start + pageSize.value);
 });
 
-const courseLabel = (course: Score.Course) => `${course.course_name || course.course_id} · ${course.semester}`;
+const detailKey = (row: Score.StudentGrade) => `${row.course_id}::${row.semester}`;
 
 const getSheetScore = (row: Score.GradeSheetRow, componentId: number) => {
   const record = (row.records ?? row.component_scores ?? []).find(item => item.component_config_id === componentId);
   return record?.score ?? null;
 };
 
+const loadGradeDetail = async (row: Score.StudentGrade) => {
+  const key = detailKey(row);
+  if (gradeDetailMap.value[key]) return;
+  detailLoadingKey.value = key;
+  try {
+    const resp = await getMyGradeRecords(row.course_id, { semester: row.semester });
+    gradeDetailMap.value[key] = resp.data.components;
+  } catch {
+    gradeDetailMap.value[key] = [];
+  } finally {
+    detailLoadingKey.value = "";
+  }
+};
+
+const handleStudentExpand = (row: unknown, expandedRows: unknown) => {
+  const grade = studentRow(row);
+  const rows = expandedRows as Score.StudentGrade[];
+  if (rows.some(item => detailKey(studentRow(item)) === detailKey(grade))) {
+    loadGradeDetail(grade);
+  }
+};
+
+const studentRow = (row: unknown) => row as Score.StudentGrade;
+const sheetRow = (row: unknown) => row as Score.GradeSheetRow;
+
 const loadMyGrades = async () => {
   loading.value = true;
   try {
     const resp = await getMyGrades({ semester: studentSemester.value || undefined });
     studentGrades.value = resp.data.grades;
+    gradeDetailMap.value = {};
   } finally {
     loading.value = false;
   }
@@ -202,17 +271,36 @@ const loadMyGrades = async () => {
 const loadCourses = async () => {
   const resp = await getGradeCourses();
   courses.value = resp.data.courses;
+  if (!selectedCourseKey.value && courses.value.length) {
+    const first = courses.value[0];
+    selectedCourseKey.value = toCourseKey(first.course_id, first.semester);
+  }
+};
+
+const buildRecordParams = () => {
+  const params: {
+    semester: string;
+    student_no?: string;
+    student_name?: string;
+    min_score?: number;
+    max_score?: number;
+    sort_order?: "asc" | "desc";
+  } = {
+    semester: selectedSemester.value,
+    sort_order: filterSortOrder.value
+  };
+  if (filterStudentNo.value.trim()) params.student_no = filterStudentNo.value.trim();
+  if (filterStudentName.value.trim()) params.student_name = filterStudentName.value.trim();
+  if (filterMinScore.value !== undefined && filterMinScore.value !== null) params.min_score = filterMinScore.value;
+  if (filterMaxScore.value !== undefined && filterMaxScore.value !== null) params.max_score = filterMaxScore.value;
+  return params;
 };
 
 const loadCourseGrades = async () => {
   if (!selectedCourseId.value || !selectedSemester.value) return;
   loading.value = true;
   try {
-    const resp = await getGradeSheet(selectedCourseId.value, {
-      semester: selectedSemester.value,
-      page: page.value,
-      page_size: pageSize.value
-    });
+    const resp = await getCourseRecords(selectedCourseId.value, buildRecordParams());
     gradeSheet.value = resp.data;
     components.value = resp.data.components;
     courseRows.value = resp.data.rows;
@@ -221,32 +309,44 @@ const loadCourseGrades = async () => {
   }
 };
 
-const handleCourseChange = () => {
-  const matched = courses.value.find(course => course.course_id === selectedCourseId.value);
-  selectedSemester.value = matched?.semester || "";
+const searchCourseGrades = () => {
   page.value = 1;
   loadCourseGrades();
 };
 
+const handleCourseChange = () => {
+  page.value = 1;
+  if (selectedCourseKey.value) loadCourseGrades();
+  else {
+    gradeSheet.value = null;
+    courseRows.value = [];
+    components.value = [];
+  }
+};
+
 const handlePageChange = (nextPage: number) => {
   page.value = nextPage;
-  loadCourseGrades();
 };
 
 const handlePageSizeChange = (nextSize: number) => {
   pageSize.value = nextSize;
   page.value = 1;
-  loadCourseGrades();
 };
 
 const handleExport = async () => {
   if (!selectedCourseId.value || !selectedSemester.value) return;
   exporting.value = true;
   try {
+    const params = buildRecordParams();
     const resp = await exportGradeRecords({
       course_id: selectedCourseId.value,
       semester: selectedSemester.value,
-      format: "xlsx"
+      format: "xlsx",
+      student_no: params.student_no,
+      student_name: params.student_name,
+      min_score: params.min_score,
+      max_score: params.max_score,
+      sort_order: params.sort_order
     });
     const blob = new Blob([resp.data], {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -285,7 +385,7 @@ const reload = async () => {
     loading.value = true;
     try {
       await loadCourses();
-      await loadCourseGrades();
+      if (selectedCourseKey.value) await loadCourseGrades();
     } finally {
       loading.value = false;
     }
@@ -317,58 +417,69 @@ onMounted(reload);
 }
 .query-header {
   padding: 18px 20px;
-  h2 {
-    margin: 2px 0 0;
-    font-size: 24px;
-    color: #1f2d3d;
-  }
+  margin-bottom: 14px;
 }
 .eyebrow {
   margin: 0;
   font-size: 12px;
-  font-weight: 700;
-  color: #1c846d;
+  color: var(--el-text-color-secondary);
+}
+.query-header h2,
+.surface-head h3 {
+  margin: 2px 0 0;
 }
 .query-surface {
-  padding: 14px;
-  margin-top: 12px;
+  padding: 18px 20px;
 }
-.surface-head {
-  margin-bottom: 12px;
-  h3 {
-    margin: 0;
-    font-size: 18px;
-  }
+.student-login-tip {
+  margin-bottom: 14px;
 }
-.surface-alert {
-  margin-bottom: 12px;
+.surface-subtitle {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
 }
 .teacher-filters {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
+  justify-content: flex-end;
 }
-.filter-control,
+.filter-control {
+  width: 180px;
+}
+.filter-control.course-filter {
+  width: 260px;
+}
+.filter-control.narrow {
+  width: 120px;
+}
+.filter-control.score-input {
+  width: 110px;
+}
 .semester-filter {
-  width: 240px;
+  width: 180px;
+}
+.surface-alert {
+  margin: 12px 0;
+}
+.query-pagination {
+  justify-content: flex-end;
+  margin-top: 14px;
 }
 .component-head {
-  display: grid;
-  gap: 2px;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
   small {
     color: var(--el-text-color-secondary);
   }
 }
-
-@media (width <= 900px) {
-  .query-header,
-  .surface-head {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-  .filter-control,
-  .semester-filter {
-    width: 100%;
-  }
+.grade-detail-panel {
+  padding: 8px 12px 12px 36px;
+}
+.detail-empty {
+  margin: 0;
+  color: var(--el-text-color-secondary);
 }
 </style>

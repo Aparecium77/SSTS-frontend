@@ -41,6 +41,7 @@ export namespace Login {
     user_info: {
       name: string;
       role: string;
+      user_id?: string;
     };
   }
   export interface ResAuthButtons {

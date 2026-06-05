@@ -14,12 +14,17 @@
           <span>成绩分项：{{ components.length }}</span>
           <i />
           <span>学分：{{ currentCourse?.credit ?? "--" }}</span>
+          <i />
+          <span>
+            课程状态：
+            <el-tag :type="courseWorkflowTagType" size="small" effect="light">{{ courseWorkflowLabel }}</el-tag>
+          </span>
         </div>
         <div class="hero-controls">
           <label>
             <span>课程名称：</span>
             <el-select
-              v-model="selectedCourseId"
+              v-model="selectedCourseKey"
               placeholder="选择课程"
               filterable
               class="hero-select"
@@ -27,9 +32,9 @@
             >
               <el-option
                 v-for="course in courses"
-                :key="`${course.course_id}-${course.semester}`"
-                :label="courseLabel(course)"
-                :value="course.course_id"
+                :key="toCourseKey(course.course_id, course.semester)"
+                :label="courseOptionLabel(course)"
+                :value="toCourseKey(course.course_id, course.semester)"
               />
             </el-select>
           </label>
@@ -40,7 +45,7 @@
               placeholder="选择学期"
               filterable
               class="semester-select"
-              @change="loadEntryData"
+              @change="handleSemesterChange"
             >
               <el-option v-for="semester in semesterOptions" :key="semester" :label="semester" :value="semester" />
             </el-select>
@@ -68,50 +73,30 @@
       <div class="hero-side">
         <el-steps :active="activeStep" align-center finish-status="success" process-status="process" class="entry-steps">
           <el-step title="选择课程和学期" />
+          <el-step title="配置分项权重" />
           <el-step title="录入/导入成绩" />
-          <el-step title="计算检查" />
-          <el-step title="提交审批" />
+          <el-step title="计算并提交审批" />
         </el-steps>
-        <div class="toolbar-actions">
-          <el-button :icon="Refresh" :loading="loading" @click="reloadAll">刷新数据</el-button>
-          <el-upload action="" :auto-upload="false" :show-file-list="false" :on-change="handleExcelChange" accept=".xlsx,.xls">
-            <el-button :icon="Upload" :disabled="!selectedCourseId || !selectedSemester" :loading="importing">
-              Excel 导入
-            </el-button>
-          </el-upload>
-          <el-button :disabled="!selectedCourseId || !selectedSemester || !components.length" @click="openMappingDialog">
-            配置导入映射
+        <div class="hero-reset">
+          <el-button
+            type="danger"
+            plain
+            size="small"
+            :disabled="!selectedCourseId || !selectedSemester"
+            :loading="resettingWorkflow"
+            @click="handleWorkflowReset(false)"
+          >
+            重置本课（回到配权重前）
           </el-button>
           <el-button
+            size="small"
             :disabled="!selectedCourseId || !selectedSemester || !components.length"
-            :loading="externalImportingSource === 'exam'"
-            @click="handleExternalImport('exam')"
+            :loading="resettingWorkflow"
+            @click="handleWorkflowReset(true)"
           >
-            导入考试成绩
+            仅清成绩与审批
           </el-button>
-          <el-button
-            :disabled="!selectedCourseId || !selectedSemester || !components.length"
-            :loading="externalImportingSource === 'forum'"
-            @click="handleExternalImport('forum')"
-          >
-            导入论坛成绩
-          </el-button>
-          <el-button :icon="Operation" :disabled="!canOperateCourse" :loading="calculating" @click="handleCalculate">
-            计算检查
-          </el-button>
-          <el-tooltip :disabled="!submitDisabledReason" :content="submitDisabledReason" placement="top">
-            <span class="submit-action-wrapper">
-              <el-button
-                type="primary"
-                :icon="Promotion"
-                :disabled="!canOperateCourse || Boolean(submitDisabledReason)"
-                :loading="submitting"
-                @click="handleSubmit"
-              >
-                提交审批
-              </el-button>
-            </span>
-          </el-tooltip>
+          <span class="reset-hint">保留名册；用于本地联调，生产环境请慎用</span>
         </div>
       </div>
     </section>
@@ -121,33 +106,40 @@
     </section>
 
     <template v-else>
+      <el-alert
+        v-if="currentCourseWorkflowStatus === 'submitted'"
+        class="workflow-alert"
+        type="info"
+        :closable="false"
+        show-icon
+        title="当前课程成绩已提交，状态：审批中。审批完成前不可再次提交或编辑成绩。"
+      />
+      <el-alert class="flow-guide" type="info" :closable="true" show-icon>
+        <template #title>成绩录入在做什么？</template>
+        <ol class="flow-guide-list">
+          <li>
+            <strong>分项与权重（左侧配置区）</strong>：只填「叫什么、占多少 %、分数从哪来」，不在这里填具体分数。权重合计 100%。
+          </li>
+          <li>
+            <strong>录入分数（下方表格 / 导入）</strong>：来源选「手工录入」→ 表格或 Excel；选「考试/论坛系统」→
+            在权重区选好对应活动后点「拉取」，或用上方「导入成绩」批量拉取。
+          </li>
+          <li>
+            <strong>考试/论坛活动</strong>：在权重区「对应活动」列选择（如
+            quiz1），保存配置后拉取；同一课可有多个考试分项，各选各的活动。
+          </li>
+          <li><strong>计算检查 → 提交审批</strong>：确认无缺项后提交。</li>
+        </ol>
+      </el-alert>
       <section class="entry-grid">
         <div class="panel filter-panel">
           <div class="panel-title">
-            <span>筛选区</span>
-            <small>快速定位学生和录入状态</small>
-          </div>
-          <div class="filter-row">
-            <label>课程选择</label>
-            <el-select v-model="selectedCourseId" placeholder="选择课程" filterable @change="handleCourseChange">
-              <el-option
-                v-for="course in courses"
-                :key="`filter-${course.course_id}-${course.semester}`"
-                :label="courseLabel(course)"
-                :value="course.course_id"
-              />
-            </el-select>
-            <label>学期选择</label>
-            <el-select v-model="selectedSemester" placeholder="选择学期" filterable @change="loadEntryData">
-              <el-option v-for="semester in semesterOptions" :key="`filter-${semester}`" :label="semester" :value="semester" />
-            </el-select>
+            <span>筛选学生</span>
+            <small>课程与学期请在页头选择</small>
           </div>
           <div class="filter-stats">
             <span>
-              学生人数：<strong>{{ currentCourse?.student_count || rows.length }}</strong>
-            </span>
-            <span>
-              学生数：<strong>{{ rows.length }}</strong>
+              本课学生：<strong>{{ rows.length }}</strong>
             </span>
           </div>
           <div class="status-filter">
@@ -170,7 +162,7 @@
 
         <div class="panel config-panel">
           <div class="panel-title">
-            <span>课程概览与权重配置区</span>
+            <span>成绩分项与权重</span>
             <div class="config-actions">
               <small :class="{ danger: weightAbnormal }">当前总权重 {{ totalWeight }}%</small>
               <el-button size="small" @click="addConfigItem">新增分项</el-button>
@@ -186,28 +178,88 @@
               </el-button>
             </div>
           </div>
+          <p class="config-hint">
+            此处<strong>只配置分项名称、权重、成绩来源</strong>，不在此录入分数。考试/论坛分项请在「对应活动」选好活动（保存后可用「拉取」或上方「导入成绩」）。
+          </p>
           <div v-if="configDrafts.length" class="component-list">
-            <div v-for="item in configDrafts" :key="item.local_id" class="component-item editable">
+            <div class="component-row component-row--head">
+              <span>分项名称</span>
+              <span>对应活动</span>
+              <span>权重%</span>
+              <span>成绩来源</span>
+              <span>拉取</span>
+              <span />
+            </div>
+            <div v-for="item in configDrafts" :key="item.local_id" class="component-row component-item editable">
               <el-input
                 v-model="item.component_type"
-                placeholder="成绩项类型，如 usual / final"
+                class="config-field-short"
+                placeholder="平时"
                 :disabled="item.is_locked === 1"
               />
-              <el-input v-model="item.component_sub_id" placeholder="分项标识，如 part-a" :disabled="item.is_locked === 1" />
+              <el-input
+                v-if="item.data_source === 'manual'"
+                v-model="item.component_sub_id"
+                class="config-field-short"
+                placeholder="备注可选"
+                :disabled="item.is_locked === 1"
+              />
+              <el-select
+                v-else-if="item.data_source === 'exam'"
+                v-model="item.component_sub_id"
+                class="config-field-activity"
+                filterable
+                allow-create
+                default-first-option
+                placeholder="选择考试"
+                :disabled="item.is_locked === 1"
+              >
+                <el-option v-for="opt in examExternalOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+              </el-select>
+              <el-select
+                v-else
+                v-model="item.component_sub_id"
+                class="config-field-activity"
+                filterable
+                allow-create
+                default-first-option
+                placeholder="选择论坛"
+                :disabled="item.is_locked === 1"
+              >
+                <el-option v-for="opt in forumExternalOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+              </el-select>
               <el-input-number
                 v-model="item.weight"
+                class="config-weight-input"
                 :min="0"
                 :max="100"
                 :precision="1"
-                controls-position="right"
                 :disabled="item.is_locked === 1"
               />
-              <el-select v-model="item.data_source" :disabled="item.is_locked === 1">
-                <el-option label="Manual" value="manual" />
-                <el-option label="Exam" value="exam" />
-                <el-option label="Forum" value="forum" />
+              <el-select
+                v-model="item.data_source"
+                class="config-field-source"
+                placeholder="来源"
+                :disabled="item.is_locked === 1"
+                @change="onDataSourceChange(item)"
+              >
+                <el-option label="手工录入" value="manual" />
+                <el-option label="考试系统" value="exam" />
+                <el-option label="论坛系统" value="forum" />
               </el-select>
-              <span class="component-source" :class="`source-${item.data_source}`">{{ sourceLabel(item.data_source) }}</span>
+              <el-button
+                v-if="item.data_source === 'exam' || item.data_source === 'forum'"
+                link
+                type="primary"
+                size="small"
+                class="config-pull-btn"
+                :disabled="!canOperateCourse || item.is_locked === 1"
+                :loading="externalImportingKey === item.local_id"
+                @click="handleConfigRowImport(item)"
+              >
+                拉取
+              </el-button>
+              <span v-else class="config-pull-placeholder">—</span>
               <el-button link type="danger" :disabled="item.is_locked === 1" @click="removeConfigItem(item.local_id)">
                 删除
               </el-button>
@@ -273,7 +325,10 @@
         <div class="table-head">
           <div>
             <h3>成绩录入主表格</h3>
-            <p>{{ filteredRows.length }} / {{ rows.length }} 名学生 · 手工项可编辑，Exam / Forum 来源为只读导入项</p>
+            <p>
+              {{ filteredRows.length }} / {{ rows.length }} 名学生 ·
+              「手工录入」列可改分；「考试/论坛」列在权重区配置活动后拉取或「导入成绩」写入
+            </p>
           </div>
           <el-alert
             v-if="weightAbnormal"
@@ -286,31 +341,39 @@
         </div>
 
         <div class="batch-actions">
-          <span>批量操作：</span>
-          <el-upload action="" :auto-upload="false" :show-file-list="false" :on-change="handleExcelChange" accept=".xlsx,.xls">
-            <el-button :loading="importing">Excel 导入</el-button>
-          </el-upload>
-          <el-button :disabled="!components.length" @click="openMappingDialog">配置映射</el-button>
-          <el-button
-            :disabled="!components.length"
-            :loading="externalImportingSource === 'exam'"
-            @click="handleExternalImport('exam')"
-          >
-            从考试系统导入
-          </el-button>
-          <el-button
-            :disabled="!components.length"
-            :loading="externalImportingSource === 'forum'"
-            @click="handleExternalImport('forum')"
-          >
-            从论坛导入
-          </el-button>
+          <span class="batch-label">操作</span>
+          <el-button :icon="Refresh" :loading="loading" @click="reloadAll">刷新</el-button>
+          <el-upload
+            ref="excelUploadRef"
+            class="excel-upload-hidden"
+            action=""
+            :auto-upload="false"
+            :show-file-list="false"
+            :on-change="handleExcelChange"
+            accept=".xlsx,.xls"
+          />
+          <el-dropdown trigger="click" :disabled="!canOperateCourse" @command="handleImportCommand">
+            <el-button :icon="Upload" :loading="Boolean(externalImportingSource) || importing">
+              导入成绩
+              <span v-if="!hasExternalComponents" class="import-hint">（Excel）</span>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="excel">Excel 导入（手工分项）</el-dropdown-item>
+                <el-dropdown-item command="exam" divided :disabled="!hasExamComponents"> 从考试系统拉取 </el-dropdown-item>
+                <el-dropdown-item command="forum" :disabled="!hasForumComponents">从论坛系统拉取</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
           <el-button :disabled="!filteredRows.length" :loading="savingDraft" @click="saveVisibleDrafts">保存草稿</el-button>
-          <el-button :disabled="!canOperateCourse" :loading="calculating" @click="handleCalculate">计算预览</el-button>
+          <el-button :icon="Operation" :disabled="!canOperateCourse" :loading="calculating" @click="handleCalculate">
+            计算检查
+          </el-button>
           <el-tooltip :disabled="!submitDisabledReason" :content="submitDisabledReason" placement="top">
             <span class="submit-action-wrapper">
               <el-button
                 type="primary"
+                :icon="Promotion"
                 :disabled="!canOperateCourse || Boolean(submitDisabledReason)"
                 :loading="submitting"
                 @click="handleSubmit"
@@ -336,15 +399,15 @@
           <el-table-column prop="student_no" label="学号" min-width="120" fixed />
           <el-table-column prop="student_name" label="姓名" min-width="108" fixed />
           <el-table-column prop="major" label="专业" min-width="150" show-overflow-tooltip />
-          <el-table-column v-for="component in components" :key="component.id" min-width="146">
+          <el-table-column v-for="component in components" :key="component.id" min-width="178">
             <template #header>
               <div class="component-head">
                 <span>{{ component.component_type }}</span>
-                <small>{{ component.weight }}% · {{ component.data_source }}</small>
+                <small>{{ component.weight }}% · {{ dataSourceHint(component.data_source) }}</small>
               </div>
             </template>
             <template #default="{ row }">
-              <div class="score-input-wrap" :class="{ readonly: isCellReadonly(row, component) }">
+              <div class="score-input-wrap" :class="{ readonly: isCellReadonly(entryRow(row), component) }">
                 <el-input-number
                   v-model="row.draftScores[component.id]"
                   :min="0"
@@ -352,32 +415,35 @@
                   :precision="1"
                   :step="1"
                   controls-position="right"
-                  :disabled="isCellReadonly(row, component)"
+                  :disabled="isCellReadonly(entryRow(row), component)"
                 />
-                <el-icon v-if="isCellReadonly(row, component)" class="cell-lock"><Lock /></el-icon>
+                <el-icon v-if="isCellReadonly(entryRow(row), component)" class="cell-lock"><Lock /></el-icon>
               </div>
             </template>
           </el-table-column>
           <el-table-column label="总评预览" min-width="112" align="center">
             <template #default="{ row }">
-              <strong>{{ formatScore(rowPreview(row)) }}</strong>
+              <strong>{{ formatScore(rowPreview(entryRow(row))) }}</strong>
             </template>
           </el-table-column>
           <el-table-column label="总评成绩" min-width="112" align="center">
             <template #default="{ row }">
-              <strong>{{ formatScore(rowTotal(row)) }}</strong>
+              <strong>{{ formatScore(rowTotal(entryRow(row))) }}</strong>
             </template>
           </el-table-column>
           <el-table-column label="状态" min-width="112" align="center" sortable>
             <template #default="{ row }">
-              <el-tag round :type="rowStatusType(row)" class="status-tag">{{ rowStatusLabel(row) }}</el-tag>
+              <el-tag round :type="rowStatusType(entryRow(row))" class="status-tag">{{ rowStatusLabel(entryRow(row)) }}</el-tag>
             </template>
           </el-table-column>
           <el-table-column label="操作" min-width="190" fixed="right">
             <template #default="{ row }">
-              <el-button link type="primary" :loading="savingCell === row.student_id" @click="saveRow(row)">保存单元格</el-button>
-              <el-button link type="primary" @click="handleCalculate">计算校验</el-button>
-              <el-button v-if="rowHasLocked(row)" link type="primary" @click="requestUnlock(row)">解锁记录</el-button>
+              <el-button link type="primary" :loading="savingCell === entryRow(row).student_id" @click="saveRow(entryRow(row))">
+                保存本行
+              </el-button>
+              <el-button v-if="rowHasLocked(entryRow(row))" link type="primary" @click="requestUnlock(entryRow(row))">
+                解锁记录
+              </el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -400,37 +466,6 @@
           <el-button type="primary" :loading="importing" @click="confirmExcelImport">开始导入</el-button>
         </template>
       </el-dialog>
-
-      <el-dialog v-model="mappingDialogVisible" title="外部成绩映射" width="760px">
-        <div class="mapping-toolbar">
-          <el-button size="small" @click="addMappingRow()">新增映射</el-button>
-          <span class="mapping-tip">先保存映射，再执行 Exam / Forum 导入。</span>
-        </div>
-        <div v-if="mappingDrafts.length" class="mapping-list">
-          <div v-for="item in mappingDrafts" :key="item.local_id" class="mapping-row">
-            <el-select v-model="item.source_system" class="mapping-source">
-              <el-option label="Exam" value="exam" />
-              <el-option label="Forum" value="forum" />
-            </el-select>
-            <el-input v-model="item.external_id" placeholder="外部成绩项 ID" />
-            <el-input v-model="item.external_name" placeholder="外部成绩项名称（可选）" />
-            <el-select v-model="item.component_config_id" placeholder="映射到成绩项" class="mapping-component">
-              <el-option
-                v-for="component in components"
-                :key="component.id"
-                :label="`${component.component_type} / ${component.component_sub_id || 'default'} / ${component.weight}%`"
-                :value="component.id"
-              />
-            </el-select>
-            <el-button link type="danger" @click="removeMappingRow(item.local_id)">删除</el-button>
-          </div>
-        </div>
-        <el-empty v-else description="暂无映射，请先新增一条映射" />
-        <template #footer>
-          <el-button @click="mappingDialogVisible = false">取消</el-button>
-          <el-button type="primary" :loading="savingMappings" @click="saveMappings">保存映射</el-button>
-        </template>
-      </el-dialog>
     </template>
   </div>
 </template>
@@ -448,6 +483,7 @@ import {
   getCourseRecords,
   getGradeConfig,
   getGradeCourses,
+  resetCourseWorkflow,
   importExamScores,
   importForumScores,
   importGradeExcel,
@@ -456,6 +492,7 @@ import {
   updateGradeRecord,
   upsertExternalMappings
 } from "@/api/modules/score";
+import { courseOptionLabel, parseCourseKey, toCourseKey } from "@/views/stss/score/_shared/courseSelection";
 
 type EntryRow = Score.GradeRecordRow & {
   total_score: number | null;
@@ -479,14 +516,6 @@ type ConfigDraftItem = {
   is_locked: 0 | 1;
 };
 
-type MappingDraftItem = {
-  local_id: string;
-  source_system: ExternalSource;
-  external_id: string;
-  external_name: string;
-  component_config_id: number | null;
-};
-
 type PendingExcelImport = {
   file: File;
   name: string;
@@ -496,9 +525,9 @@ const courses = ref<Score.Course[]>([]);
 const components = ref<Score.GradeComponent[]>([]);
 const configDrafts = ref<ConfigDraftItem[]>([]);
 const rows = ref<EntryRow[]>([]);
-const mappingDrafts = ref<MappingDraftItem[]>([]);
-const selectedCourseId = ref("");
+const selectedCourseKey = ref("");
 const selectedSemester = ref("");
+const selectedCourseId = computed(() => parseCourseKey(selectedCourseKey.value).courseId);
 const statusFilter = ref<StatusFilter>("all");
 const studentKeyword = ref("");
 const loading = ref(false);
@@ -508,16 +537,40 @@ const submitting = ref(false);
 const savingDraft = ref(false);
 const savingCell = ref("");
 const savingConfig = ref(false);
-const mappingDialogVisible = ref(false);
-const savingMappings = ref(false);
+const resettingWorkflow = ref(false);
 const externalImportingSource = ref<ExternalSource | "">("");
+const externalImportingKey = ref("");
 const importFailCount = ref(0);
-const currentMappingKey = ref("");
 const excelImportDialogVisible = ref(false);
+const excelUploadRef = ref();
 const pendingExcelImport = ref<PendingExcelImport | null>(null);
 const selectedExcelComponentId = ref<number | null>(null);
+const currentSubmissionStatus = ref("draft");
 
 let localSeed = 0;
+
+const examExternalOptions = [
+  { label: "测验 quiz1", value: "quiz1" },
+  { label: "测验 quiz2", value: "quiz2" },
+  { label: "期中 midterm", value: "midterm" },
+  { label: "期末 final", value: "final" }
+];
+
+const forumExternalOptions = [
+  { label: "论坛活跃 forum_activity_1", value: "forum_activity_1" },
+  { label: "论坛发帖 forum_posts", value: "forum_posts" }
+];
+
+const entryRow = (row: unknown) => row as EntryRow;
+
+const normalizeWorkflowStatus = (status?: string | null) => {
+  if (!status) return "draft";
+  if (status === "published") return "published";
+  if (status === "approved") return "approved";
+  if (status === "pending" || status === "submitted") return "submitted";
+  if (status === "rejected") return "rejected";
+  return status;
+};
 const nextLocalId = () => `local-${Date.now()}-${localSeed++}`;
 
 const semesterOptions = computed(() => {
@@ -533,21 +586,58 @@ const currentCourse = computed(() =>
 
 const canOperateCourse = computed(() => Boolean(selectedCourseId.value && selectedSemester.value && components.value.length));
 const currentCourseWorkflowStatus = computed(() => {
-  const statuses = rows.value.map(row => row.workflow_status).filter(Boolean);
+  if (currentSubmissionStatus.value && currentSubmissionStatus.value !== "draft") {
+    return normalizeWorkflowStatus(currentSubmissionStatus.value);
+  }
+  const statuses = rows.value.map(row => normalizeWorkflowStatus(row.workflow_status));
   if (statuses.includes("published")) return "published";
   if (statuses.includes("approved")) return "approved";
-  if (statuses.includes("submitted") || statuses.includes("pending")) return "submitted";
+  if (statuses.includes("submitted")) return "submitted";
   if (statuses.includes("rejected")) return "rejected";
   return statuses[0] || "draft";
 });
+
+const courseWorkflowLabel = computed(() => {
+  const status = currentCourseWorkflowStatus.value;
+  if (status === "submitted") return "审批中";
+  if (status === "approved") return "已审批";
+  if (status === "published") return "已发布";
+  if (status === "rejected") return "已驳回";
+  return "录入中";
+});
+
+const courseWorkflowTagType = computed(() => {
+  const status = currentCourseWorkflowStatus.value;
+  if (status === "submitted") return "primary";
+  if (status === "approved" || status === "published") return "success";
+  if (status === "rejected") return "danger";
+  return "info";
+});
+const hasUnsavedDraftChanges = computed(() =>
+  rows.value.some(row =>
+    components.value.some(component => {
+      const record = row.records[component.id];
+      const draft = row.draftScores[component.id];
+      const saved = record?.score ?? null;
+      if (draft === null || draft === undefined) return false;
+      if (saved === null || saved === undefined) return true;
+      return Number(draft) !== Number(saved);
+    })
+  )
+);
+
 const submitDisabledReason = computed(() => {
   if (!canOperateCourse.value) return "请先选择课程和学期，并确保当前课程已有成绩项。";
+  if (weightAbnormal.value) return "总权重须为 100% 后再提交审批。";
   if (currentCourseWorkflowStatus.value === "published" || currentCourseWorkflowStatus.value === "approved") {
     return "该课程已有历史总评，不能重复提交，请走改分申请流程。";
   }
   if (currentCourseWorkflowStatus.value === "submitted") {
     return "该课程正在审批中，请等待审批结果。";
   }
+  if (hasUnsavedDraftChanges.value) return "表格有未保存的修改，请先保存草稿或保存本行。";
+  if (missingScoreCount.value > 0) return `尚有 ${missingScoreCount.value} 项成绩未录入，请补全并保存后再提交。`;
+  if (outOfRangeCount.value > 0) return "存在超出 0–100 分的成绩，请修正后再提交。";
   return "";
 });
 const courseScopeTip = computed(() => Boolean(courses.value.length));
@@ -557,10 +647,16 @@ const configLocked = computed(() => configDrafts.value.some(item => item.is_lock
 
 const activeStep = computed(() => {
   if (!selectedCourseId.value || !selectedSemester.value) return 0;
-  if (submitting.value) return 3;
-  if (calculating.value || weightAbnormal.value) return 2;
-  return 1;
+  const workflow = currentCourseWorkflowStatus.value;
+  if (workflow === "submitted" || workflow === "approved" || workflow === "published") return 3;
+  if (!components.value.length || weightAbnormal.value) return 1;
+  if (calculating.value || submitting.value) return 3;
+  return 2;
 });
+
+const hasExamComponents = computed(() => components.value.some(component => component.data_source === "exam"));
+const hasForumComponents = computed(() => components.value.some(component => component.data_source === "forum"));
+const hasExternalComponents = computed(() => hasExamComponents.value || hasForumComponents.value);
 
 const missingScoreCount = computed(() =>
   rows.value.reduce(
@@ -604,23 +700,26 @@ const filteredRows = computed(() => {
   });
 });
 
-const courseLabel = (course: Score.Course) => {
-  const name = course.course_name || course.course_id || "未命名课程";
-  if (!course.course_id || !course.course_name || course.course_name === course.course_id) return name;
-  return `${course.course_name}（${course.course_id}）`;
-};
-
 const excelImportComponents = computed(() =>
   components.value.filter(component => component.data_source === "manual" && component.is_locked !== 1)
 );
 const excelImportComponentLabel = (component: Score.GradeComponent) =>
   `${component.component_type}${component.component_sub_id ? ` / ${component.component_sub_id}` : ""} / ${component.weight}%`;
 
-const sourceLabel = (source: string) => {
-  if (source === "manual") return "Manual";
-  if (source === "exam") return "Exam, 来自 Exam System";
-  if (source === "forum") return "Forum, 来自 Forum System";
-  return source;
+const dataSourceHint = (source: string) => {
+  if (source === "manual") return "表格或 Excel 录入";
+  if (source === "exam") return "导入成绩 → 从考试系统拉取";
+  if (source === "forum") return "导入成绩 → 从论坛系统拉取";
+  return "";
+};
+
+const onDataSourceChange = (item: ConfigDraftItem) => {
+  if (item.data_source === "exam" && !item.component_sub_id.trim()) {
+    item.component_sub_id = "quiz1";
+  }
+  if (item.data_source === "forum" && !item.component_sub_id.trim()) {
+    item.component_sub_id = "forum_activity_1";
+  }
 };
 
 const normalizeSheetRecords = (row: Score.GradeSheetRow) => row.records ?? row.component_scores ?? [];
@@ -639,33 +738,51 @@ const syncConfigDrafts = (configItems: Score.GradeComponent[]) => {
   configDrafts.value = configItems.map(item => createConfigDraft(item));
 };
 
-const buildDefaultMappingDrafts = () =>
-  components.value
-    .filter(component => component.data_source === "exam" || component.data_source === "forum")
-    .map(component => ({
-      local_id: nextLocalId(),
-      source_system: component.data_source as ExternalSource,
-      external_id: "",
-      external_name: "",
-      component_config_id: component.id
-    }));
-
-const maybeResetMappingDrafts = () => {
-  const nextKey = `${selectedCourseId.value}::${selectedSemester.value}`;
-  if (currentMappingKey.value !== nextKey) {
-    mappingDrafts.value = buildDefaultMappingDrafts();
-    currentMappingKey.value = nextKey;
-  }
-};
-
 const resetExcelImportState = () => {
   pendingExcelImport.value = null;
   selectedExcelComponentId.value = excelImportComponents.value.length === 1 ? excelImportComponents.value[0].id : null;
 };
 
+const snapshotManualDraftScores = () => {
+  const snap = new Map<string, Record<number, number | null>>();
+  for (const row of rows.value) {
+    const manual: Record<number, number | null> = {};
+    for (const component of components.value) {
+      if (component.data_source !== "manual") continue;
+      const score = row.draftScores[component.id];
+      if (score !== null && score !== undefined) {
+        manual[component.id] = score;
+      }
+    }
+    if (Object.keys(manual).length) snap.set(row.student_id, manual);
+  }
+  return snap;
+};
+
+const restoreManualDraftScores = (builtRows: EntryRow[], snap: Map<string, Record<number, number | null>>) => {
+  if (!snap.size) return builtRows;
+  return builtRows.map(row => {
+    const manual = snap.get(row.student_id);
+    if (!manual) return row;
+    for (const [componentId, score] of Object.entries(manual)) {
+      const id = Number(componentId);
+      const component = components.value.find(item => item.id === id);
+      if (component?.data_source !== "manual") continue;
+      if (row.draftScores[id] === null || row.draftScores[id] === undefined) {
+        row.draftScores[id] = score;
+      }
+    }
+    return row;
+  });
+};
+
 const reloadEntryData = async (successMessage?: string) => {
+  const manualSnap = snapshotManualDraftScores();
   try {
     await loadEntryData();
+    if (manualSnap.size) {
+      rows.value = restoreManualDraftScores(rows.value, manualSnap);
+    }
   } catch (error: any) {
     if (successMessage) {
       ElMessage.warning(successMessage);
@@ -724,9 +841,10 @@ const buildRows = (sheetRows: Score.GradeSheetRow[], configItems: Score.GradeCom
 const loadCourses = async () => {
   const resp = await getGradeCourses();
   courses.value = resp.data.courses;
-  if (!selectedCourseId.value && courses.value.length) {
-    selectedCourseId.value = courses.value[0].course_id;
-    selectedSemester.value = courses.value[0].semester;
+  if (!selectedCourseKey.value && courses.value.length) {
+    const first = courses.value[0];
+    selectedCourseKey.value = toCourseKey(first.course_id, first.semester);
+    selectedSemester.value = first.semester;
   }
 };
 
@@ -741,7 +859,7 @@ const loadEntryData = async () => {
 
     components.value = configResp.data.components;
     syncConfigDrafts(configResp.data.components);
-    maybeResetMappingDrafts();
+    currentSubmissionStatus.value = gradebookResp.data.current_submission_status || "draft";
     rows.value = buildRows(gradebookResp.data.rows, configResp.data.components);
     if (!excelImportDialogVisible.value || !pendingExcelImport.value) {
       resetExcelImportState();
@@ -757,8 +875,15 @@ const reloadAll = async () => {
 };
 
 const handleCourseChange = () => {
-  const matched = courses.value.find(course => course.course_id === selectedCourseId.value);
-  selectedSemester.value = matched?.semester || semesterOptions.value[0] || "";
+  const { semester } = parseCourseKey(selectedCourseKey.value);
+  if (semester) selectedSemester.value = semester;
+  loadEntryData();
+};
+
+const handleSemesterChange = () => {
+  if (selectedCourseId.value && selectedSemester.value) {
+    selectedCourseKey.value = toCourseKey(selectedCourseId.value, selectedSemester.value);
+  }
   loadEntryData();
 };
 
@@ -828,6 +953,7 @@ const saveComponentConfig = async () => {
     });
     ElMessage.success("成绩项配置已保存。");
     await loadEntryData();
+    await syncExternalMappingsFromComponents();
   } catch (error: any) {
     ElMessage.error(error?.msg || "成绩项配置保存失败。");
     await loadEntryData();
@@ -836,56 +962,70 @@ const saveComponentConfig = async () => {
   }
 };
 
-const openMappingDialog = () => {
-  if (!components.value.length) {
-    ElMessage.warning("请先完成成绩项配置并保存。");
-    return;
-  }
-  if (!mappingDrafts.value.length) mappingDrafts.value = buildDefaultMappingDrafts();
-  mappingDialogVisible.value = true;
-};
-
-const addMappingRow = (source: ExternalSource = "exam") => {
-  mappingDrafts.value.push({
-    local_id: nextLocalId(),
-    source_system: source,
-    external_id: "",
-    external_name: "",
-    component_config_id:
-      components.value.find(component => component.data_source === source)?.id ?? components.value[0]?.id ?? null
-  });
-};
-
-const removeMappingRow = (localId: string) => {
-  mappingDrafts.value = mappingDrafts.value.filter(item => item.local_id !== localId);
-};
-
-const saveMappings = async () => {
+const syncExternalMappingsFromComponents = async () => {
   if (!selectedCourseId.value || !selectedSemester.value) return;
-  const validMappings = mappingDrafts.value.filter(item => item.component_config_id && item.external_id.trim());
-  if (!validMappings.length) {
-    ElMessage.warning("请至少填写一条完整映射后再保存。");
-    return;
-  }
-
-  savingMappings.value = true;
+  const mappings = components.value
+    .filter(
+      component =>
+        (component.data_source === "exam" || component.data_source === "forum") && String(component.component_sub_id || "").trim()
+    )
+    .map(component => ({
+      source_system: component.data_source as ExternalSource,
+      external_id: String(component.component_sub_id).trim(),
+      component_config_id: component.id
+    }));
+  if (!mappings.length) return;
   try {
-    const resp = await upsertExternalMappings({
+    await upsertExternalMappings({
       course_id: selectedCourseId.value,
       semester: selectedSemester.value,
-      mappings: validMappings.map(item => ({
-        source_system: item.source_system,
-        external_id: item.external_id.trim(),
-        external_name: item.external_name.trim() || undefined,
-        component_config_id: Number(item.component_config_id)
-      }))
+      mappings
     });
-    ElMessage.success(`映射已保存：新增 ${resp.data.inserted} 条，更新 ${resp.data.updated} 条。`);
-    mappingDialogVisible.value = false;
+  } catch {
+    /* 映射为辅助信息，保存配置已成功时不阻断主流程 */
+  }
+};
+
+const importExternalForComponent = async (component: Score.GradeComponent, source: ExternalSource) => {
+  if (!selectedCourseId.value || !selectedSemester.value) return 0;
+  const payload: Score.ImportExternalScoresReq = {
+    course_id: selectedCourseId.value,
+    semester: selectedSemester.value,
+    component_config_id: component.id,
+    component_type: component.component_type,
+    component_sub_id: String(component.component_sub_id || "").trim() || undefined
+  };
+  const resp = source === "exam" ? await importExamScores(payload) : await importForumScores(payload);
+  return resp.data.imported;
+};
+
+const handleConfigRowImport = async (item: ConfigDraftItem) => {
+  if (!selectedCourseId.value || !selectedSemester.value) return;
+  if (!item.id) {
+    ElMessage.warning("请先保存配置后再拉取该项成绩。");
+    return;
+  }
+  if (item.data_source !== "exam" && item.data_source !== "forum") return;
+  if (!item.component_sub_id.trim()) {
+    ElMessage.warning("请先选择对应的考试/论坛活动。");
+    return;
+  }
+  const component = components.value.find(c => c.id === item.id);
+  if (!component) {
+    ElMessage.warning("未找到该分项，请刷新后重试。");
+    return;
+  }
+
+  const source = item.data_source as ExternalSource;
+  externalImportingKey.value = item.local_id;
+  try {
+    const imported = await importExternalForComponent(component, source);
+    ElMessage.success(`${source === "exam" ? "考试" : "论坛"}「${component.component_type}」已拉取 ${imported} 条。`);
+    await reloadEntryData(`${source === "exam" ? "考试" : "论坛"}成绩已导入，但页面刷新失败，请手动刷新。`);
   } catch (error: any) {
-    ElMessage.error(error?.msg || "映射保存失败。");
+    ElMessage.error(error?.msg || "拉取失败。");
   } finally {
-    savingMappings.value = false;
+    externalImportingKey.value = "";
   }
 };
 
@@ -1037,6 +1177,25 @@ const saveVisibleDrafts = async () => {
   }
 };
 
+const triggerExcelPick = () => {
+  const input = excelUploadRef.value?.$el?.querySelector("input") as HTMLInputElement | null;
+  input?.click();
+};
+
+const handleImportCommand = (command: string) => {
+  if (command === "excel") {
+    triggerExcelPick();
+    return;
+  }
+  if (command === "exam") {
+    handleExternalImport("exam");
+    return;
+  }
+  if (command === "forum") {
+    handleExternalImport("forum");
+  }
+};
+
 const handleExcelChange = async (uploadFile: UploadFile) => {
   if (!uploadFile.raw) return;
   if (!selectedCourseId.value || !selectedSemester.value) {
@@ -1073,14 +1232,18 @@ const confirmExcelImport = async () => {
     resetExcelImportState();
     await reloadEntryData("Excel 已导入，但页面刷新失败，请手动刷新查看最新状态。");
   } catch (error: any) {
-    ElMessage.error(error?.msg || "Excel 导入失败。");
+    const failed = error?.data?.failed_records as Score.BatchResult["failed_records"] | undefined;
+    const detail = failed?.length
+      ? failed
+          .slice(0, 3)
+          .map(item => item.message || item.error_code)
+          .join("；")
+      : "";
+    ElMessage.error(detail ? `${error?.msg || "Excel 导入失败"}：${detail}` : error?.msg || "Excel 导入失败。");
   } finally {
     importing.value = false;
   }
 };
-
-const getValidMappingsForSource = (source: ExternalSource) =>
-  mappingDrafts.value.filter(item => item.source_system === source && item.component_config_id && item.external_id.trim());
 
 const handleExternalImport = async (source: ExternalSource) => {
   if (!selectedCourseId.value || !selectedSemester.value) return;
@@ -1090,27 +1253,21 @@ const handleExternalImport = async (source: ExternalSource) => {
     return;
   }
 
-  const mappings = getValidMappingsForSource(source);
-  if (externalComponents.length > 1 && !mappings.length) {
-    ElMessage.warning("当前来源下有多个外部成绩项，请先配置映射后再导入。");
-    openMappingDialog();
+  const missingActivity = externalComponents.filter(component => !String(component.component_sub_id || "").trim());
+  if (missingActivity.length) {
+    ElMessage.warning("请先在权重区为每个考试/论坛分项选择「对应活动」并保存配置。");
     return;
   }
 
   externalImportingSource.value = source;
   try {
-    const payload: Score.ImportExternalScoresReq = {
-      course_id: selectedCourseId.value,
-      semester: selectedSemester.value
-    };
-    if (externalComponents.length === 1 && !mappings.length) {
-      payload.component_config_id = externalComponents[0].id;
-      payload.component_type = externalComponents[0].component_type;
-      payload.component_sub_id = externalComponents[0].component_sub_id;
+    let importedTotal = 0;
+    for (const component of externalComponents) {
+      importedTotal += await importExternalForComponent(component, source);
     }
-
-    const resp = source === "exam" ? await importExamScores(payload) : await importForumScores(payload);
-    ElMessage.success(`${source === "exam" ? "考试" : "论坛"}成绩导入完成：共导入 ${resp.data.imported} 条。`);
+    ElMessage.success(
+      `${source === "exam" ? "考试" : "论坛"}成绩导入完成：共 ${importedTotal} 条（${externalComponents.length} 个分项）。`
+    );
     await reloadEntryData(`${source === "exam" ? "考试" : "论坛"}成绩已导入，但页面刷新失败，请手动刷新查看最新状态。`);
   } catch (error: any) {
     ElMessage.error(error?.msg || "外部成绩导入失败。");
@@ -1145,12 +1302,13 @@ const handleSubmit = async () => {
   });
   submitting.value = true;
   try {
-    await submitCourseGrades(selectedCourseId.value, {
+    const resp = await submitCourseGrades(selectedCourseId.value, {
       course_id: selectedCourseId.value,
       semester: selectedSemester.value
     });
-    ElMessage.success("已提交审批。");
-    await reloadEntryData("提交已成功，但页面刷新失败，请手动刷新查看最新状态。");
+    currentSubmissionStatus.value = resp.data.status || "pending";
+    ElMessage.success("提交成功，当前课程状态：审批中");
+    await reloadEntryData("提交已成功（审批中），但页面刷新失败，请手动刷新查看最新状态。");
   } catch (error: any) {
     ElMessage.error(error?.msg || "提交审批失败。");
   } finally {
@@ -1159,7 +1317,7 @@ const handleSubmit = async () => {
 };
 
 const focusConfig = () => {
-  ElMessage.info("请在配置区调整权重，使总权重等于 100%。");
+  ElMessage.info("请在「成绩分项与权重」区调整分项，使总权重等于 100% 后保存配置。");
 };
 
 const locateAbnormal = () => {
@@ -1179,10 +1337,46 @@ const requestUnlock = (row: EntryRow) => {
   ElMessage.info(`${row.student_name || row.student_no} 的锁定成绩需通过改分或审批流程处理。`);
 };
 
+const handleWorkflowReset = async (keepConfig: boolean) => {
+  if (!selectedCourseId.value || !selectedSemester.value) return;
+  const courseLabel = currentCourse.value?.course_name || selectedCourseId.value;
+  const actionText = keepConfig
+    ? "仅删除成绩记录与审批提交，保留当前分项权重配置并解锁。"
+    : "删除分项配置、成绩记录、审批提交与外部映射，回到「配置权重前」。";
+  try {
+    await ElMessageBox.confirm(
+      `课程：${courseLabel}（${selectedCourseId.value}）\n学期：${selectedSemester.value}\n\n${actionText}\n名册学生名单会保留。`,
+      keepConfig ? "仅清成绩与审批" : "重置本课联调数据",
+      { type: "warning", confirmButtonText: "确认重置", cancelButtonText: "取消" }
+    );
+  } catch {
+    return;
+  }
+  resettingWorkflow.value = true;
+  try {
+    const resp = await resetCourseWorkflow(selectedCourseId.value, {
+      semester: selectedSemester.value,
+      keep_config: keepConfig
+    });
+    currentSubmissionStatus.value = "draft";
+    ElMessage.success(keepConfig ? "已清空成绩与审批，可继续录入。" : "本课已回退到配置权重前，请重新新增分项并保存。");
+    await reloadAll();
+    void resp;
+  } catch (error: any) {
+    ElMessage.error(error?.msg || "重置失败");
+  } finally {
+    resettingWorkflow.value = false;
+  }
+};
+
 onMounted(reloadAll);
 </script>
 
 <style scoped lang="scss">
+.workflow-alert {
+  margin-bottom: 12px;
+}
+
 .score-entry-page {
   --score-ink: #111827;
   --score-muted: #667085;
@@ -1325,6 +1519,20 @@ onMounted(reloadAll);
   gap: 12px;
   align-content: center;
 }
+.hero-reset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  padding-top: 4px;
+}
+.reset-hint {
+  flex: 1 1 100%;
+  font-size: 12px;
+  color: var(--score-muted);
+  text-align: center;
+}
 .entry-steps {
   min-width: 0;
   :deep(.el-step__title) {
@@ -1336,12 +1544,43 @@ onMounted(reloadAll);
     border-color: var(--score-blue);
   }
 }
-.toolbar-actions,
+.flow-guide {
+  margin-bottom: 12px;
+}
+.flow-guide-list {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--score-muted);
+}
+.config-hint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--score-muted);
+}
 .batch-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  align-items: center;
   justify-content: flex-end;
+}
+.batch-label {
+  margin-right: 4px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--score-muted);
+}
+.import-hint {
+  margin-left: 4px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--score-muted);
+}
+.excel-upload-hidden {
+  display: none;
 }
 .submit-action-wrapper {
   display: inline-flex;
@@ -1352,9 +1591,21 @@ onMounted(reloadAll);
 }
 .entry-grid {
   display: grid;
-  grid-template-columns: minmax(390px, 0.92fr) minmax(420px, 1.14fr) 292px;
+  grid-template-columns: minmax(300px, 1fr) minmax(260px, 0.82fr);
+  grid-template-areas:
+    "filter exception"
+    "config config";
   gap: 16px;
   margin-top: 16px;
+}
+.filter-panel {
+  grid-area: filter;
+}
+.config-panel {
+  grid-area: config;
+}
+.exception-panel {
+  grid-area: exception;
 }
 .panel {
   padding: 16px;
@@ -1436,24 +1687,79 @@ onMounted(reloadAll);
 }
 .config-panel {
   position: relative;
-  min-height: 230px;
+  min-height: auto;
 }
 .component-list {
   display: grid;
   gap: 9px;
-  max-height: 170px;
+  max-height: 220px;
   padding-right: 8px;
   overflow: auto;
 }
-.component-item {
+.component-row {
   display: grid;
-  grid-template-columns: 120px 92px 1fr;
-  gap: 10px;
+  grid-template-columns: minmax(68px, 0.7fr) minmax(68px, 0.85fr) 150px minmax(96px, 1fr) 40px 32px;
+  gap: 8px;
   align-items: center;
-  padding: 7px 9px;
+  min-width: 0;
+  :deep(.el-input),
+  :deep(.el-select) {
+    width: 100%;
+    min-width: 0;
+  }
+  :deep(.el-input__wrapper) {
+    padding-inline: 8px;
+  }
+}
+.config-field-short {
+  max-width: 120px;
+}
+.config-field-activity {
+  max-width: 120px;
+  min-width: 0;
+}
+.config-field-source {
+  max-width: 150px;
+  min-width: 0;
+}
+.config-weight-input {
+  width: 110px;
+  :deep(.el-input__wrapper) {
+    padding-inline: 6px 6px;
+  }
+  :deep(.el-input__inner) {
+    text-align: center;
+  }
+}
+.config-pull-btn {
+  justify-self: start;
+  padding: 0;
+  white-space: nowrap;
+}
+.config-pull-placeholder {
+  justify-self: center;
+  font-size: 12px;
+  color: #98a2b3;
+}
+.component-row--head {
+  padding: 0 4px 6px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--score-muted);
+  white-space: nowrap;
+}
+.component-row--head span:last-child {
+  justify-self: end;
+}
+.component-item {
+  padding: 8px 10px;
   background: #fbfcfe;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
+  min-width: 0;
+}
+.component-item :deep(.el-button) {
+  padding: 0;
 }
 .component-name {
   font-size: 15px;
@@ -1609,8 +1915,10 @@ onMounted(reloadAll);
   position: relative;
   display: flex;
   align-items: center;
+  width: 100%;
   :deep(.el-input-number) {
-    width: 108px;
+    width: 100%;
+    max-width: 132px;
   }
   :deep(.el-input__wrapper) {
     border-radius: 5px;
@@ -1623,6 +1931,9 @@ onMounted(reloadAll);
     box-shadow: inset 0 0 0 1px var(--score-blue);
   }
   &.readonly {
+    :deep(.el-input-number .el-input__wrapper) {
+      padding-right: 30px;
+    }
     :deep(.el-input__wrapper) {
       background: #e5e9ef;
       box-shadow: inset 0 0 0 1px #c9d0da;
@@ -1631,8 +1942,10 @@ onMounted(reloadAll);
 }
 .cell-lock {
   position: absolute;
-  right: 8px;
-  color: #7d8796;
+  right: 34px;
+  z-index: 1;
+  font-size: 14px;
+  color: #5f6b7c;
   pointer-events: none;
 }
 .status-tag {
@@ -1646,12 +1959,31 @@ onMounted(reloadAll);
 
 @media (width <= 1280px) {
   .entry-hero,
-  .entry-grid,
   .table-head {
     grid-template-columns: 1fr;
   }
+  .entry-grid {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "filter"
+      "config"
+      "exception";
+  }
   .toolbar-actions {
     justify-content: flex-start;
+  }
+}
+
+@media (width <= 960px) {
+  .component-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .component-row--head {
+    display: none;
+  }
+  .component-item :deep(.el-button) {
+    justify-self: start;
   }
 }
 
@@ -1669,10 +2001,18 @@ onMounted(reloadAll);
   }
   .hero-controls label,
   .filter-row,
-  .student-search,
-  .component-item {
+  .student-search {
     grid-template-columns: 1fr;
     width: 100%;
+  }
+  .component-row {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "name"
+      "subid"
+      "weight"
+      "source"
+      "delete";
   }
   .hero-select,
   .semester-select {

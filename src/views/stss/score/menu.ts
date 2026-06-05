@@ -5,6 +5,7 @@ export type ScoreMenuName =
   | "scoreQuery"
   | "scoreChangeRequest"
   | "scoreChangeApproval"
+  | "scoreAdminGlobal"
   | "creditProgress"
   | "personalScoreAnalytics"
   | "courseScoreAnalytics";
@@ -19,6 +20,7 @@ const scoreMenuItems: Record<ScoreMenuName, Menu.MenuOptions> = {
     "/stss/score/change-approval/index",
     "改分审批"
   ),
+  scoreAdminGlobal: createMenu("/score/admin-global", "scoreAdminGlobal", "/stss/score/admin-global/index", "全局成绩管理"),
   creditProgress: createMenu("/score/credit-progress", "creditProgress", "/stss/score/credit-progress/index", "学分进展"),
   personalScoreAnalytics: createMenu(
     "/score/personal-analytics",
