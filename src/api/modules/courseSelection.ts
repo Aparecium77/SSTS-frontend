@@ -51,6 +51,8 @@ export const getTeachingRosterApi = (offeringId: string, includeDropped = false)
 
 // ---------------- 教务：窗口 / 抽签 / 容量 / 限流 / 监控 ----------------
 export const setWindowApi = (params: CourseSelection.WindowReq) => http.post(`${P}/admin/windows`, params);
+export const listWindowsApi = (semester?: string) =>
+  http.get<{ list: CourseSelection.WindowReq[] }>(`${P}/admin/windows`, semester ? { semester } : {});
 export const getDashboardApi = () => http.get<CourseSelection.Dashboard>(`${P}/admin/dashboard`);
 export const triggerLotteryApi = (params: CourseSelection.LotteryRunReq) =>
   http.post<CourseSelection.LotteryRun>(`${P}/admin/lottery/runs`, params);

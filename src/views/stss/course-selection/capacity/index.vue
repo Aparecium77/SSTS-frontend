@@ -52,7 +52,7 @@ import CsPage from "../components/CsPage.vue";
 import { CourseSelection } from "@/api/interface/courseSelection";
 import { adjustCapacityApi, triggerLotteryApi, updateThrottleApi } from "@/api/modules/courseSelection";
 
-const USE_MOCK = true;
+const USE_MOCK = false;
 
 const lottery = reactive<CourseSelection.LotteryRunReq>({ semester: "2026-1", seed: 12345 });
 const cap = reactive<CourseSelection.CapacityAdjustReq & { offering_id: string }>({

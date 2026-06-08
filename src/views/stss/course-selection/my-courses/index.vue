@@ -47,7 +47,7 @@ import CsPage from "../components/CsPage.vue";
 import { CourseSelection } from "@/api/interface/courseSelection";
 import { dropEnrollmentApi, getMyEnrollmentsApi } from "@/api/modules/courseSelection";
 
-const USE_MOCK = true;
+const USE_MOCK = false;
 
 const STATUS_TEXT: Record<string, { text: string; type: "success" | "info" | "warning" | "danger" }> = {
   enrolled: { text: "已选", type: "success" },

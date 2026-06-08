@@ -89,7 +89,7 @@ import { Plus } from "@element-plus/icons-vue";
 import { CourseSelection } from "@/api/interface/courseSelection";
 import { getMyStudyPlanApi, saveMyStudyPlanApi, validateMyStudyPlanApi } from "@/api/modules/courseSelection";
 
-const USE_MOCK = true; // 联调时置 false，页面即走真实接口，无需改模板
+const USE_MOCK = false; // 联调时置 false，页面即走真实接口，无需改模板
 
 const plan = reactive<CourseSelection.StudyPlan>({
   plan_id: "",

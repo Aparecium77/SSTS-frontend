@@ -79,7 +79,7 @@ import CsPage from "../components/CsPage.vue";
 import { CourseSelection } from "@/api/interface/courseSelection";
 import { enrollApi, getOfferingApi, searchCoursesApi } from "@/api/modules/courseSelection";
 
-const USE_MOCK = true;
+const USE_MOCK = false;
 
 const query = reactive<CourseSelection.SearchQuery>({ keyword: "", teacher_name: "", semester: "2026-1", category: "" });
 const list = ref<CourseSelection.OfferingBrief[]>([]);

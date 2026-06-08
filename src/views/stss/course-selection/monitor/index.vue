@@ -63,7 +63,7 @@ import CsPage from "../components/CsPage.vue";
 import { CourseSelection } from "@/api/interface/courseSelection";
 import { getDashboardApi } from "@/api/modules/courseSelection";
 
-const USE_MOCK = true;
+const USE_MOCK = false;
 
 const CODE_LABEL: Record<string, string> = {
   "30102": "时间冲突",

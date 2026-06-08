@@ -49,7 +49,7 @@ import CsPage from "../components/CsPage.vue";
 import { CourseSelection } from "@/api/interface/courseSelection";
 import { dropEnrollmentApi, enrollApi, swapEnrollmentApi } from "@/api/modules/courseSelection";
 
-const USE_MOCK = true;
+const USE_MOCK = false;
 
 const form = reactive<CourseSelection.EnrollReq>({ offering_id: "B-CS101-2026-1-01", stage: "add_drop" });
 const swap = reactive<CourseSelection.SwapReq>({ drop_id: "", add_offering_id: "" });

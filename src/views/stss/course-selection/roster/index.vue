@@ -41,7 +41,7 @@ import CsPage from "../components/CsPage.vue";
 import { CourseSelection } from "@/api/interface/courseSelection";
 import { getTeachingOfferingsApi, getTeachingRosterApi } from "@/api/modules/courseSelection";
 
-const USE_MOCK = true;
+const USE_MOCK = false;
 
 const offerings = ref<CourseSelection.TeachingOffering[]>([]);
 const offeringId = ref("");

@@ -42,13 +42,13 @@
 </template>
 
 <script setup lang="ts" name="courseWindows">
-import { reactive, ref } from "vue";
+import { onMounted, reactive, ref } from "vue";
 import { ElMessage } from "element-plus";
 import CsPage from "../components/CsPage.vue";
 import { CourseSelection } from "@/api/interface/courseSelection";
-import { setWindowApi } from "@/api/modules/courseSelection";
+import { listWindowsApi, setWindowApi } from "@/api/modules/courseSelection";
 
-const USE_MOCK = true;
+const USE_MOCK = false;
 const STAGE_TEXT: Record<string, string> = { preference: "意愿初选", lottery: "抽签", add_drop: "补退选" };
 
 const form = reactive<CourseSelection.WindowReq>({
@@ -58,10 +58,19 @@ const form = reactive<CourseSelection.WindowReq>({
   end_at: ""
 });
 const loading = ref(false);
-const windows = ref<CourseSelection.WindowReq[]>([
-  { semester: "2026-1", stage: "preference", start_at: "2026-04-20 00:00", end_at: "2026-04-23 00:00" },
-  { semester: "2026-1", stage: "add_drop", start_at: "2026-04-26 00:00", end_at: "2026-05-03 00:00" }
-]);
+const windows = ref<CourseSelection.WindowReq[]>([]);
+
+async function load() {
+  if (USE_MOCK) {
+    windows.value = [
+      { semester: "2026-1", stage: "preference", start_at: "2026-04-20 00:00", end_at: "2026-04-23 00:00" },
+      { semester: "2026-1", stage: "add_drop", start_at: "2026-04-26 00:00", end_at: "2026-05-03 00:00" }
+    ];
+    return;
+  }
+  const { data } = await listWindowsApi(form.semester);
+  windows.value = data.list;
+}
 
 async function onSave() {
   if (!form.start_at || !form.end_at) {
@@ -70,11 +79,17 @@ async function onSave() {
   }
   loading.value = true;
   try {
-    if (!USE_MOCK) await setWindowApi(form);
-    windows.value.unshift({ ...form });
+    if (!USE_MOCK) {
+      await setWindowApi(form);
+      await load();
+    } else {
+      windows.value.unshift({ ...form });
+    }
     ElMessage.success("窗口已保存");
   } finally {
     loading.value = false;
   }
 }
+
+onMounted(load);
 </script>
