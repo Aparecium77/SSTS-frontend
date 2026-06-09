@@ -12,6 +12,7 @@ import router from "@/routers";
 export interface CustomAxiosRequestConfig extends InternalAxiosRequestConfig {
   loading?: boolean;
   cancel?: boolean;
+  skipCodeCheck?: boolean;
 }
 
 const config = {
@@ -80,7 +81,7 @@ class RequestHttp {
           return Promise.reject(data);
         }
         // 全局错误信息拦截（防止下载文件的时候返回数据流，没有 code 直接报错）
-        if (data.code !== undefined && !successCodes.has(data.code)) {
+        if (!config.skipCodeCheck && data.code !== undefined && !successCodes.has(data.code)) {
           ElMessage.error(getResponseMessage(data));
           return Promise.reject(data);
         }
