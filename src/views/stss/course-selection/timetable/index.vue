@@ -38,11 +38,11 @@
 
 <script setup lang="ts" name="myTimetable">
 import { onMounted, ref } from "vue";
-import { ElMessage } from "element-plus";
 import { Download } from "@element-plus/icons-vue";
 import CsPage from "../components/CsPage.vue";
 import { CourseSelection } from "@/api/interface/courseSelection";
-import { getMyTimetableApi } from "@/api/modules/courseSelection";
+import { exportTimetablePdfApi, getMyTimetableApi } from "@/api/modules/courseSelection";
+import { useDownload } from "@/hooks/useDownload";
 
 const USE_MOCK = false;
 
@@ -75,8 +75,7 @@ async function load() {
 }
 
 function onExport() {
-  // 后端：GET /enrollments/me/timetable.pdf（二进制），此处占位
-  ElMessage.info("将下载课表 PDF（联调后接 /enrollments/me/timetable.pdf）");
+  useDownload(exportTimetablePdfApi, `课表-${semester.value}`, semester.value, true, ".pdf");
 }
 
 onMounted(load);

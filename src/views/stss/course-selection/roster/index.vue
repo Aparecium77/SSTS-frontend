@@ -35,11 +35,11 @@
 
 <script setup lang="ts" name="teachingRoster">
 import { onMounted, ref } from "vue";
-import { ElMessage } from "element-plus";
 import { Download } from "@element-plus/icons-vue";
 import CsPage from "../components/CsPage.vue";
 import { CourseSelection } from "@/api/interface/courseSelection";
-import { getTeachingOfferingsApi, getTeachingRosterApi } from "@/api/modules/courseSelection";
+import { exportRosterXlsxApi, getTeachingOfferingsApi, getTeachingRosterApi } from "@/api/modules/courseSelection";
+import { useDownload } from "@/hooks/useDownload";
 
 const USE_MOCK = false;
 
@@ -92,8 +92,7 @@ async function loadRoster() {
 }
 
 function onExport() {
-  // 后端：GET /teaching/offerings/{id}/roster.xlsx（二进制）
-  ElMessage.info("将下载花名册 Excel（联调后接 roster.xlsx）");
+  useDownload(exportRosterXlsxApi, `花名册-${offeringId.value}`, offeringId.value, true, ".xlsx");
 }
 
 onMounted(loadOfferings);

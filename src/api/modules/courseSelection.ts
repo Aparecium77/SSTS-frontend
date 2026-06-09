@@ -15,6 +15,8 @@ export const saveMyStudyPlanApi = (params: CourseSelection.SavePlanReq) =>
 export const validateMyStudyPlanApi = (params: CourseSelection.SavePlanReq) =>
   http.post<CourseSelection.PlanValidationResult>(`${P}/study-plans/me/validate`, params);
 export const deletePlanItemApi = (planItemId: string) => http.delete(`${P}/study-plans/me/items/${planItemId}`);
+export const addPlanItemApi = (params: CourseSelection.AddPlanItemReq) =>
+  http.post<CourseSelection.AddPlanItemResult>(`${P}/study-plans/me/items`, params);
 
 // ---------------- 学生：课程检索 ----------------
 export const searchCoursesApi = (params: CourseSelection.SearchQuery) =>
@@ -35,6 +37,17 @@ export const getQueuePositionApi = (offeringId: string) =>
   http.get<CourseSelection.QueuePosition>(`${P}/enrollments/me/queue-position`, { offering_id: offeringId });
 export const getMyTimetableApi = (semester: string) =>
   http.get<CourseSelection.Timetable>(`${P}/enrollments/me/timetable`, { semester });
+export const createEnrollmentEventSource = (): EventSource => {
+  const base = (import.meta.env as any).VITE_API_URL || "";
+  return new EventSource(`${base}${P}/enrollments/me/events`, { withCredentials: true });
+};
+export const exportTimetablePdfApi = async (semester: string): Promise<Blob> => {
+  const base = (import.meta.env as any).VITE_API_URL || "";
+  const url = `${base}${P}/enrollments/me/timetable.pdf?semester=${encodeURIComponent(semester)}`;
+  const res = await fetch(url, { credentials: "include" });
+  if (!res.ok) throw new Error(`导出失败: ${res.status}`);
+  return res.blob();
+};
 
 // ---------------- 学生：AI 助手 ----------------
 export const recommendApi = (params: CourseSelection.RecommendReq) =>
@@ -42,12 +55,68 @@ export const recommendApi = (params: CourseSelection.RecommendReq) =>
 export const acceptRecommendationApi = (recId: string) =>
   http.post<CourseSelection.AcceptResult>(`${P}/ai/recommendations/${recId}/accept`);
 export const newAiConversationApi = () => http.post<{ conversation_id: string }>(`${P}/ai/conversations`);
+export const sendAiMessageApi = (
+  conversationId: string,
+  params: CourseSelection.AiMessageReq,
+  callbacks: {
+    onDelta: (text: string) => void;
+    onToolCall: (name: string, args: string) => void;
+    onDone: (msgId: string, offerings: string[]) => void;
+  }
+): Promise<void> => {
+  const base = (import.meta.env as any).VITE_API_URL || "";
+  return fetch(`${base}${P}/ai/conversations/${conversationId}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(params)
+  }).then(async res => {
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let eventType = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        if (line.startsWith("event: ")) {
+          eventType = line.slice(7).trim();
+        } else if (line.startsWith("data: ")) {
+          const data = line.slice(6);
+          if (eventType === "delta") {
+            const parsed: CourseSelection.AiDeltaEvent = JSON.parse(data);
+            callbacks.onDelta(parsed.content);
+          } else if (eventType === "tool_call") {
+            const parsed: CourseSelection.AiToolCallEvent = JSON.parse(data);
+            callbacks.onToolCall(parsed.name, parsed.arguments);
+          } else if (eventType === "done") {
+            const parsed: CourseSelection.AiDoneEvent = JSON.parse(data);
+            callbacks.onDone(parsed.message_id, parsed.offerings);
+          }
+          eventType = "";
+        }
+      }
+    }
+  });
+};
 
 // ---------------- 教师：花名册 ----------------
 export const getTeachingOfferingsApi = (semester: string) =>
   http.get<{ list: CourseSelection.TeachingOffering[] }>(`${P}/teaching/offerings`, { semester });
 export const getTeachingRosterApi = (offeringId: string, includeDropped = false) =>
   http.get<CourseSelection.Roster>(`${P}/teaching/offerings/${offeringId}/roster`, { include_dropped: includeDropped });
+export const exportRosterXlsxApi = async (offeringId: string): Promise<Blob> => {
+  const base = (import.meta.env as any).VITE_API_URL || "";
+  const url = `${base}${P}/teaching/offerings/${offeringId}/roster.xlsx`;
+  const res = await fetch(url, { credentials: "include" });
+  if (!res.ok) throw new Error(`导出失败: ${res.status}`);
+  return res.blob();
+};
 
 // ---------------- 教务：窗口 / 抽签 / 容量 / 限流 / 监控 ----------------
 export const setWindowApi = (params: CourseSelection.WindowReq) => http.post(`${P}/admin/windows`, params);

@@ -47,6 +47,15 @@ export namespace CourseSelection {
     valid: boolean;
     violations: Violation[];
   }
+  export interface AddPlanItemReq {
+    course_code: string;
+    category: ItemCategory;
+    expected_semester: string;
+    credit: number;
+  }
+  export interface AddPlanItemResult {
+    plan_item_id: string;
+  }
 
   // ---------------- 课程检索 / 开课 ----------------
   export interface TimeSlot {
@@ -142,6 +151,14 @@ export namespace CourseSelection {
     slots: TimetableSlot[];
   }
 
+  // ---------------- SSE 选课事件 ----------------
+  export type EnrollmentSSEEventData =
+    | { event: "heartbeat"; data: Record<string, never> }
+    | { event: "enrollment.confirmed"; data: { offering_id: string; enrollment_id: string } }
+    | { event: "queue.position_update"; data: { offering_id: string; position: number } }
+    | { event: "idle.warning"; data: { countdown_s: number } }
+    | { event: "session.expired"; data: Record<string, never> };
+
   // ---------------- AI 助手 ----------------
   export interface RecommendReq {
     goal: string;
@@ -165,6 +182,28 @@ export namespace CourseSelection {
   }
   export interface AcceptResult {
     results: AcceptResultItem[];
+  }
+
+  // ---------------- AI 流式对话 ----------------
+  export interface AiMessageReq {
+    content: string;
+  }
+  export interface AiDeltaEvent {
+    content: string;
+  }
+  export interface AiToolCallEvent {
+    name: string;
+    arguments: string;
+  }
+  export interface AiDoneEvent {
+    message_id: string;
+    offerings: string[];
+  }
+  export interface ChatMessage {
+    role: "user" | "assistant";
+    content: string;
+    loading?: boolean;
+    offerings?: string[];
   }
 
   // ---------------- 教师：花名册 ----------------
