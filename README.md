@@ -140,13 +140,15 @@ export const getTranscript = (params: object) => {
 - 网关默认端口：`8000`
 - 健康检查：`GET /api/v1/health`
 - 鉴权入口：`/auth/login`、`/auth/logout`、`/auth/me`、`/auth/refresh`、`/auth/change-password`
-- 已明确代理：`/api/v1/auth/*`、`/api/v1/info/*`
+- 已明确代理：`/api/v1/auth/*`、`/api/v1/info/*`、`/api/v1/schedule/*`、`/api/v1/course-selection/*`、`/api/v1/forum/*`、`/api/v1/online-test/*`、`/api/v1/grade/*`
 - `/api/v1/internal/*` 禁止外部访问
 - 网关注入下游请求头：`X-User-Id`、`X-User-Role`、`X-User-Permissions`、`X-Request-ID`
 
-目前第一组 Gateway 还没有明确配置以下业务路由，各组后端接入前需要和第一组确认并补齐：
+当前统一外部路径如下：
 
 ```text
+/auth/**
+/api/v1/info/**
 /api/v1/schedule/**
 /api/v1/course-selection/**
 /api/v1/forum/**
@@ -154,7 +156,7 @@ export const getTranscript = (params: object) => {
 /api/v1/grade/**
 ```
 
-建议第一组在 Gateway 中为每个业务组补独立 upstream、环境变量和 Nginx location，避免这些路径落到 `info_service` 或 404。
+前端只依赖这些统一外部路径；各组后端实际服务名、端口、内部路径由 Gateway 或部署编排负责适配。
 
 ### 4. 各组接口开发要求
 
