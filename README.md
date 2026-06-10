@@ -76,7 +76,96 @@ pnpm install
 pnpm dev
 ```
 
-## 五、当前模板能力
+## 五、统一网关与接口约定
+
+前端公共分支参考第一组 `au12321ua/STSS-gateway`，统一约定所有后端请求先经过 STSS Gateway，不在页面或业务模块里直接写各组后端地址。
+
+### 1. 开发环境
+
+第一组 Gateway 默认监听：
+
+```text
+http://localhost:8000
+```
+
+前端开发环境保持同源请求，Vite 负责代理：
+
+```env
+VITE_API_URL = ""
+VITE_PROXY = [["/api","http://localhost:8000",false],["/auth","http://localhost:8000",false]]
+```
+
+第三项 `false` 表示保留 `/api` 或 `/auth` 前缀。例如前端请求：
+
+```text
+/api/v1/grade/transcripts
+```
+
+实际会转发到：
+
+```text
+http://localhost:8000/api/v1/grade/transcripts
+```
+
+### 2. 公共接口前缀
+
+所有业务组请从 `src/api/config/servicePort.ts` 引入自己的公共前缀，不要在页面中写死完整 URL：
+
+```ts
+export const AUTH_API = "/auth";
+export const GATEWAY_HEALTH_API = "/api/v1/health";
+export const BASE_INFO_API = "/api/v1/info";
+export const SCHEDULE_API = "/api/v1/schedule";
+export const COURSE_SELECTION_API = "/api/v1/course-selection";
+export const FORUM_API = "/api/v1/forum";
+export const ONLINE_TEST_API = "/api/v1/online-test";
+export const GRADE_API = "/api/v1/grade";
+```
+
+示例：
+
+```ts
+import http from "@/api";
+import { GRADE_API } from "@/api/config/servicePort";
+
+export const getTranscript = (params: object) => {
+  return http.get(`${GRADE_API}/transcripts`, params);
+};
+```
+
+### 3. 当前 Gateway 状态
+
+已从第一组 Gateway 仓库确认：
+
+- 网关默认端口：`8000`
+- 健康检查：`GET /api/v1/health`
+- 鉴权入口：`/auth/login`、`/auth/logout`、`/auth/me`、`/auth/refresh`、`/auth/change-password`
+- 已明确代理：`/api/v1/auth/*`、`/api/v1/info/*`
+- `/api/v1/internal/*` 禁止外部访问
+- 网关注入下游请求头：`X-User-Id`、`X-User-Role`、`X-User-Permissions`、`X-Request-ID`
+
+目前第一组 Gateway 还没有明确配置以下业务路由，各组后端接入前需要和第一组确认并补齐：
+
+```text
+/api/v1/schedule/**
+/api/v1/course-selection/**
+/api/v1/forum/**
+/api/v1/online-test/**
+/api/v1/grade/**
+```
+
+建议第一组在 Gateway 中为每个业务组补独立 upstream、环境变量和 Nginx location，避免这些路径落到 `info_service` 或 404。
+
+### 4. 各组接口开发要求
+
+- 页面中不要直接写 `axios`，统一在 `src/api/modules/<group>.ts` 封装接口。
+- 不要写死 `http://localhost:xxxx`、`http://127.0.0.1:xxxx` 或各组后端端口。
+- 不要自行新增另一套请求封装；统一使用 `src/api/index.ts`。
+- 业务成功码统一支持 `0`、`"0"`、`200`、`"200"`。
+- 错误消息统一支持后端返回的 `msg`、`message`、`error` 字段。
+- 如果某个接口返回值没有标准 `code`，可以在请求配置里使用 `{ skipCodeCheck: true }`，但需要在接口函数旁注明原因。
+
+## 六、当前模板能力
 
 - 统一登录页
 - 三角色本地鉴权与菜单控制
@@ -85,7 +174,7 @@ pnpm dev
 - 菜单未开发页面的占位页兜底
 - 公共个人信息 / 修改密码入口
 
-## 六、各组同学的开发边界参考
+## 七、各组同学的开发边界参考
 
 - 总原则：各组只改自己负责的业务页面目录、对应接口目录、对应类型目录，不改公共壳层。
 - 每个业务组现在都可以在自己目录下维护本板块的菜单细分页面名称，具体文件为 `src/views/stss/<group>/menu.ts`。
@@ -175,7 +264,7 @@ src/views/stss/<group>/<module>/index.scss
 - `src/views/proTable/**`
 - `src/views/assembly/**`
 
-## 七、前端协作约定
+## 八、前端协作约定
 
 这部分除了`1. 不要随意改的公共文件`之外，仅供参考
 
@@ -352,9 +441,10 @@ axios.get("/api/forum/posts");
 ```ts
 // src/api/modules/forum.ts
 import http from "@/api";
+import { FORUM_API } from "@/api/config/servicePort";
 
 export const getForumPostListApi = (params: Forum.ReqPostList) => {
-  return http.get<Forum.ResPostList>("/forum/posts", params);
+  return http.get<Forum.ResPostList>(`${FORUM_API}/posts`, params);
 };
 ```
 
@@ -384,7 +474,7 @@ const { data } = await getForumPostListApi(params);
 - 目录名：短横线
 - store 字段：小驼峰
 
-## 八、开发流程建议
+## 九、开发流程建议
 
 如果进入并行开发阶段，优先顺序建议是：
 
