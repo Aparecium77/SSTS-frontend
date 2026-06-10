@@ -360,18 +360,18 @@ src/api/modules/<group>.ts
 推荐接法：
 
 ```text
-页面 -> src/api/modules/<group>.ts -> src/api/index.ts -> /api -> nginx / gateway -> 后端各服务
+页面 -> src/api/modules/<group>.ts -> src/api/index.ts -> /auth 或 /api/v1/<module> -> STSS Gateway -> 后端各服务
 ```
 
 推荐接口前缀：
 
-- `/api/auth`
-- `/api/base-info`
-- `/api/schedule`
-- `/api/course-selection`
-- `/api/forum`
-- `/api/online-test`
-- `/api/score`
+- `/auth`
+- `/api/v1/info`
+- `/api/v1/schedule`
+- `/api/v1/course-selection`
+- `/api/v1/forum`
+- `/api/v1/online-test`
+- `/api/v1/grade`
 
 ### 5.2 前后端响应格式统一
 
@@ -428,7 +428,7 @@ Authorization: Bearer <token>
 - 任何业务页面文件，例如 `src/views/stss/forum/posts/index.vue`
 
 ```ts
-axios.get("/api/forum/posts");
+axios.get("/api/v1/forum/posts");
 ```
 
 应该统一写成：
