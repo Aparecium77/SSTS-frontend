@@ -1,154 +1,147 @@
 <template>
-  <div class="exam-taking-page card">
-    <div class="page-hero">
-      <div>
-        <p class="eyebrow">在线测试 / 学生端</p>
-        <h2>{{ mockExamSession.examName }}</h2>
-        <p class="description">
-          当前页面先用本地 mock 数据把答题流程搭起来，先不依赖后端。选择题和判断题共用同一个答题页，
-          通过标签页切换题型更容易维护。
-        </p>
-      </div>
-      <div class="hero-actions">
-        <el-tag type="success" effect="light">剩余时间 45:00</el-tag>
-        <el-button plain @click="handleSaveDraft">暂存答案</el-button>
-        <el-button type="primary" @click="handleSubmit">提交试卷</el-button>
-      </div>
-    </div>
-
-    <div class="info-grid">
-      <div class="info-card">
-        <span class="label">试卷编号</span>
-        <span class="value">{{ mockExamSession.paperId }}</span>
-      </div>
-      <div class="info-card">
-        <span class="label">题目总数</span>
-        <span class="value">{{ mockExamSession.totalQuestions }}</span>
-      </div>
-      <div class="info-card">
-        <span class="label">已作答</span>
-        <span class="value">{{ answeredCount }} 题</span>
-      </div>
-      <div class="info-card">
-        <span class="label">暂存时间</span>
-        <span class="value">{{ lastSavedAt }}</span>
-      </div>
-    </div>
-
-    <el-alert
-      v-if="submitted"
-      class="submit-alert"
-      title="已模拟提交成功，后续可以在这里跳转到结果页或成绩分析页。"
-      type="success"
-      show-icon
-      :closable="false"
-    />
-
-    <el-tabs v-model="activeType" class="type-tabs">
-      <el-tab-pane label="选择题" name="single" />
-      <el-tab-pane label="判断题" name="judge" />
-    </el-tabs>
-
-    <div class="content-grid">
-      <div class="main-column">
-        <div class="question-topbar">
-          <div>
-            <p class="section-title">{{ currentTypeLabel }}</p>
-            <p class="section-desc">点击右侧题号切换当前题目，页面先用本地数据模拟答题体验。</p>
+  <div class="exam-taking-page">
+    <!-- ────── 视图 1：答题中 ────── -->
+    <template v-if="submitState === 'answering'">
+      <!-- 顶部栏: 考试名称 + 剩余时间 + 交卷 -->
+      <header class="exam-header">
+        <h2 class="exam-name">{{ examSession.examName }}</h2>
+        <div class="header-right">
+          <div class="timer" :class="{ 'timer-warn': remainingSeconds <= 300 }">
+            <el-icon><Clock /></el-icon>
+            <span class="timer-text">{{ formattedTime }}</span>
           </div>
-          <div class="question-nav-actions">
-            <el-button :disabled="currentIndex === 0" @click="handlePrevQuestion">上一题</el-button>
-            <el-button :disabled="currentIndex === currentQuestionList.length - 1" @click="handleNextQuestion">下一题</el-button>
+          <el-button type="primary" size="large" @click="handleSubmitConfirm"> 交卷 </el-button>
+        </div>
+      </header>
+
+      <!-- 主体区域 -->
+      <div class="exam-body">
+        <aside class="exam-sidebar">
+          <div class="sidebar-card">
+            <div class="sidebar-card-head">
+              <h3>题目选择</h3>
+              <span class="nav-progress">{{ currentIndex + 1 }} / {{ allQuestions.length }}</span>
+            </div>
+            <div class="nav-grid">
+              <button
+                v-for="(q, index) in allQuestions"
+                :key="q.id"
+                class="nav-item"
+                :class="{
+                  active: index === currentIndex,
+                  answered: Boolean(answerMap[q.id]),
+                  'type-judge': q.type === 'judge'
+                }"
+                :title="`第 ${index + 1} 题${q.type === 'single' ? '（选择题）' : '（判断题）'}`"
+                @click="currentIndex = index"
+              >
+                {{ index + 1 }}
+              </button>
+            </div>
           </div>
-        </div>
 
-        <QuestionBlock v-model="currentAnswer" :question="currentQuestion" />
+          <div class="sidebar-card">
+            <h3>个人信息</h3>
+            <div class="info-list">
+              <div class="info-row">
+                <span class="info-label">姓名</span>
+                <span class="info-val">{{ mockStudentInfo.studentName }}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">学号</span>
+                <span class="info-val">{{ mockStudentInfo.studentId }}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">班级</span>
+                <span class="info-val">{{ mockStudentInfo.className }}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">试卷编号</span>
+                <span class="info-val">{{ examSession.paperId }}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">已作答</span>
+                <span class="info-val">{{ answeredCount }} / {{ allQuestions.length }} 题</span>
+              </div>
+            </div>
+          </div>
 
-        <div class="bottom-actions">
-          <el-button :disabled="currentIndex === 0" @click="handlePrevQuestion">上一题</el-button>
-          <el-button :disabled="currentIndex === currentQuestionList.length - 1" @click="handleNextQuestion">下一题</el-button>
-          <el-button plain @click="handleSaveDraft">暂存答案</el-button>
-          <el-button type="primary" @click="handleSubmit">提交试卷</el-button>
-        </div>
+          <div class="sidebar-card">
+            <h3>图例说明</h3>
+            <div class="legend-list">
+              <div class="legend-item">
+                <span class="legend-dot current"></span>
+                <span>当前题目</span>
+              </div>
+              <div class="legend-item">
+                <span class="legend-dot answered"></span>
+                <span>已作答</span>
+              </div>
+              <div class="legend-item">
+                <span class="legend-dot unanswered"></span>
+                <span>未作答</span>
+              </div>
+              <div class="legend-divider"></div>
+              <div class="legend-item">
+                <span class="legend-shape single"></span>
+                <span>选择题</span>
+              </div>
+              <div class="legend-item">
+                <span class="legend-shape judge"></span>
+                <span>判断题</span>
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        <main class="exam-main">
+          <div class="question-area">
+            <QuestionBlock v-model="currentAnswer" :question="currentQuestion" />
+          </div>
+
+          <footer class="exam-footer">
+            <el-button size="large" :disabled="currentIndex === 0" @click="currentIndex--"> 上一题 </el-button>
+            <el-button size="large" plain @click="handleSaveDraft"> 保存 </el-button>
+            <el-button size="large" :disabled="currentIndex >= allQuestions.length - 1" @click="currentIndex++">
+              下一题
+            </el-button>
+          </footer>
+        </main>
       </div>
+    </template>
 
-      <aside class="side-column">
-        <div class="side-card">
-          <div class="side-card-head">
-            <h3>题号导航</h3>
-            <span>{{ currentIndex + 1 }}/{{ currentQuestionList.length }}</span>
-          </div>
-          <div class="nav-grid">
-            <button
-              v-for="(question, index) in currentQuestionList"
-              :key="question.id"
-              class="nav-item"
-              :class="{
-                active: index === currentIndex,
-                answered: Boolean(answerMap[question.id])
-              }"
-              type="button"
-              @click="currentIndex = index"
-            >
-              {{ index + 1 }}
-            </button>
-          </div>
-        </div>
-
-        <div class="side-card">
-          <h3>答题进度</h3>
-          <el-progress :percentage="progressPercent" :stroke-width="10" status="success" />
-          <div class="progress-text">
-            <span>已完成 {{ answeredCount }} 题</span>
-            <span>共 {{ currentQuestionList.length }} 题</span>
-          </div>
-        </div>
-
-        <div class="side-card">
-          <h3>开发提示</h3>
-          <ul class="tips-list">
-            <li>选择题和判断题共用一个答题页即可，不必拆成两个独立页面。</li>
-            <li>后续接后端时，只需要把 mock 数据换成接口数据。</li>
-            <li>提交成功后可以在同页提示，也可以跳转到结果页。</li>
-          </ul>
-        </div>
-      </aside>
-    </div>
+    <!-- ────── 视图 2/3：提交中 / 提交成功 ────── -->
+    <SubmitResult v-else :submit-state="submitState" @go-home="goHome" @view-paper="viewPaper" />
   </div>
 </template>
 
 <script setup lang="ts" name="examTaking">
-import { computed, reactive, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { Clock } from "@element-plus/icons-vue";
+import { ElMessageBox, ElNotification } from "element-plus";
 import QuestionBlock from "./components/QuestionBlock.vue";
-import { mockExamSession, mockJudgeQuestionList, mockSingleQuestionList } from "./mock";
+import SubmitResult from "./components/SubmitResult.vue";
+import { examSessionMap, mockAllQuestionList, mockExamSession, mockStudentInfo, questionMap } from "./mock";
 import type { ExamTaking } from "./types";
 
-const activeType = ref<ExamTaking.QuestionType>("single");
-const submitted = ref(false);
-const lastSavedAt = ref("尚未暂存");
+const route = useRoute();
+const router = useRouter();
 
-const questionIndexMap = reactive<Record<ExamTaking.QuestionType, number>>({
-  single: 0,
-  judge: 0
-});
+/* ────── 根据 examId 加载对应试卷 ────── */
+const examId = (route.query.examId as string) || mockExamSession.examId;
+const examSession = examSessionMap[examId] ?? mockExamSession;
+const allQuestions: ExamTaking.QuestionItem[] = questionMap[examId] ?? mockAllQuestionList;
 
+/* ────── 三视图状态 ────── */
+const submitState = ref<ExamTaking.SubmitState>("answering");
+
+/* ────── 答题状态 ────── */
+const lastSavedAt = ref("尚未保存");
+const currentIndex = ref(0);
 const answerMap = reactive<Record<string, string>>({});
 
-const questionListMap: Record<ExamTaking.QuestionType, ExamTaking.QuestionItem[]> = {
-  single: mockSingleQuestionList,
-  judge: mockJudgeQuestionList
-};
-
-const currentQuestionList = computed(() => questionListMap[activeType.value]);
-
-const currentIndex = computed({
-  get: () => questionIndexMap[activeType.value],
-  set: value => {
-    questionIndexMap[activeType.value] = value;
-  }
-});
-
-const currentQuestion = computed(() => currentQuestionList.value[currentIndex.value]);
+const currentQuestion = computed(() => allQuestions[currentIndex.value]);
 
 const currentAnswer = computed<string>({
   get: () => answerMap[currentQuestion.value.id] ?? "",
@@ -157,34 +150,123 @@ const currentAnswer = computed<string>({
   }
 });
 
-const answeredCount = computed(() => currentQuestionList.value.filter(question => Boolean(answerMap[question.id])).length);
+const answeredCount = computed(() => allQuestions.filter(q => Boolean(answerMap[q.id])).length);
 
-const progressPercent = computed(() => {
-  if (!currentQuestionList.value.length) return 0;
-  return Math.round((answeredCount.value / currentQuestionList.value.length) * 100);
+/* ────── 倒计时 ────── */
+const remainingSeconds = ref(examSession.durationMinutes * 60);
+let timerHandle: ReturnType<typeof setInterval> | null = null;
+
+const formattedTime = computed(() => {
+  const mm = Math.floor(remainingSeconds.value / 60);
+  const ss = remainingSeconds.value % 60;
+  return `${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}`;
 });
 
-const currentTypeLabel = computed(() => (activeType.value === "single" ? "选择题答题区" : "判断题答题区"));
-
-const handlePrevQuestion = () => {
-  if (currentIndex.value === 0) return;
-  currentIndex.value -= 1;
+const startTimer = () => {
+  if (timerHandle) return;
+  timerHandle = setInterval(() => {
+    if (remainingSeconds.value <= 1) {
+      stopTimer();
+      remainingSeconds.value = 0;
+      autoSubmit();
+    } else {
+      remainingSeconds.value -= 1;
+    }
+  }, 1000);
 };
 
-const handleNextQuestion = () => {
-  if (currentIndex.value >= currentQuestionList.value.length - 1) return;
-  currentIndex.value += 1;
+const stopTimer = () => {
+  if (timerHandle) {
+    clearInterval(timerHandle);
+    timerHandle = null;
+  }
 };
 
+const autoSubmit = () => {
+  performSubmit();
+  ElNotification({
+    title: "时间到",
+    message: "考试时间已到，系统已自动提交试卷。",
+    type: "warning",
+    duration: 5000
+  });
+};
+
+/* ────── 提交流程 ────── */
+const performSubmit = () => {
+  stopTimer();
+  handleSaveDraft();
+  submitState.value = "submitting";
+  // 模拟提交，1.5 秒后显示成功
+  setTimeout(() => {
+    submitState.value = "success";
+  }, 1500);
+};
+
+const handleSubmitConfirm = () => {
+  const unanswered = allQuestions.length - answeredCount.value;
+  const timeHint = `<span style="color:#dc2626;font-weight:700;">${formattedTime.value}</span>`;
+  const msg =
+    unanswered > 0
+      ? `你还有 ${unanswered} 道题未作答，剩余时间 ${timeHint}，确认要交卷吗？`
+      : `剩余时间 ${timeHint}，确认提交试卷吗？提交后无法修改。`;
+  ElMessageBox.confirm(msg, "确认交卷", {
+    confirmButtonText: "确认交卷",
+    cancelButtonText: "继续检查",
+    type: "warning",
+    dangerouslyUseHTMLString: true
+  })
+    .then(() => {
+      performSubmit();
+    })
+    .catch(() => {
+      // 用户取消
+    });
+};
+
+/* ────── 保存 ────── */
 const handleSaveDraft = () => {
   lastSavedAt.value = new Date().toLocaleTimeString("zh-CN", { hour12: false });
 };
 
-const handleSubmit = () => {
-  submitted.value = true;
-  handleSaveDraft();
+/* ────── 结果页操作 ────── */
+const goHome = () => {
+  router.push("/online-test/entry");
 };
+
+const viewPaper = () => {
+  router.push("/online-test/analytics");
+};
+
+/* ────── 生命周期 ────── */
+onMounted(() => {
+  startTimer();
+});
+
+onBeforeUnmount(() => {
+  stopTimer();
+});
 </script>
+
+<style lang="scss">
+/*
+ * 打通父级 flex 链路，让 exam-taking-page 自适应可用高度。
+ * 避免 100vh 硬编码导致不同布局（tabs/footer 显隐）下出现滚动条。
+ */
+.el-main:has(.exam-taking-page) {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* LayoutClassic：el-main 的父级是 .classic-main */
+.classic-main:has(.exam-taking-page) {
+  flex: 1;
+  min-height: 0;
+}
+</style>
 
 <style scoped lang="scss">
 @import "./index";

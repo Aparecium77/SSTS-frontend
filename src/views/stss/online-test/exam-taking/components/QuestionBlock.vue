@@ -1,28 +1,35 @@
 <template>
-  <div class="question-block card">
+  <div class="question-block card" :key="question.id">
     <div class="question-head">
       <div>
-        <p class="question-type">{{ questionTypeLabel }}</p>
+        <p class="question-meta">
+          <span class="meta-score">{{ question.score }}分</span>
+          <span class="meta-divider">·</span>
+          <span class="meta-difficulty" :class="`difficulty-${question.difficulty}`">{{ difficultyLabel }}</span>
+        </p>
         <h3 class="question-title">{{ question.stem }}</h3>
       </div>
-      <el-tag v-if="question.type === 'single'" type="primary">选择题</el-tag>
-      <el-tag v-else type="success">判断题</el-tag>
+      <el-tag :type="question.type === 'single' ? 'primary' : 'success'">
+        {{ question.type === "single" ? "选择题" : "判断题" }}
+      </el-tag>
     </div>
 
-    <div v-if="question.type === 'single'" class="options-list">
-      <el-radio-group :model-value="modelValue" class="single-option-group" @change="handleChange">
-        <el-radio v-for="option in question.options ?? []" :key="option.value" :label="option.value" class="option-item">
-          {{ option.label }}
-        </el-radio>
-      </el-radio-group>
-    </div>
+    <Transition name="fade" mode="out-in">
+      <div v-if="question.type === 'single'" key="single" class="options-list">
+        <el-radio-group :model-value="modelValue" class="single-option-group" @change="handleChange">
+          <el-radio v-for="option in question.options ?? []" :key="option.value" :label="option.value" class="option-item">
+            {{ option.label }}
+          </el-radio>
+        </el-radio-group>
+      </div>
 
-    <div v-else class="judge-area">
-      <el-radio-group :model-value="modelValue" @change="handleChange">
-        <el-radio-button label="true">正确</el-radio-button>
-        <el-radio-button label="false">错误</el-radio-button>
-      </el-radio-group>
-    </div>
+      <div v-else key="judge" class="judge-area">
+        <el-radio-group :model-value="modelValue" @change="handleChange">
+          <el-radio-button label="true">正确</el-radio-button>
+          <el-radio-button label="false">错误</el-radio-button>
+        </el-radio-group>
+      </div>
+    </Transition>
 
     <el-alert
       v-if="question.analysis"
@@ -48,15 +55,24 @@ const emit = defineEmits<{
   (event: "update:modelValue", value: string): void;
 }>();
 
-const questionTypeLabel = computed(() => (props.question.type === "single" ? "选择题作答区" : "判断题作答区"));
+const difficultyMap: Record<ExamTaking.Difficulty, string> = {
+  easy: "简单",
+  medium: "中等",
+  hard: "困难"
+};
 
-const handleChange = (value: string) => {
-  emit("update:modelValue", value);
+const difficultyLabel = computed(() => difficultyMap[props.question.difficulty]);
+
+const handleChange = (value: string | number | boolean | undefined) => {
+  if (value !== undefined) {
+    emit("update:modelValue", String(value));
+  }
 };
 </script>
 
 <style scoped lang="scss">
 .question-block {
+  min-height: 280px;
   padding: 24px;
 }
 .question-head {
@@ -65,13 +81,31 @@ const handleChange = (value: string) => {
   justify-content: space-between;
   margin-bottom: 20px;
 }
-.question-type {
+.question-meta {
+  display: flex;
+  gap: 4px;
+  align-items: center;
   margin: 0 0 8px;
-  font-size: 12px;
-  font-weight: 700;
-  color: #009688;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  font-size: 13px;
+}
+.meta-score {
+  font-weight: 600;
+  color: #334155;
+}
+.meta-divider {
+  color: #cbd5e1;
+}
+.meta-difficulty {
+  font-weight: 600;
+}
+.difficulty-easy {
+  color: #22c55e;
+}
+.difficulty-medium {
+  color: #f59e0b;
+}
+.difficulty-hard {
+  color: #ef4444;
 }
 .question-title {
   margin: 0;
@@ -98,5 +132,15 @@ const handleChange = (value: string) => {
 }
 .analysis-box {
   margin-top: 20px;
+}
+
+/* ────── 题型切换过渡动画 ────── */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.15s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 </style>
