@@ -1,7 +1,11 @@
 // 请求响应参数（不包含 data）
 export interface Result {
-  code: string;
-  msg: string;
+  code: number | string;
+  msg?: string;
+  message?: string;
+  requestId?: string;
+  trace_id?: string;
+  timestamp?: string;
 }
 
 // 请求响应参数（包含 data）
