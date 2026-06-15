@@ -117,18 +117,80 @@ const currentStudentId = 91002;
 const currentRecordId = ref(0);
 const proctorHttpBase = ref(""); // ws://host:port/ws → http://host:port
 
-/* ────── WebSocket（Go proctor） ────── */
+/* ────── WebSocket（Go proctor）─ 含断线重连 ────── */
 let wsConnection: WebSocket | null = null;
+let intentionalClose = false;
+let reconnectAttempts = 0;
+const MAX_RECONNECT = 5;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let lastWsEndpoint = "";
+
+const cancelReconnect = () => {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+};
 
 const disconnectProctor = () => {
+  intentionalClose = true;
+  cancelReconnect();
   if (wsConnection) {
     wsConnection.close();
     wsConnection = null;
   }
 };
 
+/** 批量同步本地答案到服务端（用于断线重连后回补） */
+const batchSyncAnswers = async (): Promise<boolean> => {
+  const entries = Object.entries(answerMap).filter(([, v]) => v);
+  if (!entries.length) return true;
+  if (!proctorHttpBase.value) return false;
+  try {
+    const resp = await fetch(`${proctorHttpBase.value}/api/proctor/v1/answers/batch`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        studentId: String(currentStudentId),
+        examId: String(numericExamId.value),
+        answers: entries.map(([qid, ans]) => ({ questionId: Number(qid), answer: ans }))
+      })
+    });
+    if (resp.ok) {
+      lastSavedAt.value = new Date().toLocaleTimeString("zh-CN", { hour12: false });
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+};
+
+/** 指数退避重连调度 */
+const scheduleReconnect = () => {
+  cancelReconnect();
+  if (reconnectAttempts >= MAX_RECONNECT) {
+    ElNotification({
+      title: "考试连接断开",
+      message: "无法恢复连接，已切换为离线模式，答案将通过 HTTP 保存",
+      type: "warning",
+      duration: 6000
+    });
+    return;
+  }
+  // 2s → 4s → 8s → 16s → 32s，上限 30s
+  const delay = Math.min(2000 * Math.pow(2, reconnectAttempts), 30000);
+  reconnectAttempts++;
+  console.log(`[Proctor] reconnect in ${delay / 1000}s (${reconnectAttempts}/${MAX_RECONNECT})`);
+  reconnectTimer = setTimeout(() => {
+    if (!lastWsEndpoint || !currentRecordId.value) return;
+    connectProctor(lastWsEndpoint, currentStudentId, currentRecordId.value);
+  }, delay);
+};
+
 const connectProctor = (wsEndpoint: string, sId: number, rId: number) => {
   try {
+    lastWsEndpoint = wsEndpoint;
     const url = `${wsEndpoint}?studentId=${sId}&recordId=${rId}`;
     // 从 wsEndpoint 解析 HTTP base 供兜底使用
     try {
@@ -138,7 +200,15 @@ const connectProctor = (wsEndpoint: string, sId: number, rId: number) => {
       proctorHttpBase.value = "";
     }
     wsConnection = new WebSocket(url);
-    wsConnection.onopen = () => console.log("[Proctor] connected");
+    wsConnection.onopen = () => {
+      console.log("[Proctor] connected");
+      // 重连成功：同步离线期间堆积的本地答案
+      if (reconnectAttempts > 0) {
+        setTimeout(() => batchSyncAnswers(), 500);
+        reconnectAttempts = 0;
+        ElMessage.success("考试连接已恢复");
+      }
+    };
     wsConnection.onmessage = event => {
       try {
         const msg = JSON.parse(event.data);
@@ -177,8 +247,11 @@ const connectProctor = (wsEndpoint: string, sId: number, rId: number) => {
     };
     wsConnection.onerror = () => console.warn("[Proctor] error");
     wsConnection.onclose = () => {
-      console.log("[Proctor] closed — HTTP fallback active");
+      console.log("[Proctor] closed");
       wsConnection = null;
+      if (!intentionalClose && submitState.value === "answering") {
+        scheduleReconnect();
+      }
     };
   } catch {
     console.warn("[Proctor] connect failed");
@@ -211,6 +284,8 @@ const fetchPaper = async () => {
     // 等 Go proctor 连上后通过 status 消息设置权威时间并启动倒计时
     if (res.wsEndpoint) {
       currentRecordId.value = res.recordId;
+      reconnectAttempts = 0;
+      intentionalClose = false;
       connectProctor(res.wsEndpoint, currentStudentId, res.recordId);
     }
   } catch {
@@ -284,13 +359,11 @@ const formattedTime = computed(() => {
 
 /* ────── 提交流程（WebSocket 主路径 + HTTP 兜底） ────── */
 const performSubmit = async () => {
-  // WebSocket 主路径
   if (wsConnection && wsConnection.readyState === WebSocket.OPEN) {
     submitState.value = "submitting";
     wsConnection.send(JSON.stringify({ type: "submit" }));
     return;
   }
-  // HTTP 兜底
   if (!proctorHttpBase.value) {
     ElMessage.error("考试连接已断开，无法交卷");
     return;
@@ -342,12 +415,10 @@ const handleSubmitConfirm = () => {
 
 /* ────── 保存答案（WebSocket 主路径 + HTTP 兜底） ────── */
 const saveWithFallback = async (questionId: number, answer: string): Promise<boolean> => {
-  // WebSocket 主路径
   if (wsConnection && wsConnection.readyState === WebSocket.OPEN) {
     wsConnection.send(JSON.stringify({ type: "save_answer", questionId, answer }));
     return true;
   }
-  // HTTP 兜底：直接请求 proctor 容器（端口动态，不走网关代理）
   if (!proctorHttpBase.value) {
     ElMessage.error("考试连接已断开，无法保存");
     return false;
