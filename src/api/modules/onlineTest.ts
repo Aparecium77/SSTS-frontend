@@ -20,9 +20,14 @@ import type {
 const ACTIONS_URL = "/api/ot/v1/actions";
 
 /** 通用 POST action 请求 */
-function postAction<T>(action: string, data: Record<string, unknown>): Promise<T> {
+function postAction<T>(action: string, data: Record<string, unknown>, opts?: { silent?: boolean }): Promise<T> {
   const body: ApiRequestBody = { action, data };
-  return http.post<{ data: T }>(ACTIONS_URL, body).then(res => res.data);
+  return http.post<{ data: T }>(ACTIONS_URL, body, { skipCodeCheck: opts?.silent }).then(res => res.data);
+}
+
+/** 对已预期可能失败的操作静默处理，不弹全局错误提示 */
+function postActionSilent<T>(action: string, data: Record<string, unknown>): Promise<T> {
+  return postAction(action, data, { silent: true });
 }
 
 /* ────── 考试列表 ────── */
@@ -34,7 +39,7 @@ export function listMyExamRecords(params: ListMyExamRecordsReq): Promise<PageRes
 /* ────── 开始考试 ────── */
 
 export function beginExam(params: BeginExamReq): Promise<BeginExamResponse> {
-  return postAction("begin_an_exam", {
+  return postActionSilent("begin_an_exam", {
     studentId: params.studentId,
     id: params.examId
   } as unknown as Record<string, unknown>);
