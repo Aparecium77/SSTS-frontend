@@ -66,6 +66,26 @@
             </el-tag>
           </el-descriptions-item>
         </el-descriptions>
+        <el-divider content-position="left">冲突预检</el-divider>
+        <el-alert
+          v-if="conflictResult && !conflictResult.has_conflict"
+          type="success"
+          show-icon
+          :closable="false"
+          title="未发现时间冲突"
+        />
+        <el-alert v-else-if="conflictResult" type="warning" show-icon :closable="false" title="存在选课冲突" class="mb-2" />
+        <el-table
+          v-if="conflictResult?.conflicts.length"
+          :data="conflictResult.conflicts"
+          border
+          size="small"
+          empty-text="暂无冲突"
+        >
+          <el-table-column prop="type" label="类型" width="100" />
+          <el-table-column prop="with_offering_id" label="冲突开课" min-width="150" />
+          <el-table-column prop="message" label="说明" min-width="180" />
+        </el-table>
       </template>
     </el-drawer>
   </CsPage>
@@ -77,7 +97,7 @@ import { ElMessage } from "element-plus";
 import { Search } from "@element-plus/icons-vue";
 import CsPage from "../components/CsPage.vue";
 import { CourseSelection } from "@/api/interface/courseSelection";
-import { enrollApi, getOfferingApi, searchCoursesApi } from "@/api/modules/courseSelection";
+import { enrollApi, getOfferingApi, getOfferingConflictsApi, searchCoursesApi } from "@/api/modules/courseSelection";
 
 const USE_MOCK = false;
 
@@ -89,6 +109,7 @@ const pageSize = 10;
 const loading = ref(false);
 const detailVisible = ref(false);
 const detail = ref<CourseSelection.OfferingDetail | null>(null);
+const conflictResult = ref<CourseSelection.ConflictResult | null>(null);
 const capacityText = computed(() =>
   detail.value ? `${detail.value.enrolled_count} / ${detail.value.max_capacity}（余 ${detail.value.remaining}）` : ""
 );
@@ -150,6 +171,7 @@ function onReset() {
 }
 
 async function openDetail(row: CourseSelection.OfferingBrief) {
+  conflictResult.value = null;
   if (USE_MOCK) {
     detail.value = {
       ...row,
@@ -160,16 +182,37 @@ async function openDetail(row: CourseSelection.OfferingBrief) {
       campus: "紫金港",
       enrolled_count: row.max_capacity - row.remaining
     };
+    conflictResult.value = { has_conflict: false, conflicts: [] };
   } else {
-    const { data } = await getOfferingApi(row.offering_id);
+    const [{ data }, conflictRes] = await Promise.all([
+      getOfferingApi(row.offering_id),
+      getOfferingConflictsApi(row.offering_id)
+    ]);
     detail.value = data;
+    conflictResult.value = conflictRes.data;
   }
   detailVisible.value = true;
 }
 
 async function onEnroll(row: CourseSelection.OfferingBrief) {
-  if (!USE_MOCK) await enrollApi({ offering_id: row.offering_id, stage: "add_drop" });
-  ElMessage.success(`已发起选课：${row.course_name}（详见「选课/退课」）`);
+  try {
+    const res = USE_MOCK ? null : await enrollApi({ offering_id: row.offering_id, stage: "add_drop" }, { queueAsSuccess: true });
+    if (res?.code === 30201) {
+      const queue = res.data as CourseSelection.QueuePosition | undefined;
+      const position = queue?.position ? `当前第 ${queue.position} 位，` : "";
+      ElMessage.warning(`已进入排队，${position}请到「选课/退课」页继续查看状态`);
+      return;
+    }
+    ElMessage.success(`已发起选课：${row.course_name}（详见「选课/退课」）`);
+  } catch (e: any) {
+    if (e?.code === 30201) {
+      const queue = e.data as CourseSelection.QueuePosition | undefined;
+      const position = queue?.position ? `当前第 ${queue.position} 位，` : "";
+      ElMessage.warning(`已进入排队，${position}请到「选课/退课」页继续查看状态`);
+      return;
+    }
+    throw e;
+  }
 }
 
 onMounted(onSearch);

@@ -5,7 +5,6 @@
         <el-form-item label="学期"><el-input v-model="semester" style="width: 130px" /></el-form-item>
         <el-form-item>
           <el-button type="primary" :loading="loading" @click="load">刷新</el-button>
-          <el-button :icon="Download" @click="onExport">导出 PDF</el-button>
         </el-form-item>
       </el-form>
     </el-card>
@@ -38,11 +37,9 @@
 
 <script setup lang="ts" name="myTimetable">
 import { onMounted, ref } from "vue";
-import { Download } from "@element-plus/icons-vue";
 import CsPage from "../components/CsPage.vue";
 import { CourseSelection } from "@/api/interface/courseSelection";
-import { exportTimetablePdfApi, getMyTimetableApi } from "@/api/modules/courseSelection";
-import { useDownload } from "@/hooks/useDownload";
+import { getMyTimetableApi } from "@/api/modules/courseSelection";
 
 const USE_MOCK = false;
 
@@ -72,10 +69,6 @@ async function load() {
   } finally {
     loading.value = false;
   }
-}
-
-function onExport() {
-  useDownload(exportTimetablePdfApi, `课表-${semester.value}`, semester.value, true, ".pdf");
 }
 
 onMounted(load);

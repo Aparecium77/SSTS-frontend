@@ -1,7 +1,7 @@
 <template>
   <CsPage title="抽签与容量管理" desc="触发抽签批处理、调整课程容量、热更新限流参数（Waiting Room 节奏）。">
     <el-row :gutter="16">
-      <el-col :span="8">
+      <el-col :span="12">
         <el-card shadow="never" header="抽签">
           <el-form :model="lottery" label-width="80px">
             <el-form-item label="学期"><el-input v-model="lottery.semester" /></el-form-item>
@@ -14,7 +14,7 @@
         </el-card>
       </el-col>
 
-      <el-col :span="8">
+      <el-col :span="12">
         <el-card shadow="never" header="容量调整">
           <el-form :model="cap" label-width="80px">
             <el-form-item label="开课 ID"><el-input v-model="cap.offering_id" /></el-form-item>
@@ -25,7 +25,18 @@
         </el-card>
       </el-col>
 
-      <el-col :span="8">
+      <el-col :span="12">
+        <el-card shadow="never" header="管理员代选">
+          <el-form :model="proxy" label-width="80px">
+            <el-form-item label="学生 ID"><el-input v-model="proxy.student_id" /></el-form-item>
+            <el-form-item label="开课 ID"><el-input v-model="proxy.offering_id" /></el-form-item>
+            <el-form-item label="原因"><el-input v-model="proxy.reason" /></el-form-item>
+            <el-form-item><el-button :loading="loading" @click="onProxyEnroll">提交代选</el-button></el-form-item>
+          </el-form>
+        </el-card>
+      </el-col>
+
+      <el-col :span="12">
         <el-card shadow="never" header="限流热更新">
           <el-form :model="throttle" label-width="110px">
             <el-form-item label="放行间隔(ms)">
@@ -50,7 +61,7 @@ import { reactive, ref } from "vue";
 import { ElMessage } from "element-plus";
 import CsPage from "../components/CsPage.vue";
 import { CourseSelection } from "@/api/interface/courseSelection";
-import { adjustCapacityApi, triggerLotteryApi, updateThrottleApi } from "@/api/modules/courseSelection";
+import { adjustCapacityApi, proxyEnrollApi, triggerLotteryApi, updateThrottleApi } from "@/api/modules/courseSelection";
 
 const USE_MOCK = false;
 
@@ -59,6 +70,11 @@ const cap = reactive<CourseSelection.CapacityAdjustReq & { offering_id: string }
   offering_id: "B-CS101-2026-1-01",
   delta: 10,
   reason: "增开名额"
+});
+const proxy = reactive<CourseSelection.ProxyEnrollReq>({
+  student_id: "student",
+  offering_id: "B-CS101-2026-1-01",
+  reason: "教务代选"
 });
 const throttle = reactive<CourseSelection.ThrottleReq>({ tick_interval_ms: 200, capacity_per_tick: 50, per_user_rps: 5 });
 const run = ref<CourseSelection.LotteryRun | null>(null);
@@ -84,6 +100,16 @@ async function onAdjust() {
   try {
     if (!USE_MOCK) await adjustCapacityApi(cap.offering_id, { delta: cap.delta, reason: cap.reason });
     ElMessage.success("容量已调整（同步 Redis 与 DB）");
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function onProxyEnroll() {
+  loading.value = true;
+  try {
+    if (!USE_MOCK) await proxyEnrollApi(proxy);
+    ElMessage.success("管理员代选已提交");
   } finally {
     loading.value = false;
   }

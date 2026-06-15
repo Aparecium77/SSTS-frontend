@@ -1,12 +1,51 @@
 /**
  * 选课中心组接口封装。页面统一从这里调用，不直接写 axios。
- * baseURL = VITE_API_URL(/api)，后端路由前缀 /api/course-selection/v1，故此处路径以
- * /course-selection/v1 开头。联调阶段只改本文件即可，页面层不感知后端切换。
+ * baseURL = VITE_API_URL(/api)，统一 Gateway 路由前缀 /api/v1/course-selection，
+ * 故此处路径以 /v1/course-selection 开头。页面层不感知后端切换。
  */
 import http from "@/api";
 import { CourseSelection } from "@/api/interface/courseSelection";
+import { useUserStore } from "@/stores/modules/user";
 
-const P = "/course-selection/v1";
+const P = "/v1/course-selection";
+
+interface CourseSelectionEnvelope<T> {
+  code: number;
+  msg?: string;
+  message?: string;
+  data: T;
+}
+
+const requestCourseSelection = async <T>(
+  path: string,
+  init: RequestInit = {},
+  options: { successCodes?: number[] } = {}
+): Promise<CourseSelectionEnvelope<T>> => {
+  const base = (import.meta.env as any).VITE_API_URL || "";
+  const userStore = useUserStore();
+  const headers = new Headers(init.headers);
+  headers.set("Content-Type", "application/json");
+  if (userStore.token) {
+    headers.set("Authorization", `Bearer ${userStore.token}`);
+    headers.set("x-access-token", userStore.token);
+  }
+
+  const res = await fetch(`${base}${P}${path}`, {
+    credentials: "include",
+    ...init,
+    headers
+  });
+  const payload = (await res.json()) as CourseSelectionEnvelope<T>;
+  const successCodes = options.successCodes ?? [0, 200];
+  if (!res.ok || (payload.code && !successCodes.includes(payload.code))) {
+    throw {
+      code: payload.code,
+      msg: payload.msg || payload.message,
+      data: payload.data
+    };
+  }
+  return payload;
+};
 
 // ---------------- 学生：培养方案 ----------------
 export const getMyStudyPlanApi = () => http.get<CourseSelection.StudyPlan | null>(`${P}/study-plans/me`);
@@ -15,8 +54,6 @@ export const saveMyStudyPlanApi = (params: CourseSelection.SavePlanReq) =>
 export const validateMyStudyPlanApi = (params: CourseSelection.SavePlanReq) =>
   http.post<CourseSelection.PlanValidationResult>(`${P}/study-plans/me/validate`, params);
 export const deletePlanItemApi = (planItemId: string) => http.delete(`${P}/study-plans/me/items/${planItemId}`);
-export const addPlanItemApi = (params: CourseSelection.AddPlanItemReq) =>
-  http.post<CourseSelection.AddPlanItemResult>(`${P}/study-plans/me/items`, params);
 
 // ---------------- 学生：课程检索 ----------------
 export const searchCoursesApi = (params: CourseSelection.SearchQuery) =>
@@ -26,8 +63,15 @@ export const getOfferingConflictsApi = (offeringId: string) =>
   http.get<CourseSelection.ConflictResult>(`${P}/offerings/${offeringId}/conflicts`, { student_id: "me" });
 
 // ---------------- 学生：选课操作 ----------------
-export const enrollApi = (params: CourseSelection.EnrollReq) =>
-  http.post<CourseSelection.EnrollResult>(`${P}/enrollments`, params);
+export const enrollApi = (params: CourseSelection.EnrollReq, options: { queueAsSuccess?: boolean } = {}) =>
+  requestCourseSelection<CourseSelection.EnrollResult | CourseSelection.QueuePosition>(
+    "/enrollments",
+    {
+      method: "POST",
+      body: JSON.stringify(params)
+    },
+    { successCodes: options.queueAsSuccess ? [0, 200, 30201] : undefined }
+  );
 export const dropEnrollmentApi = (enrollmentId: string) => http.delete(`${P}/enrollments/${enrollmentId}`);
 export const swapEnrollmentApi = (params: CourseSelection.SwapReq) =>
   http.post<CourseSelection.EnrollResult>(`${P}/enrollments/swap`, params);
@@ -37,17 +81,6 @@ export const getQueuePositionApi = (offeringId: string) =>
   http.get<CourseSelection.QueuePosition>(`${P}/enrollments/me/queue-position`, { offering_id: offeringId });
 export const getMyTimetableApi = (semester: string) =>
   http.get<CourseSelection.Timetable>(`${P}/enrollments/me/timetable`, { semester });
-export const createEnrollmentEventSource = (): EventSource => {
-  const base = (import.meta.env as any).VITE_API_URL || "";
-  return new EventSource(`${base}${P}/enrollments/me/events`, { withCredentials: true });
-};
-export const exportTimetablePdfApi = async (semester: string): Promise<Blob> => {
-  const base = (import.meta.env as any).VITE_API_URL || "";
-  const url = `${base}${P}/enrollments/me/timetable.pdf?semester=${encodeURIComponent(semester)}`;
-  const res = await fetch(url, { credentials: "include" });
-  if (!res.ok) throw new Error(`导出失败: ${res.status}`);
-  return res.blob();
-};
 
 // ---------------- 学生：AI 助手 ----------------
 export const recommendApi = (params: CourseSelection.RecommendReq) =>
@@ -96,7 +129,7 @@ export const sendAiMessageApi = (
             callbacks.onToolCall(parsed.name, parsed.arguments);
           } else if (eventType === "done") {
             const parsed: CourseSelection.AiDoneEvent = JSON.parse(data);
-            callbacks.onDone(parsed.message_id, parsed.offerings);
+            callbacks.onDone(parsed.message_id || parsed.conversation_id || conversationId, parsed.offerings || []);
           }
           eventType = "";
         }
@@ -110,13 +143,6 @@ export const getTeachingOfferingsApi = (semester: string) =>
   http.get<{ list: CourseSelection.TeachingOffering[] }>(`${P}/teaching/offerings`, { semester });
 export const getTeachingRosterApi = (offeringId: string, includeDropped = false) =>
   http.get<CourseSelection.Roster>(`${P}/teaching/offerings/${offeringId}/roster`, { include_dropped: includeDropped });
-export const exportRosterXlsxApi = async (offeringId: string): Promise<Blob> => {
-  const base = (import.meta.env as any).VITE_API_URL || "";
-  const url = `${base}${P}/teaching/offerings/${offeringId}/roster.xlsx`;
-  const res = await fetch(url, { credentials: "include" });
-  if (!res.ok) throw new Error(`导出失败: ${res.status}`);
-  return res.blob();
-};
 
 // ---------------- 教务：窗口 / 抽签 / 容量 / 限流 / 监控 ----------------
 export const setWindowApi = (params: CourseSelection.WindowReq) => http.post(`${P}/admin/windows`, params);
@@ -128,4 +154,6 @@ export const triggerLotteryApi = (params: CourseSelection.LotteryRunReq) =>
 export const getLotteryRunApi = (runId: string) => http.get<CourseSelection.LotteryRun>(`${P}/admin/lottery/runs/${runId}`);
 export const adjustCapacityApi = (offeringId: string, params: CourseSelection.CapacityAdjustReq) =>
   http.post(`${P}/admin/capacity/${offeringId}`, params);
+export const proxyEnrollApi = (params: CourseSelection.ProxyEnrollReq) =>
+  http.post<CourseSelection.EnrollResult>(`${P}/admin/proxy-enroll`, params);
 export const updateThrottleApi = (params: CourseSelection.ThrottleReq) => http.post(`${P}/admin/throttle`, params);

@@ -47,15 +47,6 @@ export namespace CourseSelection {
     valid: boolean;
     violations: Violation[];
   }
-  export interface AddPlanItemReq {
-    course_code: string;
-    category: ItemCategory;
-    expected_semester: string;
-    credit: number;
-  }
-  export interface AddPlanItemResult {
-    plan_item_id: string;
-  }
 
   // ---------------- 课程检索 / 开课 ----------------
   export interface TimeSlot {
@@ -151,14 +142,6 @@ export namespace CourseSelection {
     slots: TimetableSlot[];
   }
 
-  // ---------------- SSE 选课事件 ----------------
-  export type EnrollmentSSEEventData =
-    | { event: "heartbeat"; data: Record<string, never> }
-    | { event: "enrollment.confirmed"; data: { offering_id: string; enrollment_id: string } }
-    | { event: "queue.position_update"; data: { offering_id: string; position: number } }
-    | { event: "idle.warning"; data: { countdown_s: number } }
-    | { event: "session.expired"; data: Record<string, never> };
-
   // ---------------- AI 助手 ----------------
   export interface RecommendReq {
     goal: string;
@@ -196,8 +179,9 @@ export namespace CourseSelection {
     arguments: string;
   }
   export interface AiDoneEvent {
-    message_id: string;
-    offerings: string[];
+    conversation_id?: string;
+    message_id?: string;
+    offerings?: string[];
   }
   export interface ChatMessage {
     role: "user" | "assistant";
@@ -248,6 +232,11 @@ export namespace CourseSelection {
   }
   export interface CapacityAdjustReq {
     delta: number;
+    reason: string;
+  }
+  export interface ProxyEnrollReq {
+    student_id: string;
+    offering_id: string;
     reason: string;
   }
   export interface ThrottleReq {

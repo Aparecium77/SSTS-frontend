@@ -11,6 +11,7 @@
                 <el-radio-button label="preference">意愿初选</el-radio-button>
               </el-radio-group>
             </el-form-item>
+            <el-form-item label="退课 ID"><el-input v-model="dropId" placeholder="我的选课中的 enrollment_id" /></el-form-item>
             <el-form-item>
               <el-button type="primary" :loading="loading" @click="onEnroll">提交选课</el-button>
               <el-button type="danger" :loading="loading" @click="onDrop">退课</el-button>
@@ -56,18 +57,12 @@
 </template>
 
 <script setup lang="ts" name="courseEnrollment">
-import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
+import { computed, onUnmounted, reactive, ref } from "vue";
 import { ElMessage } from "element-plus";
 import CsPage from "../components/CsPage.vue";
 import { generateUUID } from "@/utils";
 import { CourseSelection } from "@/api/interface/courseSelection";
-import {
-  createEnrollmentEventSource,
-  dropEnrollmentApi,
-  enrollApi,
-  getQueuePositionApi,
-  swapEnrollmentApi
-} from "@/api/modules/courseSelection";
+import { dropEnrollmentApi, enrollApi, getQueuePositionApi, swapEnrollmentApi } from "@/api/modules/courseSelection";
 
 const USE_MOCK = false;
 const MAX_WAIT_RETRIES = 30; // 最多轮询 30 次
@@ -77,6 +72,7 @@ const queuePercent = computed(() => Math.max(0, Math.min(100, 100 - (queuePos.va
 
 const form = reactive<CourseSelection.EnrollReq>({ offering_id: "B-CS101-2026-1-01", stage: "add_drop" });
 const swap = reactive<CourseSelection.SwapReq>({ drop_id: "", add_offering_id: "" });
+const dropId = ref("");
 const loading = ref(false);
 
 // Waiting Room 状态
@@ -86,7 +82,6 @@ const retryAfterMs = ref(1000);
 const retryCount = ref(0);
 let pollTimer: ReturnType<typeof setTimeout> | null = null;
 let idempotencyKey = "";
-let eventSource: EventSource | null = null;
 
 interface Outcome {
   icon: "success" | "warning" | "error" | "info";
@@ -204,9 +199,13 @@ function cancelWaiting() {
 }
 
 async function onDrop() {
+  if (!dropId.value.trim()) {
+    ElMessage.warning("请填写我的选课中的退课 ID");
+    return;
+  }
   loading.value = true;
   try {
-    if (!USE_MOCK) await dropEnrollmentApi(form.offering_id);
+    if (!USE_MOCK) await dropEnrollmentApi(dropId.value.trim());
     outcome.value = { icon: "success", title: "退课成功（幂等）" };
   } finally {
     loading.value = false;
@@ -223,45 +222,8 @@ async function onSwap() {
   }
 }
 
-onMounted(() => {
-  if (USE_MOCK) return;
-  try {
-    eventSource = createEnrollmentEventSource();
-    eventSource.addEventListener("queue.position_update", (e: MessageEvent) => {
-      const data = JSON.parse(e.data) as { offering_id: string; position: number };
-      if (data.offering_id === form.offering_id && waiting.value) {
-        queuePos.value = data.position;
-        outcome.value = { icon: "warning", title: "排队中", sub: `当前排队位置 ${data.position}` };
-      }
-    });
-    eventSource.addEventListener("enrollment.confirmed", (e: MessageEvent) => {
-      const data = JSON.parse(e.data) as { offering_id: string; enrollment_id: string };
-      if (data.offering_id === form.offering_id) {
-        waiting.value = false;
-        if (pollTimer) {
-          clearTimeout(pollTimer);
-          pollTimer = null;
-        }
-        outcome.value = { icon: "success", title: "选课成功（SSE 推送）", sub: data.enrollment_id };
-      }
-    });
-    eventSource.addEventListener("idle.warning", (e: MessageEvent) => {
-      const data = JSON.parse(e.data) as { countdown_s: number };
-      ElMessage.warning(`长时间无操作，将在 ${data.countdown_s}s 后自动释放名额`);
-    });
-    eventSource.addEventListener("session.expired", () => {
-      ElMessage.error("选课会话超时，名额已释放");
-      waiting.value = false;
-      outcome.value = null;
-    });
-  } catch {
-    // SSE 连接失败不影响核心选课功能
-  }
-});
-
 onUnmounted(() => {
   if (pollTimer) clearTimeout(pollTimer);
-  eventSource?.close();
 });
 </script>
 

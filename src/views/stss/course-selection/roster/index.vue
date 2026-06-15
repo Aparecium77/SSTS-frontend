@@ -14,7 +14,7 @@
         </el-form-item>
         <el-form-item label="含已退课"><el-switch v-model="includeDropped" @change="loadRoster" /></el-form-item>
         <el-form-item>
-          <el-button :icon="Download" @click="onExport">导出 Excel</el-button>
+          <el-button :disabled="!roster?.students.length" @click="onExport">导出花名册</el-button>
         </el-form-item>
       </el-form>
     </el-card>
@@ -35,11 +35,9 @@
 
 <script setup lang="ts" name="teachingRoster">
 import { onMounted, ref } from "vue";
-import { Download } from "@element-plus/icons-vue";
 import CsPage from "../components/CsPage.vue";
 import { CourseSelection } from "@/api/interface/courseSelection";
-import { exportRosterXlsxApi, getTeachingOfferingsApi, getTeachingRosterApi } from "@/api/modules/courseSelection";
-import { useDownload } from "@/hooks/useDownload";
+import { getTeachingOfferingsApi, getTeachingRosterApi } from "@/api/modules/courseSelection";
 
 const USE_MOCK = false;
 
@@ -92,7 +90,16 @@ async function loadRoster() {
 }
 
 function onExport() {
-  useDownload(exportRosterXlsxApi, `花名册-${offeringId.value}`, offeringId.value, true, ".xlsx");
+  if (!roster.value) return;
+  const rows = [["学号", "姓名", "选课时间"], ...roster.value.students.map(s => [s.student_id, s.name, s.enrolled_at || ""])];
+  const csv = rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
+  const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${roster.value.course_code || roster.value.offering_id}-roster.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 onMounted(loadOfferings);
