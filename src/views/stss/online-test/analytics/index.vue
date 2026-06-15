@@ -9,14 +9,16 @@
     </template>
 
     <template v-else>
+      <!-- 返回按钮 -->
+      <div class="back-row">
+        <el-button plain size="small" @click="backToList">← 返回考试列表</el-button>
+      </div>
+
       <!-- 顶部信息栏 -->
       <header class="analytics-header">
-        <div class="header-left">
-          <el-button plain size="small" @click="backToList">← 返回考试列表</el-button>
-          <div>
-            <h2 class="exam-title">{{ review.examTitle }}</h2>
-            <p class="submit-time">提交时间：{{ formatTime(review.submitTime) }}</p>
-          </div>
+        <div>
+          <h2 class="exam-title">{{ review.examTitle }}</h2>
+          <p class="submit-time">提交时间：{{ formatTime(review.submitTime) }}</p>
         </div>
         <div v-if="review.scoreVisible" class="header-right">
           <div class="total-score-box">
@@ -89,8 +91,8 @@
 
             <p class="q-stem">{{ q.stem }}</p>
 
-            <!-- 选择题选项 -->
-            <div v-if="q.options.length" class="q-options">
+            <!-- 选择题选项：type=1 或者选项不是 True/False 格式判断为选择题 -->
+            <div v-if="q.type === 1 || (q.options.length && q.options[0] !== 'True')" class="q-options">
               <div
                 v-for="opt in q.options"
                 :key="opt"
@@ -118,7 +120,9 @@
             <!-- 答案区域 -->
             <div v-if="review.answerVisible" class="answer-toggle">
               <template v-if="!currentRevealed[q.questionId]">
-                <el-button size="small" text type="primary" @click="toggleReveal(q.questionId)"> 👁 查看答案 </el-button>
+                <div class="answer-bar">
+                  <el-button size="small" text type="primary" @click="toggleReveal(q.questionId)"> 👁 查看答案 </el-button>
+                </div>
               </template>
               <template v-else>
                 <div class="standard-answer">
@@ -146,8 +150,9 @@
 </template>
 
 <script setup lang="ts" name="examAnalytics">
-import { computed, reactive } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { getExamRecordReview } from "@/api/modules/onlineTest";
 import { reviewMap } from "./mock";
 import type { ExamAnalytics } from "./types";
 
@@ -155,10 +160,45 @@ const route = useRoute();
 const router = useRouter();
 
 /* ────── 路由参数 ────── */
-const examId = (route.query.examId as string) || "";
+const examIdParam = (route.query.examId as string) || "";
+const numericExamId = parseInt(examIdParam.replace("exam-00", ""), 10) || 1;
 
 /* ────── 数据 ────── */
-const review = computed<ExamAnalytics.ExamReview | null>(() => reviewMap[examId] ?? null);
+const review = ref<ExamAnalytics.ExamReview | null>(reviewMap[examIdParam] ?? null);
+
+const fetchReview = async () => {
+  try {
+    const res = await getExamRecordReview({ examId: numericExamId, studentId: 91002 });
+    review.value = {
+      recordId: res.recordId,
+      examId: res.examId,
+      examTitle: res.examTitle,
+      studentId: res.studentId,
+      submitTime: res.submitTime,
+      totalScore: res.totalScore,
+      scoreVisible: res.scoreVisible,
+      answerVisible: res.answerVisible,
+      fullScore: 100,
+      questions: res.questions.map(q => ({
+        questionId: q.questionId,
+        sortOrder: q.sortOrder,
+        type: q.type as number,
+        stem: q.stem,
+        options: q.options,
+        studentAnswer: q.studentAnswer,
+        score: q.score,
+        isCorrect: q.isCorrect === 1 || q.isCorrect === true,
+        standardAnswer: q.standardAnswer
+      }))
+    };
+  } catch {
+    console.warn("getExamRecordReview API 调用失败，使用 mock 数据");
+  }
+};
+
+onMounted(() => {
+  if (numericExamId) fetchReview();
+});
 
 /* ────── 答案显示控制（每题独立，默认隐藏） ────── */
 const currentRevealed = reactive<Record<number, boolean>>({});

@@ -87,12 +87,12 @@
 </template>
 
 <script setup lang="ts" name="examEntry">
-import { computed, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { storeToRefs } from "pinia";
 import { Search, Clock } from "@element-plus/icons-vue";
 import { useUserStore } from "@/stores/modules/user";
-import { mockExamList } from "./mock";
+import { listMyExamRecords } from "@/api/modules/onlineTest";
 import type { ExamEntry } from "./types";
 
 const router = useRouter();
@@ -101,6 +101,44 @@ const { userInfo } = storeToRefs(userStore);
 
 /* ────── 身份 ────── */
 const userRole = computed(() => userInfo.value.role);
+
+/* ────── 考试列表数据 ────── */
+// TODO: studentId 后续从登录信息或 base-info 组获取
+const studentId = 91002;
+const apiExamList = ref<ExamEntry.ExamItem[]>([]);
+const loading = ref(false);
+
+const fetchExamList = async () => {
+  loading.value = true;
+  try {
+    const res = await listMyExamRecords({ studentId });
+    apiExamList.value = res.records.map(r => {
+      // recordStatus: null=未参加, 0=考试中, 1=已完成
+      const status: ExamEntry.ExamStatus = r.recordStatus == null ? "upcoming" : r.recordStatus === 0 ? "ongoing" : "ended";
+      return {
+        examId: `exam-00${r.examId}`,
+        examName: r.examTitle,
+        paperId: `paper-00${r.examId}`,
+        paperName: r.examTitle,
+        startTime: r.validStartTime,
+        endTime: r.validEndTime,
+        durationMinutes: r.durationMins,
+        status,
+        totalScore: r.totalScore,
+        submitted: r.recordStatus === 1,
+        score: r.studentScore ?? undefined
+      };
+    });
+  } catch {
+    console.warn("考试列表 API 调用失败，使用 mock 数据");
+  } finally {
+    loading.value = false;
+  }
+};
+
+onMounted(() => {
+  fetchExamList();
+});
 
 /* ────── 筛选 & 搜索 ────── */
 const filterTabs: { key: ExamEntry.FilterTab; label: string }[] = [
@@ -117,17 +155,17 @@ const statusLabelMap: Record<ExamEntry.ExamStatus, string> = {
 };
 
 const tabCounts = computed(() => ({
-  all: mockExamList.length,
-  upcoming: mockExamList.filter(e => e.status === "upcoming").length,
-  ongoing: mockExamList.filter(e => e.status === "ongoing").length,
-  ended: mockExamList.filter(e => e.status === "ended").length
+  all: apiExamList.value.length,
+  upcoming: apiExamList.value.filter(e => e.status === "upcoming").length,
+  ongoing: apiExamList.value.filter(e => e.status === "ongoing").length,
+  ended: apiExamList.value.filter(e => e.status === "ended").length
 }));
 
 const activeFilter = ref<ExamEntry.FilterTab>("all");
 const searchKeyword = ref("");
 
 const filteredList = computed(() => {
-  let list = mockExamList;
+  let list = apiExamList.value;
   if (activeFilter.value !== "all") {
     list = list.filter(e => e.status === activeFilter.value);
   }

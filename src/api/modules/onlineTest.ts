@@ -1,6 +1,64 @@
 /**
- * 在线测试组的同学在这里封装在线测试相关接口。
- * 可继续补充题库管理、组卷管理、考试入口、阅卷发布、测试分析等请求方法。
- * 页面中不要直接写 axios，请统一从这个文件导出请求函数。
+ * 在线测试 — API 请求函数。
+ * 页面中不要直接写 axios/http，统一从这里导出。
  */
-export {};
+import http from "@/api";
+import type {
+  ApiRequestBody,
+  BeginExamReq,
+  ExamPaperStudentVO,
+  ExamRecordItem,
+  ExamRecordReviewVO,
+  GetExamReviewReq,
+  ListMyExamRecordsReq,
+  PageResult,
+  SaveExamProgressReq,
+  SubmitExamReq
+} from "@/api/interface/onlineTest";
+
+const ACTIONS_URL = "/api/ot/v1/actions";
+
+/** 通用 POST action 请求 */
+function postAction<T>(action: string, data: Record<string, unknown>): Promise<T> {
+  const body: ApiRequestBody = { action, data };
+  return http.post<{ data: T }>(ACTIONS_URL, body).then(res => res.data);
+}
+
+/* ────── 考试列表 ────── */
+
+export function listMyExamRecords(params: ListMyExamRecordsReq): Promise<PageResult<ExamRecordItem>> {
+  return postAction("list_my_exam_records", params as unknown as Record<string, unknown>);
+}
+
+/* ────── 开始考试 ────── */
+
+export function beginExam(params: BeginExamReq): Promise<ExamPaperStudentVO> {
+  return postAction("begin_an_exam", {
+    studentId: params.studentId,
+    id: params.examId
+  } as unknown as Record<string, unknown>);
+}
+
+/* ────── 保存答题进度 ────── */
+
+export function saveExamProgress(params: SaveExamProgressReq): Promise<{ message: string }> {
+  return postAction("save_exam_progress", params as unknown as Record<string, unknown>);
+}
+
+/* ────── 交卷 ────── */
+
+export function submitExamAnswers(params: SubmitExamReq): Promise<{ message: string; recordId: number }> {
+  return postAction("submit_exam_answers", params as unknown as Record<string, unknown>);
+}
+
+/* ────── 查看试卷基本信息 ────── */
+
+export function getExamPaperForStudent(examId: number): Promise<ExamPaperStudentVO> {
+  return postAction("get_exam_paper_for_student", { id: examId } as unknown as Record<string, unknown>);
+}
+
+/* ────── 成绩分析与作答回顾 ────── */
+
+export function getExamRecordReview(params: GetExamReviewReq): Promise<ExamRecordReviewVO> {
+  return postAction("get_exam_record_review", params as unknown as Record<string, unknown>);
+}

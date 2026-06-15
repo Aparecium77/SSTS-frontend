@@ -3,6 +3,8 @@ export namespace ExamAnalytics {
   export interface QuestionDetail {
     questionId: number;
     sortOrder: number;
+    /** 1=单选, 2=判断 */
+    type: number;
     stem: string;
     options: string[];
     /** 学生提交的答案 */

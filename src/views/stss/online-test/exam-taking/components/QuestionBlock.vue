@@ -9,13 +9,13 @@
         </p>
         <h3 class="question-title">{{ question.stem }}</h3>
       </div>
-      <el-tag :type="question.type === 0 ? 'primary' : 'success'">
-        {{ question.type === 0 ? "选择题" : "判断题" }}
+      <el-tag :type="question.type === 1 ? 'primary' : 'success'">
+        {{ question.type === 1 ? "选择题" : "判断题" }}
       </el-tag>
     </div>
 
     <Transition name="fade" mode="out-in">
-      <div v-if="question.type === 0" key="single" class="options-list">
+      <div v-if="question.type === 1" key="single" class="options-list">
         <el-radio-group :model-value="modelValue" class="single-option-group" @change="handleChange">
           <el-radio v-for="opt in question.options" :key="opt" :label="opt.charAt(0)" class="option-item">
             {{ opt }}
@@ -56,12 +56,12 @@ const emit = defineEmits<{
 }>();
 
 const difficultyMap: Record<ExamTaking.Difficulty, string> = {
-  0: "简单",
-  1: "中等",
-  2: "困难"
+  1: "简单",
+  2: "中等",
+  3: "困难"
 };
 
-const difficultyCssMap = ["easy", "medium", "hard"];
+const difficultyCssMap = ["", "easy", "medium", "hard"];
 const difficultyCss = computed(() => difficultyCssMap[props.question.difficulty]);
 const difficultyLabel = computed(() => difficultyMap[props.question.difficulty]);
 

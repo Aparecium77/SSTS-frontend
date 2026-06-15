@@ -30,9 +30,9 @@
                 :class="{
                   active: index === currentIndex,
                   answered: Boolean(answerMap[q.id]),
-                  'type-judge': q.type === 1
+                  'type-judge': q.type === 2
                 }"
-                :title="`第 ${index + 1} 题${q.type === 0 ? '（选择题）' : '（判断题）'}`"
+                :title="`第 ${index + 1} 题${q.type === 1 ? '（选择题）' : '（判断题）'}`"
                 @click="currentIndex = index"
               >
                 {{ index + 1 }}
@@ -119,19 +119,53 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { Clock } from "@element-plus/icons-vue";
-import { ElMessageBox, ElNotification } from "element-plus";
+import { ElMessage, ElMessageBox, ElNotification } from "element-plus";
 import QuestionBlock from "./components/QuestionBlock.vue";
 import SubmitResult from "./components/SubmitResult.vue";
+import { beginExam, saveExamProgress, submitExamAnswers } from "@/api/modules/onlineTest";
 import { examSessionMap, mockAllQuestionList, mockExamSession, mockStudentInfo, questionMap } from "./mock";
 import type { ExamTaking } from "./types";
 
 const route = useRoute();
 const router = useRouter();
 
-/* ────── 根据 examId 加载对应试卷 ────── */
-const examId = (route.query.examId as string) || mockExamSession.examId;
-const examSession = examSessionMap[examId] ?? mockExamSession;
-const allQuestions: ExamTaking.QuestionItem[] = questionMap[examId] ?? mockAllQuestionList;
+/* ────── 根据 examId 加载试卷 ────── */
+const examIdParam = (route.query.examId as string) || mockExamSession.examId;
+// 从 "exam-001" 或纯数字格式提取数字 ID
+const numericExamId = parseInt(examIdParam.replace(/^exam-0*/, ""), 10) || 1;
+// 同时尝试两种 mock key 格式
+const mockKey = examIdParam.startsWith("exam-") ? examIdParam : `exam-00${examIdParam}`;
+
+const examSession = ref(examSessionMap[mockKey] ?? examSessionMap[examIdParam] ?? mockExamSession);
+const allQuestions = ref<ExamTaking.QuestionItem[]>(questionMap[mockKey] ?? questionMap[examIdParam] ?? mockAllQuestionList);
+
+const fetchPaper = async () => {
+  try {
+    const res = await beginExam({ studentId: 91002, examId: numericExamId });
+    examSession.value = {
+      examId: `exam-00${res.examId}`,
+      paperId: `paper-00${res.examId}`,
+      startedAt: new Date().toISOString(),
+      examName: res.title,
+      durationMinutes: res.durationMins,
+      totalQuestions: res.questions.length
+    };
+    allQuestions.value = res.questions.map(q => ({
+      id: q.questionId,
+      type: q.type as ExamTaking.QuestionType,
+      stem: q.stem,
+      score: q.score,
+      difficulty: 1 as ExamTaking.Difficulty,
+      options: q.options
+    }));
+  } catch {
+    console.warn("beginExam API 调用失败，使用 mock 数据");
+  }
+};
+
+onMounted(() => {
+  fetchPaper();
+});
 
 /* ────── 三视图状态 ────── */
 const submitState = ref<ExamTaking.SubmitState>("answering");
@@ -141,7 +175,7 @@ const lastSavedAt = ref("尚未保存");
 const currentIndex = ref(0);
 const answerMap = reactive<Record<number, string>>({});
 
-const currentQuestion = computed(() => allQuestions[currentIndex.value]);
+const currentQuestion = computed(() => allQuestions.value[currentIndex.value]);
 
 const currentAnswer = computed<string>({
   get: () => answerMap[currentQuestion.value.id] ?? "",
@@ -150,10 +184,10 @@ const currentAnswer = computed<string>({
   }
 });
 
-const answeredCount = computed(() => allQuestions.filter(q => Boolean(answerMap[q.id])).length);
+const answeredCount = computed(() => allQuestions.value.filter(q => Boolean(answerMap[q.id])).length);
 
 /* ────── 倒计时 ────── */
-const remainingSeconds = ref(examSession.durationMinutes * 60);
+const remainingSeconds = ref(examSession.value.durationMinutes * 60);
 let timerHandle: ReturnType<typeof setInterval> | null = null;
 
 const formattedTime = computed(() => {
@@ -193,18 +227,24 @@ const autoSubmit = () => {
 };
 
 /* ────── 提交流程 ────── */
-const performSubmit = () => {
+const performSubmit = async () => {
   stopTimer();
-  handleSaveDraft();
   submitState.value = "submitting";
-  // 模拟提交，1.5 秒后显示成功
-  setTimeout(() => {
+  try {
+    await submitExamAnswers({
+      studentId: 91002,
+      examId: numericExamId,
+      answers: buildAnswers()
+    });
     submitState.value = "success";
-  }, 1500);
+  } catch {
+    ElMessage.error("交卷失败，请重试");
+    submitState.value = "answering";
+  }
 };
 
 const handleSubmitConfirm = () => {
-  const unanswered = allQuestions.length - answeredCount.value;
+  const unanswered = allQuestions.value.length - answeredCount.value;
   const timeHint = `<span style="color:#dc2626;font-weight:700;">${formattedTime.value}</span>`;
   const msg =
     unanswered > 0
@@ -224,9 +264,22 @@ const handleSubmitConfirm = () => {
     });
 };
 
+/* ────── 构建答题数据 ────── */
+const buildAnswers = () =>
+  allQuestions.value.filter(q => Boolean(answerMap[q.id])).map(q => ({ questionId: q.id, studentAnswer: answerMap[q.id] }));
+
 /* ────── 保存 ────── */
-const handleSaveDraft = () => {
-  lastSavedAt.value = new Date().toLocaleTimeString("zh-CN", { hour12: false });
+const handleSaveDraft = async () => {
+  try {
+    await saveExamProgress({
+      studentId: 91002,
+      examId: numericExamId,
+      answers: buildAnswers()
+    });
+    lastSavedAt.value = new Date().toLocaleTimeString("zh-CN", { hour12: false });
+  } catch {
+    ElMessage.error("保存失败，请重试");
+  }
 };
 
 /* ────── 结果页操作 ────── */
