@@ -139,18 +139,43 @@ const allQuestions = ref<ExamTaking.QuestionItem[]>(
   questionMap[mockKey.value] ?? questionMap[examIdParam.value] ?? mockAllQuestionList
 );
 
+const currentRecordId = ref<number>(0);
+let wsConnection: WebSocket | null = null;
+
+const connectProctor = (wsEndpoint: string, studentId: number, recordId: number) => {
+  try {
+    const url = `${wsEndpoint}?studentId=${studentId}&recordId=${recordId}`;
+    wsConnection = new WebSocket(url);
+    wsConnection.onopen = () => console.log("[Proctor] WebSocket 已连接");
+    wsConnection.onmessage = event => console.log("[Proctor]", event.data);
+    wsConnection.onerror = () => console.warn("[Proctor] WebSocket 连接异常");
+    wsConnection.onclose = () => console.log("[Proctor] WebSocket 已断开");
+  } catch {
+    console.warn("[Proctor] WebSocket 连接失败");
+  }
+};
+
+const disconnectProctor = () => {
+  if (wsConnection) {
+    wsConnection.close();
+    wsConnection = null;
+  }
+};
+
 const fetchPaper = async () => {
+  disconnectProctor();
   try {
     const res = await beginExam({ studentId: 91002, examId: numericExamId.value });
+    currentRecordId.value = res.recordId;
     examSession.value = {
-      examId: `exam-00${res.examId}`,
-      paperId: `paper-00${res.examId}`,
+      examId: `exam-00${res.paper.examId}`,
+      paperId: `paper-00${res.paper.examId}`,
       startedAt: new Date().toISOString(),
-      examName: res.title,
-      durationMinutes: res.durationMins,
-      totalQuestions: res.questions.length
+      examName: res.paper.title,
+      durationMinutes: res.paper.durationMins,
+      totalQuestions: res.paper.questions.length
     };
-    allQuestions.value = res.questions.map(q => ({
+    allQuestions.value = res.paper.questions.map(q => ({
       id: q.questionId,
       type: q.type as ExamTaking.QuestionType,
       stem: q.stem,
@@ -158,6 +183,13 @@ const fetchPaper = async () => {
       difficulty: 1 as ExamTaking.Difficulty,
       options: q.options
     }));
+    // 用真实开始时间算剩余倒计时
+    remainingSeconds.value = calcRemainingSeconds(res.paper.durationMins, res.startedAt);
+    startTimer();
+    // 建立 WebSocket 考试会话
+    if (res.wsEndpoint) {
+      connectProctor(res.wsEndpoint, 91002, res.recordId);
+    }
   } catch {
     console.warn("beginExam API 调用失败，使用 mock 数据");
   }
@@ -167,6 +199,7 @@ const fetchPaper = async () => {
 watch(
   () => route.query.examId,
   () => {
+    stopTimer();
     submitState.value = "answering";
     currentIndex.value = 0;
     Object.keys(answerMap).forEach(k => delete answerMap[Number(k)]);
@@ -176,6 +209,11 @@ watch(
 
 onMounted(() => {
   fetchPaper();
+});
+
+onBeforeUnmount(() => {
+  disconnectProctor();
+  stopTimer();
 });
 
 /* ────── 三视图状态 ────── */
@@ -198,6 +236,11 @@ const currentAnswer = computed<string>({
 const answeredCount = computed(() => allQuestions.value.filter(q => Boolean(answerMap[q.id])).length);
 
 /* ────── 倒计时 ────── */
+const calcRemainingSeconds = (durationMins: number, startedAt?: string) => {
+  if (!startedAt) return durationMins * 60;
+  const elapsed = Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000);
+  return Math.max(0, durationMins * 60 - elapsed);
+};
 const remainingSeconds = ref(examSession.value.durationMinutes * 60);
 let timerHandle: ReturnType<typeof setInterval> | null = null;
 

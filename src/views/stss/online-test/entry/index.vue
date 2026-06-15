@@ -114,7 +114,7 @@ const fetchExamList = async () => {
     const res = await listMyExamRecords({ studentId });
     apiExamList.value = res.records.map(r => {
       // recordStatus: null=未参加, 0=考试中, 1=已完成
-      const status: ExamEntry.ExamStatus = r.recordStatus == null ? "upcoming" : r.recordStatus === 0 ? "ongoing" : "ended";
+      const status: ExamEntry.ExamStatus = r.recordStatus == null ? "ongoing" : r.recordStatus === 0 ? "ongoing" : "ended";
       return {
         examId: `exam-00${r.examId}`,
         examName: r.examTitle,

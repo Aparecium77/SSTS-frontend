@@ -6,6 +6,7 @@ import http from "@/api";
 import type {
   ApiRequestBody,
   BeginExamReq,
+  BeginExamResponse,
   ExamPaperStudentVO,
   ExamRecordItem,
   ExamRecordReviewVO,
@@ -32,7 +33,7 @@ export function listMyExamRecords(params: ListMyExamRecordsReq): Promise<PageRes
 
 /* ────── 开始考试 ────── */
 
-export function beginExam(params: BeginExamReq): Promise<ExamPaperStudentVO> {
+export function beginExam(params: BeginExamReq): Promise<BeginExamResponse> {
   return postAction("begin_an_exam", {
     studentId: params.studentId,
     id: params.examId
