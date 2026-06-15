@@ -91,8 +91,8 @@
 
             <p class="q-stem">{{ q.stem }}</p>
 
-            <!-- 选择题选项：type=1 或者选项不是 True/False 格式判断为选择题 -->
-            <div v-if="q.type === 1 || (q.options.length && q.options[0] !== 'True')" class="q-options">
+            <!-- 选择题选项 -->
+            <div v-if="q.type === 1" class="q-options">
               <div
                 v-for="opt in q.options"
                 :key="opt"
@@ -182,7 +182,7 @@ const fetchReview = async () => {
       questions: res.questions.map(q => ({
         questionId: q.questionId,
         sortOrder: q.sortOrder,
-        type: q.type as number,
+        type: q.type,
         stem: q.stem,
         options: q.options,
         studentAnswer: q.studentAnswer,

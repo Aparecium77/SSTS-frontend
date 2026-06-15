@@ -93,6 +93,8 @@ export interface SubmitExamReq {
 export interface QuestionReviewDetail {
   questionId: number;
   sortOrder: number;
+  /** 1-单选, 2-判断 */
+  type: number;
   stem: string;
   options: string[];
   studentAnswer: string | null;
