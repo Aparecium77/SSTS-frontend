@@ -100,7 +100,7 @@ const userStore = useUserStore();
 const { userInfo } = storeToRefs(userStore);
 
 /* ────── 身份 ────── */
-const userRole = computed(() => userInfo.value.role);
+const userRole = computed(() => userInfo.value?.role || "student");
 
 /* ────── 考试列表数据 ────── */
 // TODO: studentId 后续从登录信息或 base-info 组获取
@@ -108,27 +108,34 @@ const studentId = 91002;
 const apiExamList = ref<ExamEntry.ExamItem[]>([]);
 const loading = ref(false);
 
+/** 根据 recordStatus + 时间窗口计算考试在前端的展示状态 */
+function resolveStatus(recordStatus: number | null, validStartTime: string, validEndTime: string): ExamEntry.ExamStatus {
+  if (recordStatus != null) {
+    return recordStatus === 0 ? "ongoing" : "ended";
+  }
+  const now = Date.now();
+  if (new Date(validStartTime).getTime() > now) return "upcoming";
+  if (new Date(validEndTime).getTime() < now) return "ended";
+  return "ongoing";
+}
+
 const fetchExamList = async () => {
   loading.value = true;
   try {
     const res = await listMyExamRecords({ studentId });
-    apiExamList.value = res.records.map(r => {
-      // recordStatus: null=未参加, 0=考试中, 1=已完成
-      const status: ExamEntry.ExamStatus = r.recordStatus == null ? "upcoming" : r.recordStatus === 0 ? "ongoing" : "ended";
-      return {
-        examId: `exam-00${r.examId}`,
-        examName: r.examTitle,
-        paperId: `paper-00${r.examId}`,
-        paperName: r.examTitle,
-        startTime: r.validStartTime,
-        endTime: r.validEndTime,
-        durationMinutes: r.durationMins,
-        status,
-        totalScore: r.totalScore,
-        submitted: r.recordStatus === 1,
-        score: r.studentScore ?? undefined
-      };
-    });
+    apiExamList.value = res.records.map(r => ({
+      examId: `exam-00${r.examId}`,
+      examName: r.examTitle,
+      paperId: `paper-00${r.examId}`,
+      paperName: r.examTitle,
+      startTime: r.validStartTime,
+      endTime: r.validEndTime,
+      durationMinutes: r.durationMins,
+      status: resolveStatus(r.recordStatus, r.validStartTime, r.validEndTime),
+      totalScore: r.totalScore,
+      submitted: r.recordStatus === 1,
+      score: r.studentScore ?? undefined
+    }));
   } catch {
     console.warn("考试列表 API 调用失败，使用 mock 数据");
   } finally {

@@ -94,7 +94,7 @@ import { Clock } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox, ElNotification } from "element-plus";
 import QuestionBlock from "./components/QuestionBlock.vue";
 import SubmitResult from "./components/SubmitResult.vue";
-import { beginExam, saveExamProgress } from "@/api/modules/onlineTest";
+import { beginExam } from "@/api/modules/onlineTest";
 import { examSessionMap, mockAllQuestionList, mockExamSession, mockStudentInfo, questionMap } from "./mock";
 import type { ExamTaking } from "./types";
 
@@ -129,20 +129,37 @@ const connectProctor = (wsEndpoint: string, sId: number, rId: number) => {
     wsConnection.onmessage = event => {
       try {
         const msg = JSON.parse(event.data);
-        if (msg.type === "status" && typeof msg.remainingTime === "number") {
-          remainingSeconds.value = Math.max(0, Math.floor(msg.remainingTime));
+        if (msg.type === "status") {
+          if (typeof msg.remainingSeconds === "number") {
+            remainingSeconds.value = Math.max(0, Math.floor(msg.remainingSeconds));
+            startCountdown();
+          }
+          if (typeof msg.answeredCount === "number") {
+            serverAnsweredCount.value = msg.answeredCount;
+          }
+        }
+        if (msg.type === "ack" && msg.status === "saved") {
+          lastSavedAt.value = new Date().toLocaleTimeString("zh-CN", { hour12: false });
         }
         if (msg.type === "exam_expired") {
+          stopCountdown();
           disconnectProctor();
           submitState.value = "success";
           ElNotification({ title: "时间到", message: "考试已自动提交", type: "warning", duration: 5000 });
         }
         if (msg.type === "submitted") {
+          stopCountdown();
           disconnectProctor();
           submitState.value = "success";
         }
+        if (msg.type === "error") {
+          ElMessage.error(msg.status || "考试服务异常");
+        }
+        if (msg.type === "ping") {
+          wsConnection?.send(JSON.stringify({ type: "pong" }));
+        }
       } catch {
-        /* raw */
+        /* raw JSON 解析失败，忽略 */
       }
     };
     wsConnection.onerror = () => console.warn("[Proctor] error");
@@ -153,18 +170,20 @@ const connectProctor = (wsEndpoint: string, sId: number, rId: number) => {
 };
 
 const fetchPaper = async () => {
+  stopCountdown();
   disconnectProctor();
   try {
     const res = await beginExam({ studentId: 91002, examId: numericExamId.value });
+    const paper = res.paper;
     examSession.value = {
-      examId: `exam-00${res.examId}`,
-      paperId: `paper-00${res.examId}`,
+      examId: `exam-00${paper.examId}`,
+      paperId: `paper-00${paper.examId}`,
       startedAt: new Date().toISOString(),
-      examName: res.title,
-      durationMinutes: res.durationMins,
-      totalQuestions: res.questions.length
+      examName: paper.title,
+      durationMinutes: paper.durationMins,
+      totalQuestions: paper.questions.length
     };
-    allQuestions.value = res.questions.map(q => ({
+    allQuestions.value = paper.questions.map(q => ({
       id: q.questionId,
       type: q.type as ExamTaking.QuestionType,
       stem: q.stem,
@@ -172,8 +191,7 @@ const fetchPaper = async () => {
       difficulty: 1 as ExamTaking.Difficulty,
       options: q.options
     }));
-    // 初始倒计时（Go 连上后会通过 status 消息覆盖）
-    remainingSeconds.value = res.durationMins * 60;
+    // 等 Go proctor 连上后通过 status 消息设置权威时间并启动倒计时
     if (res.wsEndpoint) {
       connectProctor(res.wsEndpoint, 91002, res.recordId);
     }
@@ -203,6 +221,7 @@ const submitState = ref<ExamTaking.SubmitState>("answering");
 const lastSavedAt = ref("尚未保存");
 const currentIndex = ref(0);
 const answerMap = reactive<Record<number, string>>({});
+const serverAnsweredCount = ref(0);
 
 const currentQuestion = computed(() => allQuestions.value[currentIndex.value]);
 
@@ -216,8 +235,28 @@ const currentAnswer = computed<string>({
 const answeredCount = computed(() => allQuestions.value.filter(q => Boolean(answerMap[q.id])).length);
 
 /* ────── 倒计时 ────── */
-// 初始值由 fetchPaper 设置，后续由 Go proctor 的 status 消息驱动
+// 服务器权威值由 Go status 消息推送；前端本地每秒递减，收到 status 时校准
 const remainingSeconds = ref(0);
+let countdownTimer: ReturnType<typeof setInterval> | null = null;
+
+const startCountdown = () => {
+  if (countdownTimer) return;
+  countdownTimer = setInterval(() => {
+    if (remainingSeconds.value > 0) {
+      remainingSeconds.value--;
+    }
+    if (remainingSeconds.value <= 0) {
+      stopCountdown();
+    }
+  }, 1000);
+};
+
+const stopCountdown = () => {
+  if (countdownTimer) {
+    clearInterval(countdownTimer);
+    countdownTimer = null;
+  }
+};
 
 const formattedTime = computed(() => {
   const mm = Math.floor(remainingSeconds.value / 60);
@@ -256,19 +295,35 @@ const handleSubmitConfirm = () => {
     });
 };
 
-/* ────── 答题数据 ────── */
-const buildAnswers = () =>
-  allQuestions.value.filter(q => Boolean(answerMap[q.id])).map(q => ({ questionId: q.id, studentAnswer: answerMap[q.id] }));
-
-/* ────── 保存 ────── */
-const handleSaveDraft = async () => {
-  try {
-    await saveExamProgress({ studentId: 91002, examId: numericExamId.value, answers: buildAnswers() });
-    lastSavedAt.value = new Date().toLocaleTimeString("zh-CN", { hour12: false });
-  } catch {
-    ElMessage.error("保存失败，请重试");
+/* ────── 保存（走 Go WebSocket） ────── */
+const sendSaveAnswer = (questionId: number, answer: string): boolean => {
+  if (!wsConnection || wsConnection.readyState !== WebSocket.OPEN) {
+    ElMessage.error("考试连接已断开，无法保存");
+    return false;
   }
+  wsConnection.send(JSON.stringify({ type: "save_answer", questionId, answer }));
+  return true;
 };
+
+const handleSaveDraft = () => {
+  const q = currentQuestion.value;
+  const ans = answerMap[q.id];
+  if (!ans) {
+    ElMessage.warning("当前题目未作答");
+    return;
+  }
+  sendSaveAnswer(q.id, ans);
+};
+
+/* ────── 自动保存：切换题目时保存上一题 ────── */
+watch(currentIndex, (_, oldIdx) => {
+  if (oldIdx == null || oldIdx < 0 || oldIdx >= allQuestions.value.length) return;
+  const prevQ = allQuestions.value[oldIdx];
+  const prevAns = answerMap[prevQ.id];
+  if (prevAns) {
+    sendSaveAnswer(prevQ.id, prevAns);
+  }
+});
 
 /* ────── 结果页操作 ────── */
 const goHome = () => {
@@ -277,6 +332,7 @@ const goHome = () => {
 
 /* ────── 生命周期 ────── */
 onBeforeUnmount(() => {
+  stopCountdown();
   disconnectProctor();
 });
 </script>
