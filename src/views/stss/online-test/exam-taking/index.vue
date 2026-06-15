@@ -1,8 +1,6 @@
 <template>
   <div class="exam-taking-page">
-    <!-- ────── 视图 1：答题中 ────── -->
     <template v-if="submitState === 'answering'">
-      <!-- 顶部栏: 考试名称 + 剩余时间 + 交卷 -->
       <header class="exam-header">
         <h2 class="exam-name">{{ examSession.examName }}</h2>
         <div class="header-right">
@@ -14,7 +12,6 @@
         </div>
       </header>
 
-      <!-- 主体区域 -->
       <div class="exam-body">
         <aside class="exam-sidebar">
           <div class="sidebar-card">
@@ -27,11 +24,7 @@
                 v-for="(q, index) in allQuestions"
                 :key="q.id"
                 class="nav-item"
-                :class="{
-                  active: index === currentIndex,
-                  answered: Boolean(answerMap[q.id]),
-                  'type-judge': q.type === 2
-                }"
+                :class="{ active: index === currentIndex, answered: Boolean(answerMap[q.id]), 'type-judge': q.type === 2 }"
                 :title="`第 ${index + 1} 题${q.type === 1 ? '（选择题）' : '（判断题）'}`"
                 @click="currentIndex = index"
               >
@@ -44,24 +37,20 @@
             <h3>个人信息</h3>
             <div class="info-list">
               <div class="info-row">
-                <span class="info-label">姓名</span>
-                <span class="info-val">{{ mockStudentInfo.studentName }}</span>
+                <span class="info-label">姓名</span><span class="info-val">{{ mockStudentInfo.studentName }}</span>
               </div>
               <div class="info-row">
-                <span class="info-label">学号</span>
-                <span class="info-val">{{ mockStudentInfo.studentId }}</span>
+                <span class="info-label">学号</span><span class="info-val">{{ mockStudentInfo.studentId }}</span>
               </div>
               <div class="info-row">
-                <span class="info-label">班级</span>
-                <span class="info-val">{{ mockStudentInfo.className }}</span>
+                <span class="info-label">班级</span><span class="info-val">{{ mockStudentInfo.className }}</span>
               </div>
               <div class="info-row">
-                <span class="info-label">试卷编号</span>
-                <span class="info-val">{{ examSession.paperId }}</span>
+                <span class="info-label">试卷编号</span><span class="info-val">{{ examSession.paperId }}</span>
               </div>
               <div class="info-row">
                 <span class="info-label">已作答</span>
-                <span class="info-val">{{ answeredCount }} / {{ allQuestions.length }} 题</span>
+                <span class="info-val">{{ answeredCount }}/{{ allQuestions.length }}</span>
               </div>
             </div>
           </div>
@@ -69,27 +58,12 @@
           <div class="sidebar-card">
             <h3>图例说明</h3>
             <div class="legend-list">
-              <div class="legend-item">
-                <span class="legend-dot current"></span>
-                <span>当前题目</span>
-              </div>
-              <div class="legend-item">
-                <span class="legend-dot answered"></span>
-                <span>已作答</span>
-              </div>
-              <div class="legend-item">
-                <span class="legend-dot unanswered"></span>
-                <span>未作答</span>
-              </div>
+              <div class="legend-item"><span class="legend-dot current"></span><span>当前题目</span></div>
+              <div class="legend-item"><span class="legend-dot answered"></span><span>已作答</span></div>
+              <div class="legend-item"><span class="legend-dot unanswered"></span><span>未作答</span></div>
               <div class="legend-divider"></div>
-              <div class="legend-item">
-                <span class="legend-shape single"></span>
-                <span>选择题</span>
-              </div>
-              <div class="legend-item">
-                <span class="legend-shape judge"></span>
-                <span>判断题</span>
-              </div>
+              <div class="legend-item"><span class="legend-shape single"></span><span>选择题</span></div>
+              <div class="legend-item"><span class="legend-shape judge"></span><span>判断题</span></div>
             </div>
           </div>
         </aside>
@@ -98,7 +72,6 @@
           <div class="question-area">
             <QuestionBlock v-model="currentAnswer" :question="currentQuestion" />
           </div>
-
           <footer class="exam-footer">
             <el-button size="large" :disabled="currentIndex === 0" @click="currentIndex--"> 上一题 </el-button>
             <el-button size="large" plain @click="handleSaveDraft"> 保存 </el-button>
@@ -110,7 +83,6 @@
       </div>
     </template>
 
-    <!-- ────── 视图 2/3：提交中 / 提交成功 ────── -->
     <SubmitResult v-else :submit-state="submitState" @go-home="goHome" />
   </div>
 </template>
@@ -122,7 +94,7 @@ import { Clock } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox, ElNotification } from "element-plus";
 import QuestionBlock from "./components/QuestionBlock.vue";
 import SubmitResult from "./components/SubmitResult.vue";
-import { beginExam, saveExamProgress, submitExamAnswers } from "@/api/modules/onlineTest";
+import { beginExam, saveExamProgress } from "@/api/modules/onlineTest";
 import { examSessionMap, mockAllQuestionList, mockExamSession, mockStudentInfo, questionMap } from "./mock";
 import type { ExamTaking } from "./types";
 
@@ -139,7 +111,49 @@ const allQuestions = ref<ExamTaking.QuestionItem[]>(
   questionMap[mockKey.value] ?? questionMap[examIdParam.value] ?? mockAllQuestionList
 );
 
+/* ────── WebSocket（Go proctor） ────── */
+let wsConnection: WebSocket | null = null;
+
+const disconnectProctor = () => {
+  if (wsConnection) {
+    wsConnection.close();
+    wsConnection = null;
+  }
+};
+
+const connectProctor = (wsEndpoint: string, sId: number, rId: number) => {
+  try {
+    const url = `${wsEndpoint}?studentId=${sId}&recordId=${rId}`;
+    wsConnection = new WebSocket(url);
+    wsConnection.onopen = () => console.log("[Proctor] connected");
+    wsConnection.onmessage = event => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === "status" && typeof msg.remainingTime === "number") {
+          remainingSeconds.value = Math.max(0, Math.floor(msg.remainingTime));
+        }
+        if (msg.type === "exam_expired") {
+          disconnectProctor();
+          submitState.value = "success";
+          ElNotification({ title: "时间到", message: "考试已自动提交", type: "warning", duration: 5000 });
+        }
+        if (msg.type === "submitted") {
+          disconnectProctor();
+          submitState.value = "success";
+        }
+      } catch {
+        /* raw */
+      }
+    };
+    wsConnection.onerror = () => console.warn("[Proctor] error");
+    wsConnection.onclose = () => console.log("[Proctor] closed");
+  } catch {
+    console.warn("[Proctor] connect failed");
+  }
+};
+
 const fetchPaper = async () => {
+  disconnectProctor();
   try {
     const res = await beginExam({ studentId: 91002, examId: numericExamId.value });
     examSession.value = {
@@ -158,12 +172,16 @@ const fetchPaper = async () => {
       difficulty: 1 as ExamTaking.Difficulty,
       options: q.options
     }));
+    // 初始倒计时（Go 连上后会通过 status 消息覆盖）
+    remainingSeconds.value = res.durationMins * 60;
+    if (res.wsEndpoint) {
+      connectProctor(res.wsEndpoint, 91002, res.recordId);
+    }
   } catch {
     console.warn("beginExam API 调用失败，使用 mock 数据");
   }
 };
 
-// 考试 ID 变化时重置状态（keep-alive 场景下 onMounted 不会重新触发）
 watch(
   () => route.query.examId,
   () => {
@@ -198,8 +216,8 @@ const currentAnswer = computed<string>({
 const answeredCount = computed(() => allQuestions.value.filter(q => Boolean(answerMap[q.id])).length);
 
 /* ────── 倒计时 ────── */
-const remainingSeconds = ref(examSession.value.durationMinutes * 60);
-let timerHandle: ReturnType<typeof setInterval> | null = null;
+// 初始值由 fetchPaper 设置，后续由 Go proctor 的 status 消息驱动
+const remainingSeconds = ref(0);
 
 const formattedTime = computed(() => {
   const mm = Math.floor(remainingSeconds.value / 60);
@@ -207,51 +225,14 @@ const formattedTime = computed(() => {
   return `${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}`;
 });
 
-const startTimer = () => {
-  if (timerHandle) return;
-  timerHandle = setInterval(() => {
-    if (remainingSeconds.value <= 1) {
-      stopTimer();
-      remainingSeconds.value = 0;
-      autoSubmit();
-    } else {
-      remainingSeconds.value -= 1;
-    }
-  }, 1000);
-};
-
-const stopTimer = () => {
-  if (timerHandle) {
-    clearInterval(timerHandle);
-    timerHandle = null;
+/* ────── 提交流程（走 Go WebSocket） ────── */
+const performSubmit = () => {
+  if (!wsConnection || wsConnection.readyState !== WebSocket.OPEN) {
+    ElMessage.error("考试连接已断开，无法交卷");
+    return;
   }
-};
-
-const autoSubmit = () => {
-  performSubmit();
-  ElNotification({
-    title: "时间到",
-    message: "考试时间已到，系统已自动提交试卷。",
-    type: "warning",
-    duration: 5000
-  });
-};
-
-/* ────── 提交流程 ────── */
-const performSubmit = async () => {
-  stopTimer();
   submitState.value = "submitting";
-  try {
-    await submitExamAnswers({
-      studentId: 91002,
-      examId: numericExamId.value,
-      answers: buildAnswers()
-    });
-    submitState.value = "success";
-  } catch {
-    ElMessage.error("交卷失败，请重试");
-    submitState.value = "answering";
-  }
+  wsConnection.send(JSON.stringify({ type: "submit" }));
 };
 
 const handleSubmitConfirm = () => {
@@ -271,22 +252,18 @@ const handleSubmitConfirm = () => {
       performSubmit();
     })
     .catch(() => {
-      // 用户取消
+      /* 用户取消 */
     });
 };
 
-/* ────── 构建答题数据 ────── */
+/* ────── 答题数据 ────── */
 const buildAnswers = () =>
   allQuestions.value.filter(q => Boolean(answerMap[q.id])).map(q => ({ questionId: q.id, studentAnswer: answerMap[q.id] }));
 
 /* ────── 保存 ────── */
 const handleSaveDraft = async () => {
   try {
-    await saveExamProgress({
-      studentId: 91002,
-      examId: numericExamId.value,
-      answers: buildAnswers()
-    });
+    await saveExamProgress({ studentId: 91002, examId: numericExamId.value, answers: buildAnswers() });
     lastSavedAt.value = new Date().toLocaleTimeString("zh-CN", { hour12: false });
   } catch {
     ElMessage.error("保存失败，请重试");
@@ -299,20 +276,12 @@ const goHome = () => {
 };
 
 /* ────── 生命周期 ────── */
-onMounted(() => {
-  startTimer();
-});
-
 onBeforeUnmount(() => {
-  stopTimer();
+  disconnectProctor();
 });
 </script>
 
 <style lang="scss">
-/*
- * 打通父级 flex 链路，让 exam-taking-page 自适应可用高度。
- * 避免 100vh 硬编码导致不同布局（tabs/footer 显隐）下出现滚动条。
- */
 .el-main:has(.exam-taking-page) {
   display: flex;
   flex: 1;
@@ -320,8 +289,6 @@ onBeforeUnmount(() => {
   min-height: 0;
   overflow: hidden;
 }
-
-/* LayoutClassic：el-main 的父级是 .classic-main */
 .classic-main:has(.exam-taking-page) {
   flex: 1;
   min-height: 0;
