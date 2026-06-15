@@ -116,7 +116,7 @@
 </template>
 
 <script setup lang="ts" name="examTaking">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { Clock } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox, ElNotification } from "element-plus";
@@ -130,18 +130,18 @@ const route = useRoute();
 const router = useRouter();
 
 /* ────── 根据 examId 加载试卷 ────── */
-const examIdParam = (route.query.examId as string) || mockExamSession.examId;
-// 从 "exam-001" 或纯数字格式提取数字 ID
-const numericExamId = parseInt(examIdParam.replace(/^exam-0*/, ""), 10) || 1;
-// 同时尝试两种 mock key 格式
-const mockKey = examIdParam.startsWith("exam-") ? examIdParam : `exam-00${examIdParam}`;
+const examIdParam = computed(() => (route.query.examId as string) || mockExamSession.examId);
+const numericExamId = computed(() => parseInt(examIdParam.value.replace(/^exam-0*/, ""), 10) || 1);
+const mockKey = computed(() => (examIdParam.value.startsWith("exam-") ? examIdParam.value : `exam-00${examIdParam.value}`));
 
-const examSession = ref(examSessionMap[mockKey] ?? examSessionMap[examIdParam] ?? mockExamSession);
-const allQuestions = ref<ExamTaking.QuestionItem[]>(questionMap[mockKey] ?? questionMap[examIdParam] ?? mockAllQuestionList);
+const examSession = ref(examSessionMap[mockKey.value] ?? examSessionMap[examIdParam.value] ?? mockExamSession);
+const allQuestions = ref<ExamTaking.QuestionItem[]>(
+  questionMap[mockKey.value] ?? questionMap[examIdParam.value] ?? mockAllQuestionList
+);
 
 const fetchPaper = async () => {
   try {
-    const res = await beginExam({ studentId: 91002, examId: numericExamId });
+    const res = await beginExam({ studentId: 91002, examId: numericExamId.value });
     examSession.value = {
       examId: `exam-00${res.examId}`,
       paperId: `paper-00${res.examId}`,
@@ -162,6 +162,17 @@ const fetchPaper = async () => {
     console.warn("beginExam API 调用失败，使用 mock 数据");
   }
 };
+
+// 考试 ID 变化时重置状态（keep-alive 场景下 onMounted 不会重新触发）
+watch(
+  () => route.query.examId,
+  () => {
+    submitState.value = "answering";
+    currentIndex.value = 0;
+    Object.keys(answerMap).forEach(k => delete answerMap[Number(k)]);
+    fetchPaper();
+  }
+);
 
 onMounted(() => {
   fetchPaper();
@@ -233,7 +244,7 @@ const performSubmit = async () => {
   try {
     await submitExamAnswers({
       studentId: 91002,
-      examId: numericExamId,
+      examId: numericExamId.value,
       answers: buildAnswers()
     });
     submitState.value = "success";
@@ -273,7 +284,7 @@ const handleSaveDraft = async () => {
   try {
     await saveExamProgress({
       studentId: 91002,
-      examId: numericExamId,
+      examId: numericExamId.value,
       answers: buildAnswers()
     });
     lastSavedAt.value = new Date().toLocaleTimeString("zh-CN", { hour12: false });
