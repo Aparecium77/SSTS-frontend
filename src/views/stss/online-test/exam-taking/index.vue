@@ -30,9 +30,9 @@
                 :class="{
                   active: index === currentIndex,
                   answered: Boolean(answerMap[q.id]),
-                  'type-judge': q.type === 'judge'
+                  'type-judge': q.type === 1
                 }"
-                :title="`第 ${index + 1} 题${q.type === 'single' ? '（选择题）' : '（判断题）'}`"
+                :title="`第 ${index + 1} 题${q.type === 0 ? '（选择题）' : '（判断题）'}`"
                 @click="currentIndex = index"
               >
                 {{ index + 1 }}
@@ -111,7 +111,7 @@
     </template>
 
     <!-- ────── 视图 2/3：提交中 / 提交成功 ────── -->
-    <SubmitResult v-else :submit-state="submitState" @go-home="goHome" @view-paper="viewPaper" />
+    <SubmitResult v-else :submit-state="submitState" @go-home="goHome" />
   </div>
 </template>
 
@@ -139,7 +139,7 @@ const submitState = ref<ExamTaking.SubmitState>("answering");
 /* ────── 答题状态 ────── */
 const lastSavedAt = ref("尚未保存");
 const currentIndex = ref(0);
-const answerMap = reactive<Record<string, string>>({});
+const answerMap = reactive<Record<number, string>>({});
 
 const currentQuestion = computed(() => allQuestions[currentIndex.value]);
 
@@ -232,10 +232,6 @@ const handleSaveDraft = () => {
 /* ────── 结果页操作 ────── */
 const goHome = () => {
   router.push("/online-test/entry");
-};
-
-const viewPaper = () => {
-  router.push("/online-test/analytics");
 };
 
 /* ────── 生命周期 ────── */

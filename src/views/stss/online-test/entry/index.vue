@@ -66,7 +66,6 @@
               <!-- 已结束 -->
               <template v-else>
                 <el-button plain @click="viewAnalytics(exam.examId)">成绩分析</el-button>
-                <el-button plain @click="viewPaper(exam.examId)">查看试卷</el-button>
                 <span v-if="!exam.submitted" class="unsubmitted-hint">未提交</span>
               </template>
             </div>
@@ -156,10 +155,6 @@ const enterExam = (examId: string) => {
 
 const viewAnalytics = (examId: string) => {
   router.push(`/online-test/analytics?examId=${examId}`);
-};
-
-const viewPaper = (examId: string) => {
-  router.push(`/online-test/analytics?examId=${examId}&view=paper`);
 };
 </script>
 

@@ -5,20 +5,20 @@
         <p class="question-meta">
           <span class="meta-score">{{ question.score }}分</span>
           <span class="meta-divider">·</span>
-          <span class="meta-difficulty" :class="`difficulty-${question.difficulty}`">{{ difficultyLabel }}</span>
+          <span class="meta-difficulty" :class="`difficulty-${difficultyCss}`">{{ difficultyLabel }}</span>
         </p>
         <h3 class="question-title">{{ question.stem }}</h3>
       </div>
-      <el-tag :type="question.type === 'single' ? 'primary' : 'success'">
-        {{ question.type === "single" ? "选择题" : "判断题" }}
+      <el-tag :type="question.type === 0 ? 'primary' : 'success'">
+        {{ question.type === 0 ? "选择题" : "判断题" }}
       </el-tag>
     </div>
 
     <Transition name="fade" mode="out-in">
-      <div v-if="question.type === 'single'" key="single" class="options-list">
+      <div v-if="question.type === 0" key="single" class="options-list">
         <el-radio-group :model-value="modelValue" class="single-option-group" @change="handleChange">
-          <el-radio v-for="option in question.options ?? []" :key="option.value" :label="option.value" class="option-item">
-            {{ option.label }}
+          <el-radio v-for="opt in question.options" :key="opt" :label="opt.charAt(0)" class="option-item">
+            {{ opt }}
           </el-radio>
         </el-radio-group>
       </div>
@@ -56,11 +56,13 @@ const emit = defineEmits<{
 }>();
 
 const difficultyMap: Record<ExamTaking.Difficulty, string> = {
-  easy: "简单",
-  medium: "中等",
-  hard: "困难"
+  0: "简单",
+  1: "中等",
+  2: "困难"
 };
 
+const difficultyCssMap = ["easy", "medium", "hard"];
+const difficultyCss = computed(() => difficultyCssMap[props.question.difficulty]);
 const difficultyLabel = computed(() => difficultyMap[props.question.difficulty]);
 
 const handleChange = (value: string | number | boolean | undefined) => {

@@ -18,7 +18,6 @@
       <p class="result-desc">试卷已成功提交，等待系统评分。</p>
       <div class="result-actions">
         <el-button size="large" type="primary" @click="$emit('goHome')">返回考试列表</el-button>
-        <el-button size="large" plain @click="$emit('viewPaper')">查看试卷</el-button>
       </div>
     </div>
   </div>
@@ -34,7 +33,6 @@ defineProps<{
 
 defineEmits<{
   (e: "goHome"): void;
-  (e: "viewPaper"): void;
 }>();
 </script>
 

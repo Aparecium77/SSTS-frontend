@@ -15,7 +15,9 @@ export const onlineTestMenu = () =>
       }),
 
       createMenu("/online-test/grading", "examGrading", "/stss/online-test/grading/index", "阅卷与发布"),
-      createMenu("/online-test/analytics", "examAnalytics", "/stss/online-test/analytics/index", "测试分析")
+      createMenu("/online-test/analytics", "examAnalytics", "/stss/online-test/analytics/index", "测试分析", "EditPen", {
+        isHide: true
+      })
     ],
     "EditPen"
   );
