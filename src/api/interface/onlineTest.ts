@@ -70,10 +70,8 @@ export interface BeginExamReq {
   examId: number;
 }
 
-/** begin_an_exam 完整返回 */
 export interface BeginExamResponse {
   recordId: number;
-  startedAt: string;
   paper: ExamPaperStudentVO;
   wsEndpoint: string | null;
   savedAnswers: Record<string, string>;

@@ -6,7 +6,6 @@ import http from "@/api";
 import type {
   ApiRequestBody,
   BeginExamReq,
-  BeginExamResponse,
   ExamPaperStudentVO,
   ExamRecordItem,
   ExamRecordReviewVO,
