@@ -74,6 +74,7 @@ export interface BeginExamReq {
 export interface BeginExamResponse {
   recordId: number;
   startedAt: string;
+  validEndTime: string;
   paper: ExamPaperStudentVO;
   wsEndpoint: string | null;
   savedAnswers: Record<string, string>;
