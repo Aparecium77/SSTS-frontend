@@ -87,7 +87,7 @@
 </template>
 
 <script setup lang="ts" name="examEntry">
-import { computed, onMounted, ref } from "vue";
+import { computed, onActivated, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { storeToRefs } from "pinia";
 import { Search, Clock } from "@element-plus/icons-vue";
@@ -144,6 +144,10 @@ const fetchExamList = async () => {
 };
 
 onMounted(() => {
+  fetchExamList();
+});
+
+onActivated(() => {
   fetchExamList();
 });
 
