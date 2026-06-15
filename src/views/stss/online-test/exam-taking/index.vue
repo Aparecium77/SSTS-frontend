@@ -184,7 +184,7 @@ const fetchPaper = async () => {
       options: q.options
     }));
     // 用真实开始时间算剩余倒计时
-    remainingSeconds.value = calcRemainingSeconds(res.paper.durationMins, res.startedAt, res.validEndTime);
+    remainingSeconds.value = calcRemainingSeconds(res.paper.durationMins, res.startedAt);
     startTimer();
     // 建立 WebSocket 考试会话
     if (res.wsEndpoint) {
@@ -236,13 +236,10 @@ const currentAnswer = computed<string>({
 const answeredCount = computed(() => allQuestions.value.filter(q => Boolean(answerMap[q.id])).length);
 
 /* ────── 倒计时 ────── */
-const calcRemainingSeconds = (durationMins: number, startedAt?: string, validEndTime?: string) => {
-  const byDuration = startedAt
-    ? Math.max(0, durationMins * 60 - Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000))
-    : durationMins * 60;
-  if (!validEndTime) return byDuration;
-  const byWindow = Math.max(0, Math.floor((new Date(validEndTime).getTime() - Date.now()) / 1000));
-  return Math.min(byDuration, byWindow);
+const calcRemainingSeconds = (durationMins: number, startedAt?: string) => {
+  if (!startedAt) return durationMins * 60;
+  const elapsed = Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000);
+  return Math.max(0, durationMins * 60 - elapsed);
 };
 const remainingSeconds = ref(examSession.value.durationMinutes * 60);
 let timerHandle: ReturnType<typeof setInterval> | null = null;
