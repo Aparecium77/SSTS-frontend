@@ -90,7 +90,7 @@
           </el-col>
           <el-col :span="8">
             <el-form-item label="及格分" required>
-              <el-input-number v-model="formData.passScore" :min="0" :max="formData.totalScore" style="width: 120px" />
+              <el-input-number v-model="formData.passScore" disabled:min="0" :max="formData.totalScore" style="width: 120px" />
               <span style="margin-left: 10px">分</span>
             </el-form-item>
           </el-col>
@@ -287,7 +287,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, onMounted, watch } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import {
@@ -383,6 +383,19 @@ const formData = ref({
 });
 
 const selectedQuestions = ref<any[]>([]);
+// --- 自动计算试卷总分 ---
+watch(
+  [() => formData.value.generateMode, () => formData.value.autoRules, selectedQuestions],
+  () => {
+    if (formData.value.generateMode === "manual") {
+      formData.value.totalScore = selectedQuestions.value.reduce((sum, q) => sum + (q.score || 0), 0);
+    } else {
+      const rules = formData.value.autoRules;
+      formData.value.totalScore = rules.singleChoiceCount * rules.singleChoiceScore + rules.trueFalseCount * rules.trueFalseScore;
+    }
+  },
+  { deep: true }
+);
 
 const handleAdd = () => {
   drawerTitle.value = "新增试卷";

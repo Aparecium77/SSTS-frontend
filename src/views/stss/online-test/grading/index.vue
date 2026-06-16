@@ -1,6 +1,5 @@
 <template>
   <div class="card content-box">
-    <!-- 顶部选择与操作区 -->
     <el-form :inline="true" :model="searchForm" class="search-form">
       <el-form-item label="选择考试">
         <el-select v-model="searchForm.examId" placeholder="请选择考试" style="width: 250px" @change="handleAnalyze">
@@ -15,7 +14,6 @@
     </el-form>
 
     <div v-loading="loading">
-      <!-- 核心指标卡片 -->
       <el-row :gutter="20" style="margin-bottom: 20px">
         <el-col :span="6">
           <el-card shadow="hover" class="data-card">
@@ -32,9 +30,7 @@
         <el-col :span="6">
           <el-card shadow="hover" class="data-card">
             <div class="card-title">平均分</div>
-            <div class="card-value" style="color: #409eff">
-              {{ statsData?.avgScore ? statsData.avgScore.toFixed(1) : "-" }}
-            </div>
+            <div class="card-value" style="color: #409eff">{{ statsData?.avgScore ? statsData.avgScore.toFixed(1) : "-" }}</div>
           </el-card>
         </el-col>
         <el-col :span="6">
@@ -47,29 +43,26 @@
         </el-col>
       </el-row>
 
-      <!-- 详细数据表格 (使用 Tabs 切换) -->
       <el-tabs v-model="activeTab" class="demo-tabs">
-        <!-- 成绩排名 Tab -->
         <el-tab-pane label="学生成绩排名" name="ranking">
           <el-table :data="statsData?.rankings || []" :border="true" style="width: 100%">
             <el-table-column type="index" label="排名" width="80" align="center" />
             <el-table-column prop="studentId" label="学号" width="180" align="center" />
             <el-table-column prop="totalScore" label="总分" width="120" align="center">
               <template #default="scope">
-                <strong :style="{ color: scope.row.totalScore < 60 ? '#f56c6c' : '#606266' }">
-                  {{ scope.row.totalScore }}
-                </strong>
+                <strong :style="{ color: scope.row.totalScore < 60 ? '#f56c6c' : '#606266' }">{{ scope.row.totalScore }}</strong>
               </template>
             </el-table-column>
             <el-table-column prop="submitTime" label="交卷时间" align="center">
+              <template #default="scope">{{ formatTime(scope.row.submitTime) }}</template>
+            </el-table-column>
+            <el-table-column label="操作" width="150" align="center" fixed="right">
               <template #default="scope">
-                {{ formatTime(scope.row.submitTime) }}
+                <el-button type="primary" link @click="handleReviewRecord(scope.row)">查看答卷</el-button>
               </template>
             </el-table-column>
           </el-table>
         </el-tab-pane>
-
-        <!-- 题目分析 Tab -->
         <el-tab-pane label="题目正确率分析" name="questions">
           <el-table :data="statsData?.questionStats || []" :border="true" style="width: 100%">
             <el-table-column prop="sortOrder" label="题号" width="80" align="center" />
@@ -83,6 +76,54 @@
         </el-tab-pane>
       </el-tabs>
     </div>
+
+    <el-dialog title="学生答卷详情" v-model="reviewVisible" width="800px" top="5vh">
+      <div v-loading="reviewLoading" class="preview-container">
+        <template v-if="reviewData">
+          <div class="preview-header">
+            <h2>学号 {{ reviewData.studentId || "未知" }} 的答卷</h2>
+            <div class="preview-meta">
+              <span>
+                总得分：<strong style="font-size: 18px; color: #67c23a">{{ reviewData.totalScore }}</strong>
+                分
+              </span>
+            </div>
+          </div>
+          <div class="question-list">
+            <div v-for="(q, index) in reviewData.questions" :key="q.questionId" class="question-item">
+              <div class="q-stem">
+                <span class="q-type-tag">[{{ q.type === 1 ? "单选题" : "判断题" }}]</span>
+                <strong>{{ +index + 1 }}. </strong>
+                <span>{{ q.stem }}</span>
+                <span class="q-score">({{ q.score }}分)</span>
+                <el-tag :type="q.isCorrect ? 'success' : 'danger'" size="small" style="float: right">{{
+                  q.isCorrect ? "正确" : "错误"
+                }}</el-tag>
+              </div>
+              <div class="q-options">
+                <template v-if="q.type === 1">
+                  <div v-for="opt in q.options" :key="opt" class="opt-row">
+                    <el-radio disabled :label="opt" :model-value="q.studentAnswer">{{ opt }}</el-radio>
+                  </div>
+                </template>
+                <template v-else>
+                  <div class="opt-row"><el-radio disabled label="正确" :model-value="q.studentAnswer">正确</el-radio></div>
+                  <div class="opt-row"><el-radio disabled label="错误" :model-value="q.studentAnswer">错误</el-radio></div>
+                </template>
+              </div>
+              <div class="answer-box">
+                <div style="margin-bottom: 5px">
+                  学生答案：<span :class="q.isCorrect ? 'text-success' : 'text-danger'">{{ q.studentAnswer || "未作答" }}</span>
+                </div>
+                <div>
+                  正确答案：<span class="text-success">{{ q.standardAnswer }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -90,11 +131,17 @@
 import { ref, onMounted } from "vue";
 import { useRoute } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { queryExamPapers, getExamStats, exportExamScores, openExamScore, openExamAnswer } from "@/api/modules/onlineTest";
+import {
+  queryExamPapers,
+  getExamStats,
+  exportExamScores,
+  openExamScore,
+  openExamAnswer,
+  getExamRecordReview
+} from "@/api/modules/onlineTest";
 
 const route = useRoute();
 
-// 获取当前教师身份
 const getTeacherId = () => {
   try {
     const localData = JSON.parse(localStorage.getItem("geeker-user") || "{}");
@@ -104,7 +151,7 @@ const getTeacherId = () => {
   }
 };
 const teacherId = getTeacherId();
-const courseId = 101; // 当前固定的测试课程
+const courseId = 101;
 
 const loading = ref(false);
 const examList = ref<any[]>([]);
@@ -118,15 +165,10 @@ const customColors = [
   { color: "#67c23a", percentage: 100 }
 ];
 
-// 初始化加载：拉取试卷列表
 onMounted(async () => {
   try {
-    // 拉取老师名下的试卷列表（只要发布过或撤回的，这里简略查全部）
     const res = await queryExamPapers({ current: 1, size: 100, teacherId, courseId });
-    // 过滤掉草稿状态的试卷 (假设 0 是草稿)
     examList.value = (res.records || []).filter(exam => exam.status !== 0);
-
-    // 如果是通过路由传参跳转过来的，直接选中并分析
     if (route.query.examId) {
       searchForm.value.examId = Number(route.query.examId);
       handleAnalyze();
@@ -136,18 +178,13 @@ onMounted(async () => {
   }
 });
 
-// 日期格式化工具
 const formatTime = (isoStr: string) => {
   if (!isoStr) return "-";
-  const date = new Date(isoStr);
-  return date.toLocaleString("zh-CN", { hour12: false });
+  return new Date(isoStr).toLocaleString("zh-CN", { hour12: false });
 };
 
-// 触发分析（调用真实接口）
 const handleAnalyze = async () => {
-  if (!searchForm.value.examId) {
-    return ElMessage.warning("请先选择一场考试");
-  }
+  if (!searchForm.value.examId) return ElMessage.warning("请先选择一场考试");
   loading.value = true;
   try {
     const res = await getExamStats({ teacherId, id: searchForm.value.examId });
@@ -161,45 +198,35 @@ const handleAnalyze = async () => {
   }
 };
 
-// 导出成绩为 Excel
 const handleExport = async () => {
   if (!searchForm.value.examId) return;
   try {
-    ElMessage.info("正在生成 Excel 文件，请稍候...");
+    ElMessage.info("正在生成 Excel...");
     const blob = await exportExamScores(teacherId, searchForm.value.examId);
-    // 浏览器创建 Blob URL 并模拟点击下载
     const url = window.URL.createObjectURL(new Blob([blob]));
     const link = document.createElement("a");
     link.href = url;
-    // 动态生成文件名
     const examName = examList.value.find(e => e.id === searchForm.value.examId)?.title || "考试";
     link.setAttribute("download", `${examName}成绩单.xlsx`);
     document.body.appendChild(link);
     link.click();
     link.parentNode?.removeChild(link);
     window.URL.revokeObjectURL(url);
-    ElMessage.success("成绩单已成功导出！");
+    ElMessage.success("导出成功！");
   } catch (error) {
-    console.error("导出失败", error);
-    ElMessage.error("导出失败，请重试");
+    ElMessage.error("导出失败");
   }
 };
 
-// 一键开放成绩与答案
 const handlePublish = () => {
   if (!searchForm.value.examId) return;
   const examId = searchForm.value.examId;
-  ElMessageBox.confirm("确定要向参与本次考试的学生开放成绩和答案解析吗？", "提示", {
-    confirmButtonText: "确定开放",
-    cancelButtonText: "取消",
-    type: "warning"
-  })
+  ElMessageBox.confirm("确定要向学生开放成绩和答案解析吗？", "提示", { type: "warning" })
     .then(async () => {
       loading.value = true;
       try {
-        // 并发执行两个开放接口
         await Promise.all([openExamScore({ teacherId, id: examId }), openExamAnswer({ teacherId, id: examId })]);
-        ElMessage.success("成绩与答案解析已成功对学生开放！");
+        ElMessage.success("已成功对学生开放！");
       } catch (error: any) {
         ElMessage.error(error?.message || "开放操作失败");
       } finally {
@@ -207,8 +234,27 @@ const handlePublish = () => {
       }
     })
     .catch(() => {
-      ElMessage.info("操作已取消");
+      //
     });
+};
+
+const reviewVisible = ref(false);
+const reviewLoading = ref(false);
+const reviewData = ref<any>(null);
+
+const handleReviewRecord = async (row: any) => {
+  reviewVisible.value = true;
+  reviewLoading.value = true;
+  reviewData.value = null;
+  try {
+    const res = await getExamRecordReview({ teacherId, recordId: row.recordId });
+    reviewData.value = res;
+  } catch (error: any) {
+    ElMessage.error(error?.message || "获取答卷详情失败");
+    reviewVisible.value = false;
+  } finally {
+    reviewLoading.value = false;
+  }
 };
 </script>
 
@@ -230,5 +276,73 @@ const handlePublish = () => {
 .card-value {
   font-size: 28px;
   font-weight: bold;
+}
+.preview-container {
+  min-height: 300px;
+  padding: 0 20px;
+}
+.preview-header {
+  padding-bottom: 20px;
+  margin-bottom: 20px;
+  text-align: center;
+  border-bottom: 1px solid #ebeef5;
+}
+.preview-header h2 {
+  margin: 0 0 10px;
+  font-size: 22px;
+  color: #303133;
+}
+.preview-meta {
+  font-size: 14px;
+  color: #909399;
+}
+.question-list {
+  max-height: 550px;
+  padding-right: 10px;
+  overflow-y: auto;
+}
+.question-item {
+  padding: 15px;
+  margin-bottom: 25px;
+  background-color: #f8f9fa;
+  border-radius: 6px;
+}
+.q-stem {
+  margin-bottom: 15px;
+  font-size: 16px;
+  line-height: 1.6;
+  color: #303133;
+}
+.q-type-tag {
+  margin-right: 5px;
+  font-weight: bold;
+  color: #409eff;
+}
+.q-score {
+  margin-left: 8px;
+  font-size: 14px;
+  color: #e6a23c;
+}
+.q-options {
+  padding-left: 10px;
+}
+.opt-row {
+  margin-bottom: 10px;
+}
+.answer-box {
+  padding: 10px 15px;
+  margin-top: 15px;
+  font-size: 14px;
+  color: #606266;
+  background-color: #ebeef5;
+  border-radius: 4px;
+}
+.text-success {
+  font-weight: bold;
+  color: #67c23a;
+}
+.text-danger {
+  font-weight: bold;
+  color: #f56c6c;
 }
 </style>
