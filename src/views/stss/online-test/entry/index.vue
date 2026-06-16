@@ -80,14 +80,25 @@
         </div>
       </div>
 
+      <!-- 分页 -->
+      <div v-if="total > 10" class="entry-pagination">
+        <el-pagination
+          v-model:current-page="page"
+          :page-size="10"
+          :total="total"
+          layout="prev, pager, next, total"
+          @current-change="fetchExamList"
+        />
+      </div>
+
       <!-- 空状态 -->
-      <el-empty v-else description="没有找到符合条件的考试" />
+      <el-empty v-if="!filteredList.length && !loading" description="没有找到符合条件的考试" />
     </template>
   </div>
 </template>
 
 <script setup lang="ts" name="examEntry">
-import { computed, onActivated, onMounted, ref } from "vue";
+import { computed, onActivated, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { storeToRefs } from "pinia";
 import { Search, Clock } from "@element-plus/icons-vue";
@@ -107,6 +118,8 @@ const userRole = computed(() => userInfo.value?.role || "student");
 const studentId = 91002;
 const apiExamList = ref<ExamEntry.ExamItem[]>([]);
 const loading = ref(false);
+const page = ref(1);
+const total = ref(0);
 
 /** 根据 recordStatus + 时间窗口计算考试在前端的展示状态 */
 function resolveStatus(recordStatus: number | null, validStartTime: string, validEndTime: string): ExamEntry.ExamStatus {
@@ -122,7 +135,8 @@ function resolveStatus(recordStatus: number | null, validStartTime: string, vali
 const fetchExamList = async () => {
   loading.value = true;
   try {
-    const res = await listMyExamRecords({ studentId });
+    const res = await listMyExamRecords({ studentId, current: page.value, size: 10 });
+    total.value = res.total ?? 0;
     apiExamList.value = res.records.map(r => ({
       examId: `exam-00${r.examId}`,
       examName: r.examTitle,
@@ -166,7 +180,7 @@ const statusLabelMap: Record<ExamEntry.ExamStatus, string> = {
 };
 
 const tabCounts = computed(() => ({
-  all: apiExamList.value.length,
+  all: total.value,
   upcoming: apiExamList.value.filter(e => e.status === "upcoming").length,
   ongoing: apiExamList.value.filter(e => e.status === "ongoing").length,
   ended: apiExamList.value.filter(e => e.status === "ended").length
@@ -174,6 +188,12 @@ const tabCounts = computed(() => ({
 
 const activeFilter = ref<ExamEntry.FilterTab>("all");
 const searchKeyword = ref("");
+
+// 筛选或搜索变化时回到第 1 页
+watch([activeFilter, searchKeyword], () => {
+  page.value = 1;
+  fetchExamList();
+});
 
 const filteredList = computed(() => {
   let list = apiExamList.value;
