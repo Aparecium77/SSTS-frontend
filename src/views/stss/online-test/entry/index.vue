@@ -27,8 +27,8 @@
       </div>
 
       <!-- 考试列表 -->
-      <div v-if="filteredList.length" class="exam-list">
-        <div v-for="exam in filteredList" :key="exam.examId" class="exam-card">
+      <div v-if="pagedList.length" class="exam-list">
+        <div v-for="exam in pagedList" :key="exam.examId" class="exam-card">
           <div class="exam-card-body">
             <div class="exam-info">
               <div class="exam-title-row">
@@ -82,13 +82,7 @@
 
       <!-- 分页 -->
       <div v-if="total > 10" class="entry-pagination">
-        <el-pagination
-          v-model:current-page="page"
-          :page-size="10"
-          :total="total"
-          layout="prev, pager, next, total"
-          @current-change="fetchExamList"
-        />
+        <el-pagination v-model:current-page="page" :page-size="10" :total="total" layout="prev, pager, next, total" />
       </div>
 
       <!-- 空状态 -->
@@ -119,7 +113,6 @@ const studentId = 91002;
 const apiExamList = ref<ExamEntry.ExamItem[]>([]);
 const loading = ref(false);
 const page = ref(1);
-const total = ref(0);
 
 /** 根据 recordStatus + 时间窗口计算考试在前端的展示状态 */
 function resolveStatus(recordStatus: number | null, validStartTime: string, validEndTime: string): ExamEntry.ExamStatus {
@@ -135,8 +128,7 @@ function resolveStatus(recordStatus: number | null, validStartTime: string, vali
 const fetchExamList = async () => {
   loading.value = true;
   try {
-    const res = await listMyExamRecords({ studentId, current: page.value, size: 10 });
-    total.value = res.total ?? 0;
+    const res = await listMyExamRecords({ studentId, current: 1, size: 100 });
     apiExamList.value = res.records.map(r => ({
       examId: `exam-00${r.examId}`,
       examName: r.examTitle,
@@ -179,21 +171,8 @@ const statusLabelMap: Record<ExamEntry.ExamStatus, string> = {
   ended: "已结束"
 };
 
-const tabCounts = computed(() => ({
-  all: total.value,
-  upcoming: apiExamList.value.filter(e => e.status === "upcoming").length,
-  ongoing: apiExamList.value.filter(e => e.status === "ongoing").length,
-  ended: apiExamList.value.filter(e => e.status === "ended").length
-}));
-
 const activeFilter = ref<ExamEntry.FilterTab>("all");
 const searchKeyword = ref("");
-
-// 筛选或搜索变化时回到第 1 页
-watch([activeFilter, searchKeyword], () => {
-  page.value = 1;
-  fetchExamList();
-});
 
 const filteredList = computed(() => {
   let list = apiExamList.value;
@@ -205,6 +184,25 @@ const filteredList = computed(() => {
     list = list.filter(e => e.examName.toLowerCase().includes(kw) || e.paperName.toLowerCase().includes(kw));
   }
   return list;
+});
+
+const total = computed(() => filteredList.value.length);
+
+const pagedList = computed(() => {
+  const start = (page.value - 1) * 10;
+  return filteredList.value.slice(start, start + 10);
+});
+
+const tabCounts = computed(() => ({
+  all: apiExamList.value.length,
+  upcoming: apiExamList.value.filter(e => e.status === "upcoming").length,
+  ongoing: apiExamList.value.filter(e => e.status === "ongoing").length,
+  ended: apiExamList.value.filter(e => e.status === "ended").length
+}));
+
+// 筛选或搜索变化时回到第 1 页
+watch([activeFilter, searchKeyword], () => {
+  page.value = 1;
 });
 
 /* ────── 时间格式化 ────── */
@@ -229,4 +227,9 @@ const viewAnalytics = (examId: string) => {
 
 <style scoped lang="scss">
 @import "./index";
+.entry-pagination {
+  display: flex;
+  justify-content: center;
+  margin-top: 16px;
+}
 </style>
