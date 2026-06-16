@@ -87,6 +87,28 @@
 
       <!-- 空状态 -->
       <el-empty v-if="!filteredList.length && !loading" description="没有找到符合条件的考试" />
+
+      <!-- 确认进入考试弹窗 -->
+      <el-dialog v-model="showDialog" title="确认进入考试" width="480px" :close-on-click-modal="false">
+        <div v-if="selectedExam" class="confirm-dialog-body">
+          <div class="confirm-section">
+            <h4>{{ selectedExam.examName }}</h4>
+            <p>时长：{{ selectedExam.durationMinutes }} 分钟 | 总分：{{ selectedExam.totalScore }} 分</p>
+            <p>考试时间：{{ formatTimeRange(selectedExam.startTime, selectedExam.endTime) }}</p>
+          </div>
+          <div class="confirm-section">
+            <p>姓名：张三 | 学号：91002 | 班级：软件工程2024</p>
+          </div>
+          <el-alert type="warning" :closable="false" show-icon style="margin: 12px 0">
+            <template #title>进入后即开始计时，请合理安排时间</template>
+          </el-alert>
+          <el-checkbox v-model="confirmChecked" style="margin-top: 12px"> 我已确认考试信息，准备好开始考试 </el-checkbox>
+        </div>
+        <template #footer>
+          <el-button @click="showDialog = false">取消</el-button>
+          <el-button type="primary" :disabled="!confirmChecked" @click="confirmEnterExam">确认进入</el-button>
+        </template>
+      </el-dialog>
     </template>
   </div>
 </template>
@@ -113,6 +135,9 @@ const studentId = 91002;
 const apiExamList = ref<ExamEntry.ExamItem[]>([]);
 const loading = ref(false);
 const page = ref(1);
+const showDialog = ref(false);
+const confirmChecked = ref(false);
+const selectedExam = ref<ExamEntry.ExamItem | null>(null);
 
 /** 根据 recordStatus + 时间窗口计算考试在前端的展示状态 */
 function resolveStatus(recordStatus: number | null, validStartTime: string, validEndTime: string): ExamEntry.ExamStatus {
@@ -140,6 +165,7 @@ const fetchExamList = async () => {
       status: resolveStatus(r.recordStatus, r.validStartTime, r.validEndTime),
       totalScore: r.totalScore,
       submitted: r.recordStatus === 1,
+      hasDraft: r.recordStatus === 0,
       score: r.studentScore ?? undefined
     }));
   } catch {
@@ -217,7 +243,22 @@ const formatTimeRange = (start: string, end: string) => {
 
 /* ────── 操作 ────── */
 const enterExam = (examId: string) => {
-  router.push(`/online-test/exam-taking?examId=${examId}`);
+  const exam = apiExamList.value.find(e => e.examId === examId);
+  if (!exam) return;
+  // 已有草稿（进行中）→ 直接继续，不弹窗
+  if (exam.hasDraft) {
+    router.push(`/online-test/exam-taking?examId=${exam.examId}`);
+    return;
+  }
+  selectedExam.value = exam;
+  confirmChecked.value = false;
+  showDialog.value = true;
+};
+
+const confirmEnterExam = () => {
+  if (!confirmChecked.value || !selectedExam.value) return;
+  showDialog.value = false;
+  router.push(`/online-test/exam-taking?examId=${selectedExam.value.examId}`);
 };
 
 const viewAnalytics = (examId: string) => {
@@ -231,5 +272,20 @@ const viewAnalytics = (examId: string) => {
   display: flex;
   justify-content: center;
   margin-top: 16px;
+}
+.confirm-dialog-body {
+  .confirm-section {
+    margin-bottom: 12px;
+    h4 {
+      margin: 0 0 4px;
+      font-size: 18px;
+      font-weight: 600;
+    }
+    p {
+      margin: 2px 0;
+      font-size: 14px;
+      color: #64748b;
+    }
+  }
 }
 </style>
