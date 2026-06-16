@@ -130,3 +130,142 @@ export interface GetExamReviewReq {
   studentId?: number;
   teacherId?: number;
 }
+/* ────── 题库管理 ────── */
+export interface QuestionVO {
+  id?: number;
+  courseId: number;
+  /** 1-单选, 2-判断 (是非题) */
+  type: number;
+  stem: string;
+  options: string[];
+  answer: string;
+  /** 1-简单, 2-中等, 3-困难 */
+  difficulty: number;
+  knowledgePoints: string[];
+  createTime?: string;
+}
+
+export interface AddQuestionReq extends QuestionVO {
+  teacherId: number;
+}
+
+export interface UpdateQuestionReq extends QuestionVO {
+  teacherId: number;
+  id: number;
+}
+
+export interface DeleteQuestionReq {
+  teacherId: number;
+  id: number;
+  force?: boolean;
+}
+
+export interface GetQuestionReq {
+  teacherId: number;
+  id: number;
+}
+
+export interface QueryQuestionBankReq extends PageReq {
+  teacherId: number;
+  courseId: number;
+  type?: number;
+  difficulty?: number;
+  keyword?: string;
+  knowledgePoints?: string[];
+}
+
+/* ────── 试卷管理 ────── */
+export interface CreateExamPaperReq {
+  teacherId: number;
+  courseId: number;
+  title: string;
+  totalScore: number;
+  durationMins: number;
+  passScore: number;
+  allowedAttempts: number;
+  generateMode: "manual" | "auto";
+  questionIds?: number[];
+  questionScores?: number[];
+}
+
+export interface UpdateExamPaperReq extends CreateExamPaperReq {
+  id: number;
+}
+
+export interface AutoRules {
+  singleChoiceCount: number;
+  trueFalseCount: number;
+  singleChoiceScore: number;
+  trueFalseScore: number;
+  targetDifficulty: number;
+  knowledgePoints: string[];
+}
+
+export interface GenerateExamPaperReq {
+  teacherId: number;
+  courseId: number;
+  title: string;
+  totalScore: number;
+  durationMins: number;
+  passScore: number;
+  allowedAttempts: number;
+  generateMode: "auto";
+  autoRules: AutoRules;
+}
+
+export interface DeleteExamPaperReq {
+  teacherId: number;
+  id: number;
+}
+
+export interface PublishExamPaperReq {
+  teacherId: number;
+  id: number;
+  validStartTime: string;
+  validEndTime: string;
+  allowedAttempts: number;
+  scoringStrategy: string;
+}
+
+export interface WithdrawExamPaperReq {
+  teacherId: number;
+  id: number;
+}
+
+export interface QueryExamPapersReq extends PageReq {
+  teacherId: number;
+  courseId: number;
+}
+
+export interface ExamPaperVO {
+  id: number;
+  courseId: number;
+  title: string;
+  totalScore: number;
+  durationMins: number;
+  passScore: number;
+  allowedAttempts: number;
+  status: number; // 比如：0草稿, 1已发布, 2已撤回
+  generateMode: string;
+  validStartTime?: string;
+  validEndTime?: string;
+  scoringStrategy?: string;
+  createTime?: string;
+}
+
+export interface ActionByIdReq {
+  teacherId: number;
+  id: number;
+}
+
+/* ────── 成绩统计分析 ────── */
+export interface ExamStatsVO {
+  highestScore: number;
+  lowestScore: number;
+  averageScore: number;
+  standardDeviation: number;
+  passRate: number;
+  // 具体结构根据后端实际返回调整
+  scoreSegments?: Record<string, number>;
+  questionStats?: any[];
+}
