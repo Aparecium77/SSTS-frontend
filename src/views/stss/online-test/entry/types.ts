@@ -18,6 +18,8 @@ export namespace ExamEntry {
     totalScore: number;
     /** 学生是否已提交 */
     submitted?: boolean;
+    /** 是否有进行中的草稿（可直接继续） */
+    hasDraft?: boolean;
     /** 已公布的成绩 */
     score?: number;
   }

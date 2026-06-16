@@ -74,7 +74,9 @@
           </div>
           <footer class="exam-footer">
             <el-button size="large" :disabled="currentIndex === 0" @click="currentIndex--"> 上一题 </el-button>
-            <el-button size="large" plain @click="handleSaveDraft"> 保存 </el-button>
+            <el-button size="large" plain :class="{ 'is-saved': saveBtnText === '✓ 已保存' }" @click="handleSaveDraft">{{
+              saveBtnText
+            }}</el-button>
             <el-button size="large" :disabled="currentIndex >= allQuestions.length - 1" @click="currentIndex++">
               下一题
             </el-button>
@@ -117,6 +119,34 @@ const currentStudentId = 91002;
 const currentRecordId = ref(0);
 const proctorHttpBase = ref(""); // ws://host:port/ws → http://host:port
 
+/* ────── 本地持久化（localStorage 兜底，Go proctor 不可用时保底） ────── */
+const lsAnswersKey = computed(() => `exam-answers:${examIdParam.value}:${currentStudentId}`);
+
+const loadAnswersFromLocal = (): Record<string, string> => {
+  try {
+    const raw = localStorage.getItem(lsAnswersKey.value);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+};
+
+const saveAnswersToLocal = () => {
+  try {
+    const snapshot: Record<string, string> = {};
+    Object.entries(answerMap).forEach(([qid, ans]) => {
+      if (ans) snapshot[qid] = ans;
+    });
+    if (Object.keys(snapshot).length > 0) {
+      localStorage.setItem(lsAnswersKey.value, JSON.stringify(snapshot));
+    } else {
+      localStorage.removeItem(lsAnswersKey.value);
+    }
+  } catch {
+    /* quota 满或隐私模式，静默丢弃 */
+  }
+};
+
 /* ────── WebSocket（Go proctor）─ 含断线重连 ────── */
 let wsConnection: WebSocket | null = null;
 let intentionalClose = false;
@@ -124,6 +154,7 @@ let reconnectAttempts = 0;
 const MAX_RECONNECT = 5;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let lastWsEndpoint = "";
+let sessionRestored = false;
 
 const cancelReconnect = () => {
   if (reconnectTimer) {
@@ -141,28 +172,36 @@ const disconnectProctor = () => {
   }
 };
 
-/** 批量同步本地答案到服务端（用于断线重连后回补） */
-const batchSyncAnswers = async (): Promise<boolean> => {
-  const entries = Object.entries(answerMap).filter(([, v]) => v);
-  if (!entries.length) return true;
-  if (!proctorHttpBase.value) return false;
-  try {
-    const resp = await fetch(`${proctorHttpBase.value}/api/proctor/v1/answers/batch`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        studentId: String(currentStudentId),
-        examId: String(numericExamId.value),
-        answers: entries.map(([qid, ans]) => ({ questionId: Number(qid), answer: ans }))
-      })
-    });
-    if (resp.ok) {
-      lastSavedAt.value = new Date().toLocaleTimeString("zh-CN", { hour12: false });
-      return true;
+/** 通过 WebSocket 批量同步本地答案到服务端（不受 CORS 限制，刷新后回补主路径） */
+const syncLocalAnswersViaWS = () => {
+  if (!wsConnection || wsConnection.readyState !== WebSocket.OPEN) return;
+  let count = 0;
+  Object.entries(answerMap).forEach(([qid, ans]) => {
+    if (ans) {
+      wsConnection!.send(JSON.stringify({ type: "save_answer", questionId: Number(qid), answer: ans }));
+      count++;
     }
-    return false;
+  });
+  if (count > 0) {
+    lastSavedAt.value = new Date().toLocaleTimeString("zh-CN", { hour12: false });
+    console.log(`[Proctor] synced ${count} local answers via WS`);
+  }
+};
+
+/** 从 Go session 恢复答题进度（页面刷新后回填 answerMap） */
+const restoreAnswersFromSession = async () => {
+  if (!proctorHttpBase.value) return;
+  try {
+    const resp = await fetch(`${proctorHttpBase.value}/api/proctor/v1/session/${currentStudentId}`);
+    if (!resp.ok) return; // 404 = 无历史 session，首次考试
+    const data = await resp.json();
+    if (data.answers && typeof data.answers === "object") {
+      Object.entries(data.answers).forEach(([qid, ans]) => {
+        answerMap[Number(qid)] = String(ans);
+      });
+    }
   } catch {
-    return false;
+    /* session 接口不可达，跳过恢复 */
   }
 };
 
@@ -202,9 +241,10 @@ const connectProctor = (wsEndpoint: string, sId: number, rId: number) => {
     wsConnection = new WebSocket(url);
     wsConnection.onopen = () => {
       console.log("[Proctor] connected");
-      // 重连成功：同步离线期间堆积的本地答案
+      sessionRestored = false;
+      // 每次连接成功后通过 WebSocket 同步本地答案（含刷新后从 localStorage 恢复的答案，不受 CORS 限制）
+      setTimeout(() => syncLocalAnswersViaWS(), 500);
       if (reconnectAttempts > 0) {
-        setTimeout(() => batchSyncAnswers(), 500);
         reconnectAttempts = 0;
         ElMessage.success("考试连接已恢复");
       }
@@ -219,6 +259,11 @@ const connectProctor = (wsEndpoint: string, sId: number, rId: number) => {
           }
           if (typeof msg.answeredCount === "number") {
             serverAnsweredCount.value = msg.answeredCount;
+          }
+          // 首次 status 表示 session 已就绪，尝试恢复之前的答题进度
+          if (!sessionRestored) {
+            sessionRestored = true;
+            restoreAnswersFromSession();
           }
         }
         if (msg.type === "ack" && msg.status === "saved") {
@@ -281,6 +326,18 @@ const fetchPaper = async () => {
       difficulty: 1 as ExamTaking.Difficulty,
       options: q.options
     }));
+    // 恢复之前已保存的答案：优先从 localStorage 兜底恢复，服务器端答案可覆盖
+    Object.keys(answerMap).forEach(k => delete answerMap[Number(k)]);
+    const localAnswers = loadAnswersFromLocal();
+    Object.entries(localAnswers).forEach(([qid, ans]) => {
+      if (ans) answerMap[Number(qid)] = String(ans);
+    });
+    // 服务器端答案优先级更高（Go proctor CORS 修复后通过 restoreAnswersFromSession 写入，或 savedAnswers 兜底）
+    if (res.savedAnswers) {
+      Object.entries(res.savedAnswers).forEach(([qid, ans]) => {
+        if (ans) answerMap[Number(qid)] = String(ans);
+      });
+    }
     // 等 Go proctor 连上后通过 status 消息设置权威时间并启动倒计时
     if (res.wsEndpoint) {
       currentRecordId.value = res.recordId;
@@ -315,6 +372,15 @@ const lastSavedAt = ref("尚未保存");
 const currentIndex = ref(0);
 const answerMap = reactive<Record<number, string>>({});
 const serverAnsweredCount = ref(0);
+
+// 每次答题变更自动写入 localStorage，确保刷新后可从本地恢复
+watch(
+  answerMap,
+  () => {
+    saveAnswersToLocal();
+  },
+  { deep: true }
+);
 
 const currentQuestion = computed(() => allQuestions.value[currentIndex.value]);
 
@@ -359,6 +425,9 @@ const formattedTime = computed(() => {
 
 /* ────── 提交流程（WebSocket 主路径 + HTTP 兜底） ────── */
 const performSubmit = async () => {
+  // 先同步当前所有本地答案到 Go proctor，确保最后一题不丢
+  // WebSocket 保证消息顺序，Go proctor 串行处理，save_answer 会先于 submit 被消费
+  syncLocalAnswersViaWS();
   if (wsConnection && wsConnection.readyState === WebSocket.OPEN) {
     submitState.value = "submitting";
     wsConnection.send(JSON.stringify({ type: "submit" }));
@@ -446,6 +515,9 @@ const saveWithFallback = async (questionId: number, answer: string): Promise<boo
   }
 };
 
+const saveBtnText = ref("保存");
+let saveBtnTimer: ReturnType<typeof setTimeout> | null = null;
+
 const handleSaveDraft = () => {
   const q = currentQuestion.value;
   const ans = answerMap[q.id];
@@ -454,6 +526,11 @@ const handleSaveDraft = () => {
     return;
   }
   saveWithFallback(q.id, ans);
+  saveBtnText.value = "✓ 已保存";
+  if (saveBtnTimer) clearTimeout(saveBtnTimer);
+  saveBtnTimer = setTimeout(() => {
+    saveBtnText.value = "保存";
+  }, 2000);
 };
 
 /* ────── 自动保存：切换题目时保存上一题 ────── */
@@ -494,4 +571,12 @@ onBeforeUnmount(() => {
 
 <style scoped lang="scss">
 @import "./index";
+.exam-footer :deep(.el-button) {
+  transition: all 0.3s ease;
+}
+.exam-footer :deep(.is-saved) {
+  color: #16a34a;
+  background: #f0fdf4;
+  border-color: #86efac;
+}
 </style>

@@ -27,8 +27,8 @@
       </div>
 
       <!-- 考试列表 -->
-      <div v-if="filteredList.length" class="exam-list">
-        <div v-for="exam in filteredList" :key="exam.examId" class="exam-card">
+      <div v-if="pagedList.length" class="exam-list">
+        <div v-for="exam in pagedList" :key="exam.examId" class="exam-card">
           <div class="exam-card-body">
             <div class="exam-info">
               <div class="exam-title-row">
@@ -80,14 +80,41 @@
         </div>
       </div>
 
+      <!-- 分页 -->
+      <div v-if="total > 10" class="entry-pagination">
+        <el-pagination v-model:current-page="page" :page-size="10" :total="total" layout="prev, pager, next, total" />
+      </div>
+
       <!-- 空状态 -->
-      <el-empty v-else description="没有找到符合条件的考试" />
+      <el-empty v-if="!filteredList.length && !loading" description="没有找到符合条件的考试" />
+
+      <!-- 确认进入考试弹窗 -->
+      <el-dialog v-model="showDialog" title="确认进入考试" width="480px" :close-on-click-modal="false">
+        <div v-if="selectedExam" class="confirm-dialog-body">
+          <div class="confirm-section">
+            <h4>{{ selectedExam.examName }}</h4>
+            <p>时长：{{ selectedExam.durationMinutes }} 分钟 | 总分：{{ selectedExam.totalScore }} 分</p>
+            <p>考试时间：{{ formatTimeRange(selectedExam.startTime, selectedExam.endTime) }}</p>
+          </div>
+          <div class="confirm-section">
+            <p>姓名：张三 | 学号：91002 | 班级：软件工程2024</p>
+          </div>
+          <el-alert type="warning" :closable="false" show-icon style="margin: 12px 0">
+            <template #title>进入后即开始计时，请合理安排时间</template>
+          </el-alert>
+          <el-checkbox v-model="confirmChecked" style="margin-top: 12px"> 我已确认考试信息，准备好开始考试 </el-checkbox>
+        </div>
+        <template #footer>
+          <el-button @click="showDialog = false">取消</el-button>
+          <el-button type="primary" :disabled="!confirmChecked" @click="confirmEnterExam">确认进入</el-button>
+        </template>
+      </el-dialog>
     </template>
   </div>
 </template>
 
 <script setup lang="ts" name="examEntry">
-import { computed, onActivated, onMounted, ref } from "vue";
+import { computed, onActivated, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { storeToRefs } from "pinia";
 import { Search, Clock } from "@element-plus/icons-vue";
@@ -107,6 +134,10 @@ const userRole = computed(() => userInfo.value?.role || "student");
 const studentId = 91002;
 const apiExamList = ref<ExamEntry.ExamItem[]>([]);
 const loading = ref(false);
+const page = ref(1);
+const showDialog = ref(false);
+const confirmChecked = ref(false);
+const selectedExam = ref<ExamEntry.ExamItem | null>(null);
 
 /** 根据 recordStatus + 时间窗口计算考试在前端的展示状态 */
 function resolveStatus(recordStatus: number | null, validStartTime: string, validEndTime: string): ExamEntry.ExamStatus {
@@ -122,7 +153,7 @@ function resolveStatus(recordStatus: number | null, validStartTime: string, vali
 const fetchExamList = async () => {
   loading.value = true;
   try {
-    const res = await listMyExamRecords({ studentId });
+    const res = await listMyExamRecords({ studentId, current: 1, size: 100 });
     apiExamList.value = res.records.map(r => ({
       examId: `exam-00${r.examId}`,
       examName: r.examTitle,
@@ -134,6 +165,7 @@ const fetchExamList = async () => {
       status: resolveStatus(r.recordStatus, r.validStartTime, r.validEndTime),
       totalScore: r.totalScore,
       submitted: r.recordStatus === 1,
+      hasDraft: r.recordStatus === 0,
       score: r.studentScore ?? undefined
     }));
   } catch {
@@ -165,13 +197,6 @@ const statusLabelMap: Record<ExamEntry.ExamStatus, string> = {
   ended: "已结束"
 };
 
-const tabCounts = computed(() => ({
-  all: apiExamList.value.length,
-  upcoming: apiExamList.value.filter(e => e.status === "upcoming").length,
-  ongoing: apiExamList.value.filter(e => e.status === "ongoing").length,
-  ended: apiExamList.value.filter(e => e.status === "ended").length
-}));
-
 const activeFilter = ref<ExamEntry.FilterTab>("all");
 const searchKeyword = ref("");
 
@@ -187,6 +212,25 @@ const filteredList = computed(() => {
   return list;
 });
 
+const total = computed(() => filteredList.value.length);
+
+const pagedList = computed(() => {
+  const start = (page.value - 1) * 10;
+  return filteredList.value.slice(start, start + 10);
+});
+
+const tabCounts = computed(() => ({
+  all: apiExamList.value.length,
+  upcoming: apiExamList.value.filter(e => e.status === "upcoming").length,
+  ongoing: apiExamList.value.filter(e => e.status === "ongoing").length,
+  ended: apiExamList.value.filter(e => e.status === "ended").length
+}));
+
+// 筛选或搜索变化时回到第 1 页
+watch([activeFilter, searchKeyword], () => {
+  page.value = 1;
+});
+
 /* ────── 时间格式化 ────── */
 const formatTimeRange = (start: string, end: string) => {
   const fmt = (iso: string) => {
@@ -199,7 +243,22 @@ const formatTimeRange = (start: string, end: string) => {
 
 /* ────── 操作 ────── */
 const enterExam = (examId: string) => {
-  router.push(`/online-test/exam-taking?examId=${examId}`);
+  const exam = apiExamList.value.find(e => e.examId === examId);
+  if (!exam) return;
+  // 已有草稿（进行中）→ 直接继续，不弹窗
+  if (exam.hasDraft) {
+    router.push(`/online-test/exam-taking?examId=${exam.examId}`);
+    return;
+  }
+  selectedExam.value = exam;
+  confirmChecked.value = false;
+  showDialog.value = true;
+};
+
+const confirmEnterExam = () => {
+  if (!confirmChecked.value || !selectedExam.value) return;
+  showDialog.value = false;
+  router.push(`/online-test/exam-taking?examId=${selectedExam.value.examId}`);
 };
 
 const viewAnalytics = (examId: string) => {
@@ -209,4 +268,24 @@ const viewAnalytics = (examId: string) => {
 
 <style scoped lang="scss">
 @import "./index";
+.entry-pagination {
+  display: flex;
+  justify-content: center;
+  margin-top: 16px;
+}
+.confirm-dialog-body {
+  .confirm-section {
+    margin-bottom: 12px;
+    h4 {
+      margin: 0 0 4px;
+      font-size: 18px;
+      font-weight: 600;
+    }
+    p {
+      margin: 2px 0;
+      font-size: 14px;
+      color: #64748b;
+    }
+  }
+}
 </style>
