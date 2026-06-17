@@ -181,7 +181,9 @@ const fetchExamList = async () => {
       hasDraft: r.recordStatus === 0,
       allowedAttempts: r.allowedAttempts ?? 1,
       submittedCount: r.submittedCount ?? 0,
-      score: r.studentScore ?? undefined
+      score: r.studentScore ?? undefined,
+      scoreVisible: r.scoreVisible ?? false,
+      answerVisible: r.answerVisible ?? false
     }));
 >>>>>>> 74c5ba8 (fix(entry): resolveStatus 改为时间优先判断，支持重考与成绩分析)
   } catch {

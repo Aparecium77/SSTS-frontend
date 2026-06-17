@@ -43,6 +43,10 @@ export interface ExamRecordItem {
   allowedAttempts: number;
   /** 已提交次数 */
   submittedCount: number;
+  /** 成绩是否对学生可见 */
+  scoreVisible: boolean;
+  /** 答案是否对学生可见 */
+  answerVisible: boolean;
 }
 
 export interface ListMyExamRecordsReq {
