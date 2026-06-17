@@ -7,20 +7,18 @@ export function resolveExamStatus(
   validEndTime: string,
   submittedCount: number,
   allowedAttempts: number,
-  scoreVisible: boolean,
-  answerVisible: boolean,
+  _scoreVisible: boolean,
+  _answerVisible: boolean,
   now: number = Date.now()
 ): ExamEntry.ExamStatus {
-  if (allowedAttempts > 1 && (scoreVisible || answerVisible)) {
-    return "ended";
-  }
-
   const startTime = new Date(validStartTime).getTime();
   const endTime = new Date(validEndTime).getTime();
 
+  // 时间优先：先判时间窗口
   if (startTime > now) return "upcoming";
   if (endTime < now) return "ended";
 
+  // 时间窗口内：检查是否可以考试（有草稿 或 还有剩余次数）
   const hasDraft = recordStatus === 0;
   const remaining = allowedAttempts - submittedCount;
   if (hasDraft || remaining > 0) return "ongoing";

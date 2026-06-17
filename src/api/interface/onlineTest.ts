@@ -39,6 +39,10 @@ export interface ExamRecordItem {
   /** 学生得分（未参加或未评分时为 null） */
   studentScore: number | null;
   submitTime: string | null;
+  /** 允许答题次数 */
+  allowedAttempts: number;
+  /** 已提交次数 */
+  submittedCount: number;
 }
 
 export interface ListMyExamRecordsReq {
