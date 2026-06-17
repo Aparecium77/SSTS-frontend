@@ -46,7 +46,7 @@ export const mockUsers: MockUser[] = [
 ];
 
 const menuMap: Record<RoleKey, Menu.MenuOptions[]> = {
-  student: [homeMenu, courseSelectionMenu(), forumMenu(), onlineTestMenu(), scoreMenu()],
+  student: [homeMenu, courseSelectionMenu(), forumMenu(), onlineTestMenu("student"), scoreMenu()],
   teacher: [
     homeMenu,
     createGroup(
@@ -64,10 +64,18 @@ const menuMap: Record<RoleKey, Menu.MenuOptions[]> = {
       "Reading"
     ),
     forumMenu(),
-    onlineTestMenu(),
+    onlineTestMenu("teacher"),
     scoreMenu()
   ],
-  academic_admin: [homeMenu, baseInfoMenu(), scheduleMenu(), courseSelectionMenu(), forumMenu(), onlineTestMenu(), scoreMenu()]
+  academic_admin: [
+    homeMenu,
+    baseInfoMenu(),
+    scheduleMenu(),
+    courseSelectionMenu(),
+    forumMenu(),
+    onlineTestMenu("teacher"),
+    scoreMenu()
+  ]
 };
 
 const buttonMap: Record<RoleKey, Login.ResAuthButtons> = {

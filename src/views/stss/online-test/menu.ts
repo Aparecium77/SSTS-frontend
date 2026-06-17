@@ -1,17 +1,7 @@
 import { createGroup, createMenu } from "@/views/stss/menu";
 
-export const onlineTestMenu = () => {
-  // 💡 安全获取身份的终极绝招：直接读取本地缓存，绝对不会引发框架冲突
-  let isStudent = false;
-  try {
-    // Geeker-Admin 默认将用户信息存在 localStorage 的 "geeker-user" 字段里
-    const localData = JSON.parse(localStorage.getItem("geeker-user") || "{}");
-    const role = localData?.userInfo?.role;
-    // 如果你们后端的学生角色标识是其他的（比如 "Student" 或数字），请在这里修改
-    isStudent = role === "student" || role === "Student";
-  } catch (error) {
-    console.warn("读取身份失败，按默认权限处理");
-  }
+export const onlineTestMenu = (role: string = "teacher") => {
+  const isStudent = role === "student";
 
   return createGroup(
     "/online-test",
