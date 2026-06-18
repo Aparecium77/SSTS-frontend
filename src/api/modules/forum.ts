@@ -5,10 +5,11 @@
  */
 
 import { Forum } from "@/api/interface/forum";
+import { FORUM_API } from "@/api/config/servicePort";
 import http from "@/api";
 
 export namespace ForumAPI {
-  const API_PREFIX = "/api/v1";
+  const API_PREFIX = FORUM_API;
 
   export const getAnnouncementList = (params: Forum.NoticeListQuery) => {
     return http.get<Forum.ResNoticeList>(API_PREFIX + `/announcements`, params);

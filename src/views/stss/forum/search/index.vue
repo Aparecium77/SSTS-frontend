@@ -2,33 +2,33 @@
   <div class="forum-search-page">
     <ForumPageShell
       title="检索"
-      description="按关键词、课程、模块和时间范围检索论坛帖子，模拟全文检索结果展示。"
-      :tags="['关键词检索', '课程筛选', '结果高亮']"
+      description="按关键词、课程、发布人和时间范围查询论坛帖子，支持全文检索与条件筛选的 mock 演示。"
+      :tags="['条件查询', '全文检索', '发布人筛选', '结果高亮']"
       :stats="stats"
-      content-title="检索结果"
-      content-description="根据当前筛选条件自动展示匹配结果，后续可替换为后端全文检索接口。"
-      :data-count="searchResults.length"
-      empty-description="当前筛选条件下暂无检索结果。"
+      content-title="查询结果"
+      content-description="设置查询条件后点击查询按钮。真实接入时，关键词检索可走 /search/posts，普通筛选可走 /posts。"
+      :data-count="contentDataCount"
+      :empty-description="emptyDescription"
     >
       <template #filters>
         <el-form :model="queryForm" class="filter-form" inline>
           <el-form-item label="关键词">
-            <el-input v-model="queryForm.keyword" clearable placeholder="输入关键词，如 接口、UML、复习" style="width: 260px" />
+            <el-input
+              v-model="queryForm.keyword"
+              clearable
+              placeholder="标题或正文关键词，如 作业、接口、复习"
+              style="width: 280px"
+            />
           </el-form-item>
 
           <el-form-item label="课程">
-            <el-select v-model="queryForm.courseId" clearable placeholder="全部课程" style="width: 170px">
+            <el-select v-model="queryForm.courseId" clearable placeholder="全部课程" style="width: 180px">
               <el-option v-for="board in mockBoards" :key="board.id" :label="board.courseName" :value="board.courseId" />
             </el-select>
           </el-form-item>
 
-          <el-form-item label="模块">
-            <el-select v-model="queryForm.module" clearable placeholder="全部模块" style="width: 170px">
-              <el-option label="课程讨论" value="discussion" />
-              <el-option label="作业答疑" value="homework" />
-              <el-option label="考试说明" value="exam" />
-              <el-option label="综合交流" value="general" />
-            </el-select>
+          <el-form-item label="发布人">
+            <el-input v-model="queryForm.authorName" clearable placeholder="输入发布人姓名" style="width: 180px" />
           </el-form-item>
 
           <el-form-item label="排序">
@@ -52,12 +52,31 @@
           </el-form-item>
 
           <el-form-item>
-            <el-button @click="resetQuery">重置</el-button>
+            <el-space>
+              <el-button type="primary" @click="handleSearch">查询</el-button>
+              <el-button @click="resetQuery">重置</el-button>
+            </el-space>
           </el-form-item>
         </el-form>
+
+        <el-alert
+          :closable="false"
+          show-icon
+          title="当前为本地 mock 查询。后续接入时，关键词全文检索可对应 /search/posts；仅按课程、发布人或时间筛选时，可对应 /posts 查询。"
+          type="info"
+        />
       </template>
 
-      <div class="result-list">
+      <el-alert
+        v-if="!searched"
+        :closable="false"
+        class="search-tip"
+        show-icon
+        title="请设置查询条件后点击“查询”。可以只按发布人、课程或时间范围查询。"
+        type="warning"
+      />
+
+      <div v-else class="result-list">
         <el-card v-for="post in searchResults" :key="post.id" class="result-card" shadow="hover">
           <div class="result-header">
             <div>
@@ -73,7 +92,7 @@
             </div>
           </div>
 
-          <p class="result-content" v-html="highlightKeyword(post.content)" />
+          <p class="result-content" v-html="buildSnippet(post)" />
 
           <div class="result-footer">
             <div class="metric-list">
@@ -81,7 +100,7 @@
               <span>回复 {{ post.repliesCount }}</span>
               <span>点赞 {{ post.likesCount }}</span>
               <span>热度 {{ post.hotScore }}</span>
-              <span>相关度 {{ getRelevanceScore(post) }}</span>
+              <span>匹配度 {{ getRelevanceDisplay(post) }}</span>
             </div>
             <el-button link type="primary" @click="openPreview(post)">查看摘要</el-button>
           </div>
@@ -89,28 +108,36 @@
       </div>
     </ForumPageShell>
 
-    <el-drawer v-model="drawerVisible" size="520px" title="检索结果摘要">
+    <el-drawer v-model="drawerVisible" size="520px" title="查询结果摘要">
       <template v-if="currentPost">
         <div class="preview-title">{{ currentPost.title }}</div>
         <div class="preview-meta">
-          {{ currentPost.courseName }} · {{ postModuleTextMap[currentPost.module] }} · {{ currentPost.authorName }}
+          {{ currentPost.courseName }} · {{ postModuleTextMap[currentPost.module] }} · {{ currentPost.authorName }} ·
+          {{ currentPost.createdAt }}
         </div>
 
         <el-divider />
 
-        <p class="preview-content">{{ currentPost.content }}</p>
-
-        <div class="preview-metrics">
-          <el-tag>浏览 {{ currentPost.viewsCount }}</el-tag>
-          <el-tag type="success">回复 {{ currentPost.repliesCount }}</el-tag>
-          <el-tag type="warning">点赞 {{ currentPost.likesCount }}</el-tag>
-          <el-tag type="danger">热度 {{ currentPost.hotScore }}</el-tag>
-        </div>
+        <el-descriptions :column="1" border>
+          <el-descriptions-item label="标题">
+            <span v-html="highlightKeyword(currentPost.title)" />
+          </el-descriptions-item>
+          <el-descriptions-item label="正文摘要">
+            <span v-html="buildSnippet(currentPost)" />
+          </el-descriptions-item>
+          <el-descriptions-item label="匹配度">
+            {{ getRelevanceDisplay(currentPost) }}
+          </el-descriptions-item>
+          <el-descriptions-item label="互动数据">
+            浏览 {{ currentPost.viewsCount }} / 回复 {{ currentPost.repliesCount }} / 点赞 {{ currentPost.likesCount }} / 热度
+            {{ currentPost.hotScore }}
+          </el-descriptions-item>
+        </el-descriptions>
 
         <el-alert
           class="preview-alert"
           show-icon
-          title="当前为本地 mock 摘要。真实接入后，可在这里展示高亮片段、命中字段和后端相关度评分。"
+          title="当前为本地 mock 摘要。真实接入后，可展示后端返回的 snippet、author_id 和分页结果。"
           type="info"
         />
       </template>
@@ -120,63 +147,92 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref } from "vue";
+import { ElMessage } from "element-plus";
 import ForumPageShell from "../components/ForumPageShell.vue";
-import { mockBoards, mockPosts, postModuleTextMap, type ForumPostMock, type PostModule } from "../mock";
+import { mockBoards, mockPosts, postModuleTextMap, type ForumPostMock } from "../mock";
 
 type SortBy = "relevance" | "createdAt" | "hotScore";
 type DateRangeValue = [string, string] | null;
 
-const queryForm = reactive({
+interface SearchForm {
+  keyword: string;
+  courseId: string | null;
+  authorName: string;
+  sortBy: SortBy;
+  dateRange: DateRangeValue;
+}
+
+const createEmptyQuery = (): SearchForm => ({
   keyword: "",
-  courseId: "" as string | null,
-  module: "" as PostModule | "" | null,
-  sortBy: "relevance" as SortBy,
-  dateRange: null as DateRangeValue
+  courseId: "",
+  authorName: "",
+  sortBy: "relevance",
+  dateRange: null
 });
 
+const queryForm = reactive<SearchForm>(createEmptyQuery());
+const activeQuery = reactive<SearchForm>(createEmptyQuery());
+
+const searched = ref(false);
 const drawerVisible = ref(false);
 const currentPost = ref<ForumPostMock | null>(null);
 
+const hasActiveKeyword = computed(() => activeQuery.keyword.trim().length > 0);
+
+const hasQueryCondition = (query: SearchForm) => {
+  return Boolean(query.keyword.trim() || query.courseId || query.authorName.trim() || query.dateRange);
+};
+
 const searchResults = computed(() => {
-  const keyword = queryForm.keyword.trim().toLowerCase();
+  if (!searched.value) return [];
+
+  const keyword = activeQuery.keyword.trim().toLowerCase();
+  const authorName = activeQuery.authorName.trim().toLowerCase();
 
   const result = mockPosts.filter(post => {
-    const matchKeyword =
-      !keyword ||
-      post.title.toLowerCase().includes(keyword) ||
-      post.content.toLowerCase().includes(keyword) ||
-      post.authorName.toLowerCase().includes(keyword) ||
-      post.courseName.toLowerCase().includes(keyword);
-
-    const matchCourse = !queryForm.courseId || post.courseId === queryForm.courseId;
-    const matchModule = !queryForm.module || post.module === queryForm.module;
+    const matchKeyword = !keyword || post.title.toLowerCase().includes(keyword) || post.content.toLowerCase().includes(keyword);
+    const matchCourse = !activeQuery.courseId || post.courseId === activeQuery.courseId;
+    const matchAuthor = !authorName || post.authorName.toLowerCase().includes(authorName);
     const matchDate = isInDateRange(post.createdAt);
 
-    return post.status !== "deleted" && matchKeyword && matchCourse && matchModule && matchDate;
+    return post.status !== "deleted" && matchKeyword && matchCourse && matchAuthor && matchDate;
   });
 
   return result.sort((a, b) => {
-    if (queryForm.sortBy === "createdAt") return b.createdAt.localeCompare(a.createdAt);
-    if (queryForm.sortBy === "hotScore") return b.hotScore - a.hotScore;
+    if (activeQuery.sortBy === "createdAt") return b.createdAt.localeCompare(a.createdAt);
+    if (activeQuery.sortBy === "hotScore") return b.hotScore - a.hotScore;
+
     return getRelevanceScore(b) - getRelevanceScore(a);
   });
 });
 
+const contentDataCount = computed(() => {
+  if (!searched.value) return 1;
+
+  return searchResults.value.length;
+});
+
+const emptyDescription = computed(() => {
+  if (!searched.value) return "请设置查询条件后点击查询。";
+
+  return "当前筛选条件下暂无查询结果。";
+});
+
 const stats = computed(() => [
   {
-    label: "可检索帖子",
+    label: "可查询帖子",
     value: mockPosts.filter(item => item.status !== "deleted").length,
     help: "当前 mock 数据范围"
   },
   {
     label: "命中结果",
     value: searchResults.value.length,
-    help: "按当前条件筛选后"
+    help: searched.value ? "按当前条件筛选后" : "尚未查询"
   },
   {
-    label: "热门结果",
-    value: searchResults.value.filter(item => item.status === "hot").length,
-    help: "命中结果中的热门帖"
+    label: "涉及课程",
+    value: new Set(mockPosts.map(item => item.courseId)).size,
+    help: "可按课程缩小范围"
   },
   {
     label: "最高热度",
@@ -185,28 +241,52 @@ const stats = computed(() => [
   }
 ]);
 
+const syncActiveQuery = () => {
+  activeQuery.keyword = queryForm.keyword;
+  activeQuery.courseId = queryForm.courseId;
+  activeQuery.authorName = queryForm.authorName;
+  activeQuery.sortBy = queryForm.sortBy;
+  activeQuery.dateRange = queryForm.dateRange ? [...queryForm.dateRange] : null;
+};
+
+const handleSearch = () => {
+  if (!hasQueryCondition(queryForm)) {
+    ElMessage.warning("请至少输入一个查询条件");
+    return;
+  }
+
+  syncActiveQuery();
+  searched.value = true;
+};
+
 const isInDateRange = (createdAt: string) => {
-  if (!queryForm.dateRange) return true;
+  if (!activeQuery.dateRange) return true;
 
   const date = createdAt.slice(0, 10);
-  const [startDate, endDate] = queryForm.dateRange;
+  const [startDate, endDate] = activeQuery.dateRange;
 
   return date >= startDate && date <= endDate;
 };
 
 const getRelevanceScore = (post: ForumPostMock) => {
-  const keyword = queryForm.keyword.trim().toLowerCase();
+  const keyword = activeQuery.keyword.trim().toLowerCase();
 
-  if (!keyword) return Math.round(post.hotScore);
+  if (!keyword) return Math.min(100, Math.round(post.hotScore));
 
   let score = 0;
 
-  if (post.title.toLowerCase().includes(keyword)) score += 60;
-  if (post.content.toLowerCase().includes(keyword)) score += 30;
-  if (post.authorName.toLowerCase().includes(keyword)) score += 10;
-  if (post.courseName.toLowerCase().includes(keyword)) score += 10;
+  if (post.title.toLowerCase().includes(keyword)) score += 70;
+  if (post.content.toLowerCase().includes(keyword)) score += 35;
 
-  return Math.min(100, Math.round(score + post.hotScore * 0.2));
+  score += Math.min(20, Math.round(post.hotScore * 0.15));
+
+  return Math.min(100, score);
+};
+
+const getRelevanceDisplay = (post: ForumPostMock) => {
+  if (!hasActiveKeyword.value) return "按筛选条件匹配";
+
+  return getRelevanceScore(post);
 };
 
 const escapeHtml = (value: string) => {
@@ -225,7 +305,7 @@ const escapeHtml = (value: string) => {
 
 const highlightKeyword = (value: string) => {
   const escapedValue = escapeHtml(value);
-  const keyword = queryForm.keyword.trim();
+  const keyword = activeQuery.keyword.trim();
 
   if (!keyword) return escapedValue;
 
@@ -235,12 +315,32 @@ const highlightKeyword = (value: string) => {
   return escapedValue.replace(keywordRegExp, '<span class="highlight-keyword">$1</span>');
 };
 
+const buildSnippet = (post: ForumPostMock) => {
+  const content = post.content;
+  const keyword = activeQuery.keyword.trim();
+
+  if (!keyword) return escapeHtml(content);
+
+  const lowerContent = content.toLowerCase();
+  const lowerKeyword = keyword.toLowerCase();
+  const index = lowerContent.indexOf(lowerKeyword);
+
+  if (index < 0) return highlightKeyword(content.slice(0, 120));
+
+  const start = Math.max(0, index - 30);
+  const end = Math.min(content.length, index + keyword.length + 60);
+  const prefix = start > 0 ? "..." : "";
+  const suffix = end < content.length ? "..." : "";
+
+  return `${prefix}${highlightKeyword(content.slice(start, end))}${suffix}`;
+};
+
 const resetQuery = () => {
-  queryForm.keyword = "";
-  queryForm.courseId = "";
-  queryForm.module = "";
-  queryForm.sortBy = "relevance";
-  queryForm.dateRange = null;
+  Object.assign(queryForm, createEmptyQuery());
+  Object.assign(activeQuery, createEmptyQuery());
+  searched.value = false;
+  currentPost.value = null;
+  drawerVisible.value = false;
 };
 
 const openPreview = (post: ForumPostMock) => {
@@ -258,6 +358,9 @@ const openPreview = (post: ForumPostMock) => {
 }
 .filter-form {
   flex-flow: row wrap;
+}
+.search-tip {
+  margin-bottom: 16px;
 }
 .result-list {
   display: flex;
@@ -313,16 +416,6 @@ const openPreview = (post: ForumPostMock) => {
   margin-top: 8px;
   font-size: 13px;
   color: var(--el-text-color-secondary);
-}
-.preview-content {
-  line-height: 1.8;
-  color: var(--el-text-color-regular);
-}
-.preview-metrics {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 16px 0;
 }
 .preview-alert {
   margin-top: 16px;

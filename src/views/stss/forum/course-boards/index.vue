@@ -1,12 +1,12 @@
 <template>
-  <div class="forum-boards-page">
+  <div class="forum-course-boards-page">
     <ForumPageShell
       title="课程论坛"
-      description="展示课程论坛板块概览，汇总公告数、帖子数、回复数和热度数据。"
-      :tags="['课程板块', '数据概览', '状态启停']"
+      description="维护课程论坛板块，展示每个课程板块的公告、帖子、回复、附件和活跃度概览。"
+      :tags="['课程板块', '公告弹窗', '活跃统计', '状态启停']"
       :stats="stats"
-      content-title="板块清单"
-      content-description="按课程维度展示论坛板块信息，后续可与选课系统和课程数据接口对接。"
+      content-title="课程论坛板块"
+      content-description="设置筛选条件后点击筛选。当前为本地 mock 板块数据，后续可对接课程/开课实例论坛板块接口。"
       :data-count="filteredBoards.length"
       empty-description="当前筛选条件下暂无课程论坛板块。"
     >
@@ -20,124 +20,245 @@
             <el-input v-model="queryForm.keyword" clearable placeholder="搜索课程、板块或描述" style="width: 260px" />
           </el-form-item>
 
+          <el-form-item label="课程">
+            <el-select v-model="queryForm.courseId" clearable placeholder="全部课程" style="width: 180px">
+              <el-option v-for="board in boards" :key="board.id" :label="board.courseName" :value="board.courseId" />
+            </el-select>
+          </el-form-item>
+
           <el-form-item label="状态">
             <el-select v-model="queryForm.status" clearable placeholder="全部状态" style="width: 160px">
-              <el-option label="启用" value="active" />
-              <el-option label="停用" value="inactive" />
+              <el-option label="启用中" value="active" />
+              <el-option label="已停用" value="inactive" />
             </el-select>
           </el-form-item>
 
           <el-form-item>
-            <el-button @click="resetQuery">重置</el-button>
+            <el-space>
+              <el-button type="primary" @click="handleFilter">筛选</el-button>
+              <el-button @click="resetQuery">重置</el-button>
+            </el-space>
           </el-form-item>
         </el-form>
+
+        <el-alert
+          :closable="false"
+          show-icon
+          title="当前页面只维护课程论坛板块的前端 mock 展示。学生选课校验、任课教师匹配等跨组逻辑后续由后端与选课/基础信息模块完成。"
+          type="info"
+        />
       </template>
 
-      <el-row :gutter="16">
-        <el-col v-for="board in filteredBoards" :key="board.id" :span="12">
-          <el-card class="board-card" shadow="hover">
-            <div class="board-header">
-              <div>
-                <div class="board-title">{{ board.title }}</div>
-                <div class="board-subtitle">{{ board.courseId }} · {{ board.courseName }}</div>
+      <el-table :data="filteredBoards" border>
+        <el-table-column label="板块信息" min-width="290">
+          <template #default="{ row }">
+            <div class="board-title-cell">
+              <span class="board-title">{{ row.title }}</span>
+              <el-tag v-if="row.popupEnabled" size="small" type="warning">弹窗公告</el-tag>
+            </div>
+            <div class="board-description">{{ row.description }}</div>
+            <div class="board-meta">{{ row.courseName }} · {{ row.courseId }} · 更新于 {{ row.updatedAt }}</div>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="状态" min-width="110" align="center">
+          <template #default="{ row }">
+            <el-tag :type="row.status === 'active' ? 'success' : 'info'">
+              {{ row.status === "active" ? "启用中" : "已停用" }}
+            </el-tag>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="板块统计" min-width="220">
+          <template #default="{ row }">
+            <div class="metric-line">公告 {{ getBoardNoticeCount(row.id) }} / 帖子 {{ getBoardPosts(row.id).length }}</div>
+            <div class="metric-line">回复 {{ getBoardReplyCount(row.id) }} / 附件 {{ getBoardAttachmentCount(row.id) }}</div>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="热门内容" min-width="220">
+          <template #default="{ row }">
+            <template v-if="getBoardTopPost(row.id)">
+              <div class="hot-title">{{ getBoardTopPost(row.id)?.title }}</div>
+              <div class="metric-line">
+                热度 {{ getBoardTopPost(row.id)?.hotScore }} · 回复 {{ getBoardTopPost(row.id)?.repliesCount }}
               </div>
-              <el-tag :type="board.status === 'active' ? 'success' : 'info'">
-                {{ board.status === "active" ? "启用" : "停用" }}
-              </el-tag>
-            </div>
+            </template>
+            <span v-else class="empty-text">暂无热门帖子</span>
+          </template>
+        </el-table-column>
 
-            <p class="board-desc">{{ board.description }}</p>
-
-            <el-row :gutter="12" class="board-metrics">
-              <el-col :span="6">
-                <div class="metric-box">
-                  <div class="metric-value">{{ getBoardNoticeCount(board.id) }}</div>
-                  <div class="metric-label">公告</div>
-                </div>
-              </el-col>
-              <el-col :span="6">
-                <div class="metric-box">
-                  <div class="metric-value">{{ getBoardPostCount(board.id) }}</div>
-                  <div class="metric-label">帖子</div>
-                </div>
-              </el-col>
-              <el-col :span="6">
-                <div class="metric-box">
-                  <div class="metric-value">{{ getBoardReplyCount(board.id) }}</div>
-                  <div class="metric-label">回复</div>
-                </div>
-              </el-col>
-              <el-col :span="6">
-                <div class="metric-box">
-                  <div class="metric-value">{{ getBoardAverageHotScore(board.id) }}</div>
-                  <div class="metric-label">平均热度</div>
-                </div>
-              </el-col>
-            </el-row>
-
-            <div class="board-footer">
-              <el-button link type="primary" @click="openViewDialog(board)">查看</el-button>
-              <el-button link @click="openEditDialog(board)">编辑</el-button>
-              <el-button link :type="board.status === 'active' ? 'warning' : 'success'" @click="toggleBoardStatus(board)">
-                {{ board.status === "active" ? "停用" : "启用" }}
+        <el-table-column label="操作" width="230">
+          <template #default="{ row }">
+            <el-space>
+              <el-button link type="primary" @click="openDetailDrawer(row)">详情</el-button>
+              <el-button link @click="openEditDialog(row)">编辑</el-button>
+              <el-button link type="warning" @click="toggleBoardStatus(row)">
+                {{ row.status === "active" ? "停用" : "启用" }}
               </el-button>
-              <el-button link type="danger" @click="handleDelete(board)">删除</el-button>
-            </div>
-          </el-card>
-        </el-col>
-      </el-row>
+            </el-space>
+          </template>
+        </el-table-column>
+      </el-table>
     </ForumPageShell>
 
-    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="640px">
-      <el-form :model="boardForm" label-width="90px" :disabled="dialogMode === 'view'">
+    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="680px">
+      <el-form :model="boardForm" label-width="96px">
         <el-form-item label="课程编号">
-          <el-input v-model="boardForm.courseId" placeholder="请输入课程编号，如 SE-2026" />
+          <el-input v-model="boardForm.courseId" placeholder="例如 SE-2026" />
         </el-form-item>
 
         <el-form-item label="课程名称">
-          <el-input v-model="boardForm.courseName" placeholder="请输入课程名称" />
+          <el-input v-model="boardForm.courseName" placeholder="例如 软件工程" />
         </el-form-item>
 
-        <el-form-item label="板块标题">
-          <el-input v-model="boardForm.title" maxlength="60" placeholder="请输入课程论坛板块标题" show-word-limit />
+        <el-form-item label="板块名称">
+          <el-input v-model="boardForm.title" maxlength="50" placeholder="请输入课程论坛板块名称" show-word-limit />
         </el-form-item>
 
         <el-form-item label="板块描述">
           <el-input
             v-model="boardForm.description"
             :rows="4"
-            maxlength="300"
-            placeholder="请输入板块描述"
+            maxlength="220"
+            placeholder="说明该课程论坛用于公告、答疑、资料共享或小组讨论等"
             show-word-limit
             type="textarea"
           />
         </el-form-item>
 
-        <el-form-item label="状态">
+        <el-form-item label="板块状态">
           <el-radio-group v-model="boardForm.status">
-            <el-radio-button label="active">启用</el-radio-button>
-            <el-radio-button label="inactive">停用</el-radio-button>
+            <el-radio value="active">启用</el-radio>
+            <el-radio value="inactive">停用</el-radio>
           </el-radio-group>
+        </el-form-item>
+
+        <el-form-item label="公告弹窗">
+          <el-switch v-model="boardForm.popupEnabled" active-text="启用" inactive-text="关闭" />
         </el-form-item>
       </el-form>
 
       <template #footer>
-        <el-button @click="dialogVisible = false">
-          {{ dialogMode === "view" ? "关闭" : "取消" }}
-        </el-button>
-        <el-button v-if="dialogMode !== 'view'" type="primary" @click="handleSubmit">保存</el-button>
+        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleSubmit">保存</el-button>
       </template>
     </el-dialog>
+
+    <el-drawer v-model="drawerVisible" size="620px" title="课程论坛详情">
+      <template v-if="currentBoard">
+        <div class="drawer-title">{{ currentBoard.title }}</div>
+        <div class="drawer-meta">
+          {{ currentBoard.courseName }} · {{ currentBoard.courseId }} ·
+          {{ currentBoard.status === "active" ? "启用中" : "已停用" }}
+        </div>
+        <p class="drawer-content">{{ currentBoard.description }}</p>
+
+        <div class="drawer-metrics">
+          <el-tag>公告 {{ getBoardNoticeCount(currentBoard.id) }}</el-tag>
+          <el-tag type="success">帖子 {{ getBoardPosts(currentBoard.id).length }}</el-tag>
+          <el-tag type="warning">回复 {{ getBoardReplyCount(currentBoard.id) }}</el-tag>
+          <el-tag type="info">附件 {{ getBoardAttachmentCount(currentBoard.id) }}</el-tag>
+        </div>
+
+        <el-divider />
+
+        <el-card shadow="never" class="detail-card">
+          <template #header>
+            <div class="card-header">
+              <span>置顶/弹窗公告</span>
+              <el-tag size="small" effect="plain">{{ getBoardNotices(currentBoard.id).length }} 条</el-tag>
+            </div>
+          </template>
+
+          <el-empty v-if="getBoardNotices(currentBoard.id).length === 0" description="暂无公告" />
+
+          <div v-else class="notice-list">
+            <div v-for="notice in getBoardNotices(currentBoard.id)" :key="notice.id" class="notice-item">
+              <div>
+                <div class="notice-title">
+                  {{ notice.title }}
+                  <el-tag v-if="notice.pinned" size="small" type="danger">置顶</el-tag>
+                  <el-tag v-if="notice.popup" size="small" type="warning">弹窗</el-tag>
+                </div>
+                <div class="notice-meta">{{ notice.authorName }} · {{ notice.createdAt }}</div>
+              </div>
+              <el-tag :type="notice.status === 'published' ? 'success' : 'info'">
+                {{ notice.status === "published" ? "已发布" : "已隐藏" }}
+              </el-tag>
+            </div>
+          </div>
+        </el-card>
+
+        <el-card shadow="never" class="detail-card">
+          <template #header>
+            <div class="card-header">
+              <span>热门帖子 TOP</span>
+              <el-tag size="small" effect="plain">{{ getBoardTopPosts(currentBoard.id).length }} 条</el-tag>
+            </div>
+          </template>
+
+          <el-empty v-if="getBoardTopPosts(currentBoard.id).length === 0" description="暂无热门帖子" />
+
+          <div v-else class="hot-list">
+            <div v-for="(post, index) in getBoardTopPosts(currentBoard.id)" :key="post.id" class="hot-item">
+              <div class="hot-rank">{{ index + 1 }}</div>
+              <div class="hot-main">
+                <div class="hot-title">{{ post.title }}</div>
+                <div class="metric-line">
+                  {{ post.authorName }} · {{ postModuleTextMap[post.module] }} · 浏览 {{ post.viewsCount }} · 回复
+                  {{ post.repliesCount }}
+                </div>
+              </div>
+              <el-tag type="warning">热度 {{ post.hotScore }}</el-tag>
+            </div>
+          </div>
+        </el-card>
+
+        <el-card shadow="never" class="detail-card">
+          <template #header>
+            <div class="card-header">
+              <span>用户活跃度概览</span>
+              <el-tag size="small" effect="plain">mock 统计</el-tag>
+            </div>
+          </template>
+
+          <el-empty v-if="getBoardUserActivities(currentBoard.id).length === 0" description="暂无活跃度数据" />
+
+          <el-table v-else :data="getBoardUserActivities(currentBoard.id)" border size="small">
+            <el-table-column prop="authorName" label="用户" min-width="110" />
+            <el-table-column prop="postCount" label="发帖" width="80" align="center" />
+            <el-table-column prop="replyCount" label="回帖" width="80" align="center" />
+            <el-table-column prop="activityScore" label="活跃度" width="100" align="center" />
+          </el-table>
+        </el-card>
+      </template>
+    </el-drawer>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, reactive, ref } from "vue";
-import { ElMessage, ElMessageBox } from "element-plus";
+import { ElMessage } from "element-plus";
 import ForumPageShell from "../components/ForumPageShell.vue";
-import { mockBoards, mockNotices, mockPosts, type ForumBoardMock } from "../mock";
+import {
+  mockAttachments,
+  mockBoards,
+  mockNotices,
+  mockPosts,
+  mockReplies,
+  postModuleTextMap,
+  type ForumBoardMock
+} from "../mock";
 
-type DialogMode = "create" | "edit" | "view";
+type DialogMode = "create" | "edit";
+type BoardStatus = "active" | "inactive";
+
+interface ForumBoardView extends ForumBoardMock {
+  popupEnabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
 
 interface BoardForm {
   id?: number;
@@ -145,42 +266,72 @@ interface BoardForm {
   courseName: string;
   title: string;
   description: string;
-  status: "active" | "inactive";
+  status: BoardStatus;
+  popupEnabled: boolean;
 }
 
-const boards = ref<ForumBoardMock[]>(mockBoards.map(item => ({ ...item })));
+interface BoardQueryForm {
+  keyword: string;
+  courseId: string;
+  status: BoardStatus | "";
+}
 
-const queryForm = reactive({
+interface UserActivityView {
+  authorName: string;
+  postCount: number;
+  replyCount: number;
+  activityScore: number;
+}
+
+const createEmptyQuery = (): BoardQueryForm => ({
   keyword: "",
-  status: "" as "active" | "inactive" | ""
+  courseId: "",
+  status: ""
 });
 
-const dialogVisible = ref(false);
-const dialogMode = ref<DialogMode>("create");
-
-const boardForm = reactive<BoardForm>({
+const createEmptyBoardForm = (): BoardForm => ({
   id: undefined,
   courseId: "",
   courseName: "",
   title: "",
   description: "",
-  status: "active"
+  status: "active",
+  popupEnabled: false
 });
 
+const boards = ref<ForumBoardView[]>(
+  mockBoards.map((board, index) => ({
+    ...board,
+    popupEnabled: mockNotices.some(notice => notice.boardId === board.id && notice.popup),
+    createdAt: `2026-04-${String(20 + index).padStart(2, "0")} 09:00`,
+    updatedAt: `2026-04-${String(24 + index).padStart(2, "0")} 10:00`
+  }))
+);
+
+const queryForm = reactive<BoardQueryForm>(createEmptyQuery());
+const activeQuery = reactive<BoardQueryForm>(createEmptyQuery());
+const boardForm = reactive<BoardForm>(createEmptyBoardForm());
+
+const dialogVisible = ref(false);
+const dialogMode = ref<DialogMode>("create");
+const drawerVisible = ref(false);
+const currentBoard = ref<ForumBoardView | null>(null);
+
 const filteredBoards = computed(() => {
-  const keyword = queryForm.keyword.trim().toLowerCase();
+  const keyword = activeQuery.keyword.trim().toLowerCase();
 
   return boards.value.filter(board => {
     const matchKeyword =
       !keyword ||
-      board.courseId.toLowerCase().includes(keyword) ||
-      board.courseName.toLowerCase().includes(keyword) ||
       board.title.toLowerCase().includes(keyword) ||
-      board.description.toLowerCase().includes(keyword);
+      board.description.toLowerCase().includes(keyword) ||
+      board.courseName.toLowerCase().includes(keyword) ||
+      board.courseId.toLowerCase().includes(keyword);
 
-    const matchStatus = !queryForm.status || board.status === queryForm.status;
+    const matchCourse = !activeQuery.courseId || board.courseId === activeQuery.courseId;
+    const matchStatus = !activeQuery.status || board.status === activeQuery.status;
 
-    return matchKeyword && matchStatus;
+    return matchKeyword && matchCourse && matchStatus;
   });
 });
 
@@ -191,49 +342,64 @@ const stats = computed(() => [
     help: "课程论坛板块数量"
   },
   {
-    label: "启用中",
-    value: boards.value.filter(item => item.status === "active").length,
+    label: "启用板块",
+    value: boards.value.filter(board => board.status === "active").length,
     help: "当前可访问的课程论坛"
   },
   {
-    label: "公告总数",
-    value: mockNotices.filter(item => item.status !== "deleted").length,
-    help: "板块内公告数据"
+    label: "帖子总数",
+    value: mockPosts.length,
+    help: "所有板块内帖子数量"
   },
   {
-    label: "帖子总数",
-    value: mockPosts.filter(item => item.status !== "deleted").length,
-    help: "板块内讨论帖子"
+    label: "平均热度",
+    value: getAverageHotScore(),
+    help: "基于 mock 帖子热度"
   }
 ]);
 
 const dialogTitle = computed(() => {
-  if (dialogMode.value === "create") return "新增课程论坛板块";
-  if (dialogMode.value === "edit") return "编辑课程论坛板块";
-  return "查看课程论坛板块";
+  return dialogMode.value === "create" ? "新增课程论坛板块" : "编辑课程论坛板块";
 });
 
+const getCurrentTimeText = () => {
+  const now = new Date();
+  const pad = (value: number) => String(value).padStart(2, "0");
+
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+};
+
+const getAverageHotScore = () => {
+  if (mockPosts.length === 0) return "0.0";
+
+  const total = mockPosts.reduce((sum, post) => sum + post.hotScore, 0);
+
+  return (total / mockPosts.length).toFixed(1);
+};
+
+const handleFilter = () => {
+  activeQuery.keyword = queryForm.keyword;
+  activeQuery.courseId = queryForm.courseId;
+  activeQuery.status = queryForm.status;
+};
+
 const resetQuery = () => {
-  queryForm.keyword = "";
-  queryForm.status = "";
+  Object.assign(queryForm, createEmptyQuery());
+  Object.assign(activeQuery, createEmptyQuery());
 };
 
 const resetBoardForm = () => {
-  boardForm.id = undefined;
-  boardForm.courseId = "";
-  boardForm.courseName = "";
-  boardForm.title = "";
-  boardForm.description = "";
-  boardForm.status = "active";
+  Object.assign(boardForm, createEmptyBoardForm());
 };
 
-const fillBoardForm = (board: ForumBoardMock) => {
+const fillBoardForm = (board: ForumBoardView) => {
   boardForm.id = board.id;
   boardForm.courseId = board.courseId;
   boardForm.courseName = board.courseName;
   boardForm.title = board.title;
   boardForm.description = board.description;
   boardForm.status = board.status;
+  boardForm.popupEnabled = board.popupEnabled;
 };
 
 const openCreateDialog = () => {
@@ -242,39 +408,15 @@ const openCreateDialog = () => {
   dialogVisible.value = true;
 };
 
-const openEditDialog = (board: ForumBoardMock) => {
+const openEditDialog = (board: ForumBoardView) => {
   fillBoardForm(board);
   dialogMode.value = "edit";
   dialogVisible.value = true;
 };
 
-const openViewDialog = (board: ForumBoardMock) => {
-  fillBoardForm(board);
-  dialogMode.value = "view";
-  dialogVisible.value = true;
-};
-
-const getBoardNoticeCount = (boardId: number) => {
-  return mockNotices.filter(notice => notice.boardId === boardId && notice.status !== "deleted").length;
-};
-
-const getBoardPostCount = (boardId: number) => {
-  return mockPosts.filter(post => post.boardId === boardId && post.status !== "deleted").length;
-};
-
-const getBoardReplyCount = (boardId: number) => {
-  return mockPosts
-    .filter(post => post.boardId === boardId && post.status !== "deleted")
-    .reduce((sum, post) => sum + post.repliesCount, 0);
-};
-
-const getBoardAverageHotScore = (boardId: number) => {
-  const boardPosts = mockPosts.filter(post => post.boardId === boardId && post.status !== "deleted");
-
-  if (boardPosts.length === 0) return "0.0";
-
-  const totalScore = boardPosts.reduce((sum, post) => sum + post.hotScore, 0);
-  return (totalScore / boardPosts.length).toFixed(1);
+const openDetailDrawer = (board: ForumBoardView) => {
+  currentBoard.value = board;
+  drawerVisible.value = true;
 };
 
 const handleSubmit = () => {
@@ -294,7 +436,7 @@ const handleSubmit = () => {
   }
 
   if (!title) {
-    ElMessage.warning("请输入板块标题");
+    ElMessage.warning("请输入板块名称");
     return;
   }
 
@@ -304,20 +446,25 @@ const handleSubmit = () => {
   }
 
   if (dialogMode.value === "create") {
+    const now = getCurrentTimeText();
+
     boards.value.unshift({
       id: Date.now(),
       courseId,
       courseName,
       title,
       description,
-      status: boardForm.status
+      status: boardForm.status,
+      popupEnabled: boardForm.popupEnabled,
+      createdAt: now,
+      updatedAt: now
     });
 
     ElMessage.success("课程论坛板块已添加到 mock 列表");
   }
 
   if (dialogMode.value === "edit" && boardForm.id) {
-    const target = boards.value.find(item => item.id === boardForm.id);
+    const target = boards.value.find(board => board.id === boardForm.id);
 
     if (target) {
       target.courseId = courseId;
@@ -325,6 +472,12 @@ const handleSubmit = () => {
       target.title = title;
       target.description = description;
       target.status = boardForm.status;
+      target.popupEnabled = boardForm.popupEnabled;
+      target.updatedAt = getCurrentTimeText();
+
+      if (currentBoard.value?.id === target.id) {
+        currentBoard.value = target;
+      }
     }
 
     ElMessage.success("课程论坛板块 mock 数据已更新");
@@ -333,29 +486,104 @@ const handleSubmit = () => {
   dialogVisible.value = false;
 };
 
-const toggleBoardStatus = (board: ForumBoardMock) => {
+const toggleBoardStatus = (board: ForumBoardView) => {
   board.status = board.status === "active" ? "inactive" : "active";
-  ElMessage.success(`${board.status === "active" ? "已启用" : "已停用"}：${board.title}`);
+  board.updatedAt = getCurrentTimeText();
+
+  ElMessage.success(`${board.title} 已${board.status === "active" ? "启用" : "停用"}`);
 };
 
-const handleDelete = async (board: ForumBoardMock) => {
-  try {
-    await ElMessageBox.confirm(`确认删除课程论坛板块“${board.title}”吗？当前只会从本地 mock 列表移除。`, "删除确认", {
-      confirmButtonText: "删除",
-      cancelButtonText: "取消",
-      type: "warning"
+const getBoardPosts = (boardId: number) => {
+  return mockPosts.filter(post => post.boardId === boardId && post.status !== "deleted");
+};
+
+const getBoardNotices = (boardId: number) => {
+  return mockNotices.filter(notice => notice.boardId === boardId && notice.status !== "deleted");
+};
+
+const getBoardNoticeCount = (boardId: number) => {
+  return getBoardNotices(boardId).length;
+};
+
+const getBoardReplyCount = (boardId: number) => {
+  const postIds = getBoardPosts(boardId).map(post => post.id);
+
+  return mockReplies
+    .filter(reply => postIds.includes(reply.postId))
+    .reduce((sum, reply) => sum + 1 + (reply.children?.length ?? 0), 0);
+};
+
+const getBoardAttachmentCount = (boardId: number) => {
+  const postIds = getBoardPosts(boardId).map(post => post.id);
+  const replyIds = mockReplies
+    .filter(reply => postIds.includes(reply.postId))
+    .flatMap(reply => [reply.id, ...(reply.children?.map(child => child.id) ?? [])]);
+
+  return mockAttachments.filter(
+    attachment =>
+      (attachment.ownerType === "post" && postIds.includes(attachment.ownerId)) ||
+      (attachment.ownerType === "reply" && replyIds.includes(attachment.ownerId))
+  ).length;
+};
+
+const getBoardTopPosts = (boardId: number) => {
+  return [...getBoardPosts(boardId)].sort((a, b) => b.hotScore - a.hotScore).slice(0, 3);
+};
+
+const getBoardTopPost = (boardId: number) => {
+  return getBoardTopPosts(boardId)[0];
+};
+
+const getBoardUserActivities = (boardId: number): UserActivityView[] => {
+  const boardPosts = getBoardPosts(boardId);
+  const postIds = boardPosts.map(post => post.id);
+  const activityMap = new Map<string, UserActivityView>();
+
+  const ensureActivity = (authorName: string) => {
+    if (!activityMap.has(authorName)) {
+      activityMap.set(authorName, {
+        authorName,
+        postCount: 0,
+        replyCount: 0,
+        activityScore: 0
+      });
+    }
+
+    return activityMap.get(authorName)!;
+  };
+
+  boardPosts.forEach(post => {
+    const activity = ensureActivity(post.authorName);
+
+    activity.postCount += 1;
+  });
+
+  mockReplies
+    .filter(reply => postIds.includes(reply.postId))
+    .forEach(reply => {
+      const activity = ensureActivity(reply.authorName);
+
+      activity.replyCount += 1;
+
+      reply.children?.forEach(child => {
+        const childActivity = ensureActivity(child.authorName);
+
+        childActivity.replyCount += 1;
+      });
     });
 
-    boards.value = boards.value.filter(item => item.id !== board.id);
-    ElMessage.success("已从 mock 列表删除");
-  } catch {
-    // 用户取消删除，不需要提示
-  }
+  return Array.from(activityMap.values())
+    .map(activity => ({
+      ...activity,
+      activityScore: activity.postCount * 10 + activity.replyCount * 4
+    }))
+    .sort((a, b) => b.activityScore - a.activityScore)
+    .slice(0, 5);
 };
 </script>
 
 <style scoped lang="scss">
-.forum-boards-page,
+.forum-course-boards-page,
 .filter-form {
   display: flex;
   flex-direction: column;
@@ -364,55 +592,111 @@ const handleDelete = async (board: ForumBoardMock) => {
 .filter-form {
   flex-flow: row wrap;
 }
-.board-card {
-  margin-bottom: 16px;
-  border-radius: 12px;
-}
-.board-header {
+.board-title-cell {
   display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
 }
 .board-title {
-  font-size: 17px;
   font-weight: 600;
   color: var(--el-text-color-primary);
 }
-.board-subtitle {
+.board-description {
   margin-top: 6px;
+  line-height: 1.6;
+  color: var(--el-text-color-regular);
+}
+.board-meta {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--el-text-color-placeholder);
+}
+.metric-line {
+  line-height: 22px;
+  color: var(--el-text-color-secondary);
+}
+.hot-title {
+  overflow: hidden;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.empty-text {
+  color: var(--el-text-color-placeholder);
+}
+.drawer-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+.drawer-meta {
+  margin-top: 8px;
   font-size: 13px;
   color: var(--el-text-color-secondary);
 }
-.board-desc {
-  min-height: 44px;
-  margin: 14px 0;
-  line-height: 1.7;
+.drawer-content {
+  margin: 16px 0;
+  line-height: 1.8;
   color: var(--el-text-color-regular);
 }
-.board-metrics {
-  margin: 10px 0 14px;
+.drawer-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
-.metric-box {
-  padding: 12px 8px;
-  text-align: center;
+.detail-card {
+  margin-top: 16px;
+  border-radius: 10px;
+}
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.notice-list,
+.hot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.notice-item,
+.hot-item {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
   background: var(--el-fill-color-lighter);
   border: 1px solid var(--el-border-color-light);
   border-radius: 8px;
 }
-.metric-value {
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--el-color-primary);
+.notice-title {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
 }
-.metric-label {
-  margin-top: 4px;
+.notice-meta {
+  margin-top: 6px;
   font-size: 12px;
   color: var(--el-text-color-secondary);
 }
-.board-footer {
+.hot-rank {
   display: flex;
-  gap: 8px;
-  justify-content: flex-end;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  font-weight: 700;
+  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+  border-radius: 50%;
+}
+.hot-main {
+  flex: 1;
+  min-width: 0;
 }
 </style>

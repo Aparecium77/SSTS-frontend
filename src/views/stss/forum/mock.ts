@@ -94,6 +94,7 @@ export const mockNotices: ForumNoticeMock[] = [
 
 export type PostStatus = "published" | "hot" | "pinned" | "hidden" | "deleted";
 export type PostModule = "discussion" | "homework" | "exam" | "general";
+export type AttachmentOwnerType = "post" | "reply";
 
 export interface ForumPostMock {
   id: number;
@@ -128,6 +129,18 @@ export interface ForumReplyMock {
   status: "published" | "hidden" | "deleted";
   createdAt: string;
   children?: ForumReplyMock[];
+}
+
+export interface ForumAttachmentMock {
+  id: number;
+  ownerType: AttachmentOwnerType;
+  ownerId: number;
+  fileName: string;
+  fileUrl: string;
+  fileSize: number;
+  mimeType: string;
+  uploaderName: string;
+  createdAt: string;
 }
 
 export const postModuleTextMap: Record<PostModule, string> = {
@@ -270,6 +283,42 @@ export const mockReplies: ForumReplyMock[] = [
     likesCount: 3,
     status: "published",
     createdAt: "2026-04-25 21:00"
+  }
+];
+
+export const mockAttachments: ForumAttachmentMock[] = [
+  {
+    id: 501,
+    ownerType: "post",
+    ownerId: 201,
+    fileName: "论坛接口字段对照表.xlsx",
+    fileUrl: "#",
+    fileSize: 184320,
+    mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    uploaderName: "张同学",
+    createdAt: "2026-04-26 14:22"
+  },
+  {
+    id: 502,
+    ownerType: "post",
+    ownerId: 202,
+    fileName: "小组展示UML草稿.zip",
+    fileUrl: "#",
+    fileSize: 2097152,
+    mimeType: "application/zip",
+    uploaderName: "李同学",
+    createdAt: "2026-04-25 20:50"
+  },
+  {
+    id: 503,
+    ownerType: "reply",
+    ownerId: 301,
+    fileName: "接口分页示例.json",
+    fileUrl: "#",
+    fileSize: 4096,
+    mimeType: "application/json",
+    uploaderName: "助教",
+    createdAt: "2026-04-26 14:36"
   }
 ];
 

@@ -2,11 +2,11 @@
   <div class="forum-notices-page">
     <ForumPageShell
       title="公告"
-      description="维护课程论坛公告，支持置顶、弹窗提醒、状态筛选和本地 mock 演示。"
-      :tags="['置顶公告', '弹窗提醒', '教师发布']"
+      description="维护课程论坛公告，支持公告发布、编辑、删除、置顶展示和进入板块弹窗提醒。"
+      :tags="['课程公告', '教师发布', '置顶展示', '弹窗提醒']"
       :stats="stats"
       content-title="公告列表"
-      content-description="展示课程公告的标题、所属课程、发布人、状态和展示设置。"
+      content-description="设置筛选条件后点击筛选。真实接入后对应公告列表、发布、更新、删除和弹窗切换接口。"
       :data-count="filteredNotices.length"
       empty-description="当前筛选条件下暂无公告。"
     >
@@ -17,15 +17,7 @@
       <template #filters>
         <el-form :model="queryForm" class="filter-form" inline>
           <el-form-item label="关键词">
-            <el-input v-model="queryForm.keyword" clearable placeholder="搜索标题、正文或课程" style="width: 260px" />
-          </el-form-item>
-
-          <el-form-item label="状态">
-            <el-select v-model="queryForm.status" clearable placeholder="全部状态" style="width: 180px">
-              <el-option label="已发布" value="published" />
-              <el-option label="已隐藏" value="hidden" />
-              <el-option label="已删除" value="deleted" />
-            </el-select>
+            <el-input v-model="queryForm.keyword" clearable placeholder="搜索标题、正文或发布人" style="width: 260px" />
           </el-form-item>
 
           <el-form-item label="课程">
@@ -34,14 +26,39 @@
             </el-select>
           </el-form-item>
 
+          <el-form-item label="状态">
+            <el-select v-model="queryForm.status" clearable placeholder="全部状态" style="width: 160px">
+              <el-option label="已发布" value="published" />
+              <el-option label="已隐藏" value="hidden" />
+              <el-option label="已删除" value="deleted" />
+            </el-select>
+          </el-form-item>
+
+          <el-form-item label="展示">
+            <el-select v-model="queryForm.displayType" clearable placeholder="全部展示" style="width: 160px">
+              <el-option label="置顶公告" value="pinned" />
+              <el-option label="弹窗公告" value="popup" />
+            </el-select>
+          </el-form-item>
+
           <el-form-item>
-            <el-button @click="resetQuery">重置</el-button>
+            <el-space>
+              <el-button type="primary" @click="handleFilter">筛选</el-button>
+              <el-button @click="resetQuery">重置</el-button>
+            </el-space>
           </el-form-item>
         </el-form>
+
+        <el-alert
+          :closable="false"
+          show-icon
+          title="当前为本地 mock 数据。真实接入后，发布与修改权限由后端根据任课教师或管理员身份校验。"
+          type="info"
+        />
       </template>
 
       <el-table :data="filteredNotices" border>
-        <el-table-column label="公告标题" min-width="220">
+        <el-table-column label="公告内容" min-width="330">
           <template #default="{ row }">
             <div class="notice-title-cell">
               <span class="notice-title">{{ row.title }}</span>
@@ -49,40 +66,49 @@
               <el-tag v-if="row.popup" size="small" type="warning">弹窗</el-tag>
             </div>
             <div class="notice-content-preview">{{ row.content }}</div>
+            <div class="notice-meta">{{ row.authorName }} · {{ row.createdAt }} · 更新于 {{ row.updatedAt }}</div>
           </template>
         </el-table-column>
 
-        <el-table-column prop="courseName" label="所属课程" min-width="130" />
-        <el-table-column prop="boardName" label="课程板块" min-width="170" />
-        <el-table-column prop="authorName" label="发布人" min-width="100" />
+        <el-table-column prop="courseName" label="所属课程" min-width="140" />
 
         <el-table-column label="状态" min-width="100" align="center">
           <template #default="{ row }">
-            <el-tag :type="statusTagMap[row.status]">
-              {{ statusTextMap[row.status] }}
+            <el-tag :type="noticeStatusTagMap[row.status]">
+              {{ noticeStatusTextMap[row.status] }}
             </el-tag>
           </template>
         </el-table-column>
 
-        <el-table-column label="置顶" min-width="90" align="center">
+        <el-table-column label="展示方式" min-width="170">
           <template #default="{ row }">
-            <el-switch v-model="row.pinned" @change="handleTogglePinned(row)" />
+            <div class="display-switches">
+              <el-switch
+                v-model="row.pinned"
+                inline-prompt
+                active-text="置顶"
+                inactive-text="普通"
+                @change="handleTogglePinned(row)"
+              />
+              <el-switch
+                v-model="row.popup"
+                inline-prompt
+                active-text="弹窗"
+                inactive-text="关闭"
+                @change="handleTogglePopup(row)"
+              />
+            </div>
           </template>
         </el-table-column>
 
-        <el-table-column label="弹窗" min-width="90" align="center">
-          <template #default="{ row }">
-            <el-switch v-model="row.popup" @change="handleTogglePopup(row)" />
-          </template>
-        </el-table-column>
-
-        <el-table-column prop="createdAt" label="发布时间" min-width="160" />
-
-        <el-table-column label="操作" width="180">
+        <el-table-column label="操作" width="230">
           <template #default="{ row }">
             <el-space>
-              <el-button link type="primary" @click="openViewDialog(row)">查看</el-button>
+              <el-button link type="primary" @click="openDetailDrawer(row)">详情</el-button>
               <el-button link @click="openEditDialog(row)">编辑</el-button>
+              <el-button link type="warning" @click="handleToggleStatus(row)">
+                {{ row.status === "hidden" ? "发布" : "隐藏" }}
+              </el-button>
               <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
             </el-space>
           </template>
@@ -90,8 +116,8 @@
       </el-table>
     </ForumPageShell>
 
-    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="680px">
-      <el-form :model="noticeForm" label-width="90px" :disabled="dialogMode === 'view'">
+    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="720px">
+      <el-form :model="noticeForm" label-width="90px">
         <el-form-item label="所属课程">
           <el-select v-model="noticeForm.boardId" class="full-width" placeholder="请选择课程论坛">
             <el-option
@@ -104,15 +130,15 @@
         </el-form-item>
 
         <el-form-item label="公告标题">
-          <el-input v-model="noticeForm.title" maxlength="60" placeholder="请输入公告标题" show-word-limit />
+          <el-input v-model="noticeForm.title" maxlength="80" placeholder="请输入公告标题" show-word-limit />
         </el-form-item>
 
         <el-form-item label="公告正文">
           <el-input
             v-model="noticeForm.content"
-            :rows="6"
-            maxlength="500"
-            placeholder="请输入公告内容"
+            :rows="7"
+            maxlength="800"
+            placeholder="请输入公告正文"
             show-word-limit
             type="textarea"
           />
@@ -120,25 +146,75 @@
 
         <el-form-item label="公告状态">
           <el-radio-group v-model="noticeForm.status">
-            <el-radio-button label="published">已发布</el-radio-button>
-            <el-radio-button label="hidden">已隐藏</el-radio-button>
-            <el-radio-button label="deleted">已删除</el-radio-button>
+            <el-radio value="published">发布</el-radio>
+            <el-radio value="hidden">隐藏</el-radio>
           </el-radio-group>
         </el-form-item>
 
         <el-form-item label="展示设置">
-          <el-checkbox v-model="noticeForm.pinned">置顶公告</el-checkbox>
-          <el-checkbox v-model="noticeForm.popup">进入板块时弹窗提醒</el-checkbox>
+          <el-space wrap>
+            <el-checkbox v-model="noticeForm.pinned">置顶到板块顶部</el-checkbox>
+            <el-checkbox v-model="noticeForm.popup">进入板块时弹窗提醒</el-checkbox>
+          </el-space>
         </el-form-item>
       </el-form>
 
       <template #footer>
-        <el-button @click="dialogVisible = false">
-          {{ dialogMode === "view" ? "关闭" : "取消" }}
-        </el-button>
-        <el-button v-if="dialogMode !== 'view'" type="primary" @click="handleSubmit">保存</el-button>
+        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleSubmit">保存</el-button>
       </template>
     </el-dialog>
+
+    <el-drawer v-model="drawerVisible" size="560px" title="公告详情">
+      <template v-if="currentNotice">
+        <div class="drawer-title">
+          {{ currentNotice.title }}
+        </div>
+
+        <div class="drawer-meta">
+          {{ currentNotice.courseName }} · {{ currentNotice.authorName }} · {{ currentNotice.createdAt }}
+        </div>
+
+        <div class="drawer-tags">
+          <el-tag :type="noticeStatusTagMap[currentNotice.status]">
+            {{ noticeStatusTextMap[currentNotice.status] }}
+          </el-tag>
+          <el-tag v-if="currentNotice.pinned" type="danger">置顶公告</el-tag>
+          <el-tag v-if="currentNotice.popup" type="warning">弹窗提醒</el-tag>
+        </div>
+
+        <el-divider />
+
+        <p class="drawer-content">{{ currentNotice.content }}</p>
+
+        <el-card class="preview-card" shadow="never">
+          <template #header>
+            <div class="card-header">
+              <span>学生侧展示预览</span>
+              <el-tag size="small" effect="plain">mock</el-tag>
+            </div>
+          </template>
+
+          <div class="student-preview">
+            <div class="student-preview__title">
+              <span>{{ currentNotice.title }}</span>
+              <el-tag v-if="currentNotice.pinned" size="small" type="danger">置顶</el-tag>
+            </div>
+            <div class="student-preview__content">{{ currentNotice.content }}</div>
+            <div class="student-preview__footer">{{ currentNotice.courseName }} · {{ currentNotice.authorName }}</div>
+          </div>
+
+          <el-alert
+            v-if="currentNotice.popup"
+            class="popup-preview"
+            :closable="false"
+            show-icon
+            title="该公告已启用弹窗提醒，真实接入后可在进入课程论坛时弹出。"
+            type="warning"
+          />
+        </el-card>
+      </template>
+    </el-drawer>
   </div>
 </template>
 
@@ -148,7 +224,15 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import ForumPageShell from "../components/ForumPageShell.vue";
 import { mockBoards, mockNotices, type ForumNoticeMock, type NoticeStatus } from "../mock";
 
-type DialogMode = "create" | "edit" | "view";
+type DialogMode = "create" | "edit";
+type DisplayType = "pinned" | "popup" | "";
+
+interface NoticeQueryForm {
+  keyword: string;
+  courseId: string;
+  status: NoticeStatus | "";
+  displayType: DisplayType;
+}
 
 interface NoticeForm {
   id?: number;
@@ -157,35 +241,19 @@ interface NoticeForm {
   content: string;
   pinned: boolean;
   popup: boolean;
-  status: NoticeStatus;
+  status: Exclude<NoticeStatus, "deleted">;
 }
 
-const statusTextMap: Record<NoticeStatus, string> = {
-  published: "已发布",
-  hidden: "已隐藏",
-  deleted: "已删除"
-};
-
-const statusTagMap: Record<NoticeStatus, "success" | "warning" | "info"> = {
-  published: "success",
-  hidden: "warning",
-  deleted: "info"
-};
-
-const notices = ref<ForumNoticeMock[]>(mockNotices.map(item => ({ ...item })));
-
-const queryForm = reactive({
+const createEmptyQuery = (): NoticeQueryForm => ({
   keyword: "",
-  status: "" as NoticeStatus | "",
-  courseId: ""
+  courseId: "",
+  status: "",
+  displayType: ""
 });
 
-const dialogVisible = ref(false);
-const dialogMode = ref<DialogMode>("create");
-
-const noticeForm = reactive<NoticeForm>({
+const createEmptyNoticeForm = (): NoticeForm => ({
   id: undefined,
-  boardId: null,
+  boardId: mockBoards[0]?.id ?? null,
   title: "",
   content: "",
   pinned: false,
@@ -193,21 +261,46 @@ const noticeForm = reactive<NoticeForm>({
   status: "published"
 });
 
+const noticeStatusTextMap: Record<NoticeStatus, string> = {
+  published: "已发布",
+  hidden: "已隐藏",
+  deleted: "已删除"
+};
+
+const noticeStatusTagMap: Record<NoticeStatus, "success" | "info" | "danger"> = {
+  published: "success",
+  hidden: "info",
+  deleted: "danger"
+};
+
+const notices = ref<ForumNoticeMock[]>(mockNotices.map(item => ({ ...item })));
+const queryForm = reactive<NoticeQueryForm>(createEmptyQuery());
+const activeQuery = reactive<NoticeQueryForm>(createEmptyQuery());
+const noticeForm = reactive<NoticeForm>(createEmptyNoticeForm());
+
+const dialogVisible = ref(false);
+const dialogMode = ref<DialogMode>("create");
+const drawerVisible = ref(false);
+const currentNotice = ref<ForumNoticeMock | null>(null);
+
 const filteredNotices = computed(() => {
-  const keyword = queryForm.keyword.trim().toLowerCase();
+  const keyword = activeQuery.keyword.trim().toLowerCase();
 
   return notices.value.filter(notice => {
     const matchKeyword =
       !keyword ||
       notice.title.toLowerCase().includes(keyword) ||
       notice.content.toLowerCase().includes(keyword) ||
-      notice.courseName.toLowerCase().includes(keyword) ||
-      notice.boardName.toLowerCase().includes(keyword);
+      notice.authorName.toLowerCase().includes(keyword);
 
-    const matchStatus = !queryForm.status || notice.status === queryForm.status;
-    const matchCourse = !queryForm.courseId || notice.courseId === queryForm.courseId;
+    const matchCourse = !activeQuery.courseId || notice.courseId === activeQuery.courseId;
+    const matchStatus = !activeQuery.status || notice.status === activeQuery.status;
+    const matchDisplay =
+      !activeQuery.displayType ||
+      (activeQuery.displayType === "pinned" && notice.pinned) ||
+      (activeQuery.displayType === "popup" && notice.popup);
 
-    return matchKeyword && matchStatus && matchCourse;
+    return matchKeyword && matchCourse && matchStatus && matchDisplay;
   });
 });
 
@@ -215,39 +308,54 @@ const stats = computed(() => [
   {
     label: "公告总数",
     value: notices.value.length,
-    help: "当前课程论坛公告数量"
-  },
-  {
-    label: "置顶公告",
-    value: notices.value.filter(item => item.pinned).length,
-    help: "优先展示在板块顶部"
-  },
-  {
-    label: "弹窗提醒",
-    value: notices.value.filter(item => item.popup).length,
-    help: "进入板块时提醒学生"
+    help: "课程论坛公告数量"
   },
   {
     label: "已发布",
     value: notices.value.filter(item => item.status === "published").length,
-    help: "当前对用户可见公告"
+    help: "学生可见公告"
+  },
+  {
+    label: "置顶公告",
+    value: notices.value.filter(item => item.pinned && item.status === "published").length,
+    help: "优先展示在板块顶部"
+  },
+  {
+    label: "弹窗公告",
+    value: notices.value.filter(item => item.popup && item.status === "published").length,
+    help: "进入板块时提醒"
   }
 ]);
 
 const dialogTitle = computed(() => {
-  if (dialogMode.value === "create") return "发布公告";
-  if (dialogMode.value === "edit") return "编辑公告";
-  return "查看公告";
+  return dialogMode.value === "create" ? "发布公告" : "编辑公告";
 });
 
+const getCurrentTimeText = () => {
+  const now = new Date();
+  const pad = (value: number) => String(value).padStart(2, "0");
+
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+};
+
+const getBoardInfo = (boardId: number | null) => {
+  return mockBoards.find(board => board.id === boardId);
+};
+
+const handleFilter = () => {
+  activeQuery.keyword = queryForm.keyword;
+  activeQuery.courseId = queryForm.courseId;
+  activeQuery.status = queryForm.status;
+  activeQuery.displayType = queryForm.displayType;
+};
+
+const resetQuery = () => {
+  Object.assign(queryForm, createEmptyQuery());
+  Object.assign(activeQuery, createEmptyQuery());
+};
+
 const resetNoticeForm = () => {
-  noticeForm.id = undefined;
-  noticeForm.boardId = mockBoards[0]?.id ?? null;
-  noticeForm.title = "";
-  noticeForm.content = "";
-  noticeForm.pinned = false;
-  noticeForm.popup = false;
-  noticeForm.status = "published";
+  Object.assign(noticeForm, createEmptyNoticeForm());
 };
 
 const fillNoticeForm = (notice: ForumNoticeMock) => {
@@ -257,24 +365,7 @@ const fillNoticeForm = (notice: ForumNoticeMock) => {
   noticeForm.content = notice.content;
   noticeForm.pinned = notice.pinned;
   noticeForm.popup = notice.popup;
-  noticeForm.status = notice.status;
-};
-
-const getBoardInfo = (boardId: number | null) => {
-  return mockBoards.find(board => board.id === boardId);
-};
-
-const getCurrentTimeText = () => {
-  const now = new Date();
-  const pad = (value: number) => String(value).padStart(2, "0");
-
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
-};
-
-const resetQuery = () => {
-  queryForm.keyword = "";
-  queryForm.status = "";
-  queryForm.courseId = "";
+  noticeForm.status = notice.status === "deleted" ? "hidden" : notice.status;
 };
 
 const openCreateDialog = () => {
@@ -289,16 +380,15 @@ const openEditDialog = (notice: ForumNoticeMock) => {
   dialogVisible.value = true;
 };
 
-const openViewDialog = (notice: ForumNoticeMock) => {
-  fillNoticeForm(notice);
-  dialogMode.value = "view";
-  dialogVisible.value = true;
+const openDetailDrawer = (notice: ForumNoticeMock) => {
+  currentNotice.value = notice;
+  drawerVisible.value = true;
 };
 
 const handleSubmit = () => {
+  const board = getBoardInfo(noticeForm.boardId);
   const title = noticeForm.title.trim();
   const content = noticeForm.content.trim();
-  const board = getBoardInfo(noticeForm.boardId);
 
   if (!board) {
     ElMessage.warning("请选择所属课程论坛");
@@ -351,6 +441,10 @@ const handleSubmit = () => {
       target.popup = noticeForm.popup;
       target.status = noticeForm.status;
       target.updatedAt = getCurrentTimeText();
+
+      if (currentNotice.value?.id === target.id) {
+        currentNotice.value = target;
+      }
     }
 
     ElMessage.success("公告 mock 数据已更新");
@@ -359,27 +453,51 @@ const handleSubmit = () => {
   dialogVisible.value = false;
 };
 
+const handleTogglePinned = (notice: ForumNoticeMock) => {
+  notice.updatedAt = getCurrentTimeText();
+
+  ElMessage.success(`${notice.title} 已${notice.pinned ? "设为置顶" : "取消置顶"}`);
+};
+
+const handleTogglePopup = (notice: ForumNoticeMock) => {
+  notice.updatedAt = getCurrentTimeText();
+
+  ElMessage.success(`${notice.title} 已${notice.popup ? "启用弹窗" : "关闭弹窗"}`);
+};
+
+const handleToggleStatus = (notice: ForumNoticeMock) => {
+  if (notice.status === "deleted") {
+    ElMessage.warning("已删除公告不能直接恢复，请重新发布公告");
+    return;
+  }
+
+  notice.status = notice.status === "hidden" ? "published" : "hidden";
+  notice.updatedAt = getCurrentTimeText();
+
+  ElMessage.success(`${notice.title} 已${notice.status === "published" ? "发布" : "隐藏"}`);
+};
+
 const handleDelete = async (notice: ForumNoticeMock) => {
   try {
-    await ElMessageBox.confirm(`确认删除公告“${notice.title}”吗？当前只会从本地 mock 列表移除。`, "删除确认", {
+    await ElMessageBox.confirm(`确认删除公告“${notice.title}”吗？当前只会标记为已删除。`, "删除确认", {
       confirmButtonText: "删除",
       cancelButtonText: "取消",
       type: "warning"
     });
 
-    notices.value = notices.value.filter(item => item.id !== notice.id);
-    ElMessage.success("已从 mock 列表删除");
+    notice.status = "deleted";
+    notice.pinned = false;
+    notice.popup = false;
+    notice.updatedAt = getCurrentTimeText();
+
+    if (currentNotice.value?.id === notice.id) {
+      currentNotice.value = notice;
+    }
+
+    ElMessage.success("公告已标记为删除");
   } catch {
     // 用户取消删除，不需要提示
   }
-};
-
-const handleTogglePinned = (notice: ForumNoticeMock) => {
-  ElMessage.success(`已${notice.pinned ? "开启" : "取消"}置顶：${notice.title}`);
-};
-
-const handleTogglePopup = (notice: ForumNoticeMock) => {
-  ElMessage.success(`已${notice.popup ? "开启" : "关闭"}弹窗提醒：${notice.title}`);
 };
 </script>
 
@@ -395,7 +513,7 @@ const handleTogglePopup = (notice: ForumNoticeMock) => {
 }
 .notice-title-cell {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   align-items: center;
 }
 .notice-title {
@@ -406,12 +524,78 @@ const handleTogglePopup = (notice: ForumNoticeMock) => {
   width: 100%;
   margin-top: 6px;
   overflow: hidden;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
+  line-height: 1.6;
+  color: var(--el-text-color-regular);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.notice-meta {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--el-text-color-placeholder);
+}
+.display-switches {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
 .full-width {
   width: 100%;
+}
+.drawer-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+.drawer-meta {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+}
+.drawer-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.drawer-content {
+  line-height: 1.9;
+  color: var(--el-text-color-regular);
+  white-space: pre-wrap;
+}
+.preview-card {
+  margin-top: 18px;
+  border-radius: 10px;
+}
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.student-preview {
+  padding: 14px;
+  background: var(--el-fill-color-lighter);
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 10px;
+}
+.student-preview__title {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+.student-preview__content {
+  margin-top: 10px;
+  line-height: 1.8;
+  color: var(--el-text-color-regular);
+}
+.student-preview__footer {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.popup-preview {
+  margin-top: 14px;
 }
 </style>
