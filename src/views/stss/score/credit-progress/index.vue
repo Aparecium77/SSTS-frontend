@@ -87,9 +87,17 @@ const loadCreditData = async () => {
   if (!ensureStudentAccess()) return;
   loading.value = true;
   try {
-    const [creditResp, statisticsResp] = await Promise.all([getMyCredits(), getMyStatistics()]);
-    credits.value = creditResp.data;
-    statistics.value = statisticsResp.data;
+    const [creditResult, statisticsResult] = await Promise.allSettled([getMyCredits(), getMyStatistics()]);
+    if (creditResult.status === "fulfilled") {
+      credits.value = creditResult.value.data;
+    } else {
+      credits.value = null;
+    }
+    if (statisticsResult.status === "fulfilled") {
+      statistics.value = statisticsResult.value.data;
+    } else {
+      statistics.value = null;
+    }
   } finally {
     loading.value = false;
   }

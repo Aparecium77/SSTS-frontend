@@ -258,11 +258,27 @@ const handleStudentExpand = (row: unknown, expandedRows: unknown) => {
 const studentRow = (row: unknown) => row as Score.StudentGrade;
 const sheetRow = (row: unknown) => row as Score.GradeSheetRow;
 
+const getLatestSemester = (grades: Score.StudentGrade[]) => {
+  const semesters = Array.from(new Set(grades.map(item => item.semester).filter(Boolean)));
+  return semesters.sort((a, b) => b.localeCompare(a))[0] || "";
+};
+
 const loadMyGrades = async () => {
   loading.value = true;
   try {
     const resp = await getMyGrades({ semester: studentSemester.value || undefined });
-    studentGrades.value = resp.data.grades;
+    const grades = resp.data.grades;
+    if (!studentSemester.value && grades.length) {
+      const latestSemester = getLatestSemester(grades);
+      if (latestSemester) {
+        studentSemester.value = latestSemester;
+        studentGrades.value = grades.filter(item => item.semester === latestSemester);
+      } else {
+        studentGrades.value = grades;
+      }
+    } else {
+      studentGrades.value = grades;
+    }
     gradeDetailMap.value = {};
   } finally {
     loading.value = false;
