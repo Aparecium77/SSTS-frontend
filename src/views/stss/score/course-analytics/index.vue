@@ -136,6 +136,7 @@ import { Download, Refresh } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import type { Score } from "@/api/interface/score";
 import { exportCourseAnalysis, getCourseAnalysis, getGradeCourses } from "@/api/modules/score";
+import { saveBlob } from "@/utils/download";
 import { courseOptionLabel, findCourseByKey, parseCourseKey, toCourseKey } from "@/views/stss/score/_shared/courseSelection";
 
 const loading = ref(false);
@@ -189,18 +190,11 @@ const handleExport = async (format: "xlsx" | "pdf") => {
   const exporting = format === "pdf" ? exportingPdf : exportingXlsx;
   exporting.value = true;
   try {
-    const resp = await exportCourseAnalysis(selectedCourseId.value, {
+    const blob = await exportCourseAnalysis(selectedCourseId.value, {
       semester: selectedSemester.value,
       format
     });
-    const mime = format === "pdf" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-    const blob = new Blob([resp.data], { type: mime });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${selectedCourseId.value}-${selectedSemester.value}-成绩分析.${format === "pdf" ? "pdf" : "xlsx"}`;
-    link.click();
-    window.URL.revokeObjectURL(url);
+    saveBlob(blob, `${selectedCourseId.value}-${selectedSemester.value}-成绩分析.${format === "pdf" ? "pdf" : "xlsx"}`);
     ElMessage.success(format === "pdf" ? "PDF 导出已开始" : "Excel 导出已开始");
   } finally {
     exporting.value = false;

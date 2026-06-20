@@ -153,6 +153,7 @@ import {
   queryAdminGradeRecords,
   queryAdminStudentArchive
 } from "@/api/modules/score";
+import { saveBlob } from "@/utils/download";
 
 const activeTab = ref("records");
 const loading = ref(false);
@@ -226,16 +227,8 @@ const loadRecords = async () => {
 const exportRecords = async () => {
   exporting.value = true;
   try {
-    const resp = await exportAdminGradeQuery(cleanParams(recordFilters));
-    const blob = new Blob([resp.data], {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "global-grade-query.xlsx";
-    link.click();
-    window.URL.revokeObjectURL(url);
+    const blob = await exportAdminGradeQuery(cleanParams(recordFilters));
+    saveBlob(blob, "global-grade-query.xlsx");
     ElMessage.success("导出已开始");
   } catch (error: any) {
     showError(error);

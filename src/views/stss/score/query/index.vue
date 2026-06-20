@@ -193,6 +193,7 @@ import {
   getMyGrades
 } from "@/api/modules/score";
 import { useUserStore } from "@/stores/modules/user";
+import { saveBlob } from "@/utils/download";
 import { courseOptionLabel, parseCourseKey, toCourseKey } from "@/views/stss/score/_shared/courseSelection";
 
 const userStore = useUserStore();
@@ -358,7 +359,7 @@ const handleExport = async () => {
   exporting.value = true;
   try {
     const params = buildRecordParams();
-    const resp = await exportGradeRecords({
+    const blob = await exportGradeRecords({
       course_id: selectedCourseId.value,
       semester: selectedSemester.value,
       format: "xlsx",
@@ -368,15 +369,7 @@ const handleExport = async () => {
       max_score: params.max_score,
       sort_order: params.sort_order
     });
-    const blob = new Blob([resp.data], {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${selectedCourseId.value}-${selectedSemester.value}-成绩单.xlsx`;
-    link.click();
-    window.URL.revokeObjectURL(url);
+    saveBlob(blob, `${selectedCourseId.value}-${selectedSemester.value}-成绩单.xlsx`);
     ElMessage.success("导出已开始。");
   } finally {
     exporting.value = false;

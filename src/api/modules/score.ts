@@ -4,6 +4,7 @@ import type { ResultData } from "@/api/interface";
 import type { Score } from "@/api/interface/score";
 import { ResultEnum } from "@/enums/httpEnum";
 import { useUserStore } from "@/stores/modules/user";
+import { toDownloadBlob } from "@/utils/download";
 
 const SCORE_PREFIX = GRADE_API;
 const SCORE_SUCCESS_CODES = new Set([0, 10000]);
@@ -61,6 +62,8 @@ const adaptScoreResp = <T>(resp: Score.BackendResp<T>): ResultData<T> => {
 };
 
 const scorePath = (url: string) => `${SCORE_PREFIX}${url}`;
+const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const PDF_MIME = "application/pdf";
 
 const scoreHttp = {
   async get<T>(url: string, params?: object, options: ScoreRequestOptions = {}) {
@@ -95,6 +98,15 @@ const scoreHttp = {
     )) as unknown as Score.BackendResp<T>;
     return adaptScoreResp(resp);
   }
+};
+
+const scoreDownload = async (url: string, params: object, mimeType: string) => {
+  const response = await http.service.get(scorePath(url), {
+    params,
+    responseType: "blob",
+    ...scoreRequestOptions({ loading: true, cancel: false })
+  });
+  return toDownloadBlob(response, mimeType);
 };
 
 const encodePath = (value: string | number) => encodeURIComponent(String(value));
@@ -249,11 +261,11 @@ export const getCourseAnalysis = (courseId: string, params: { semester: string }
 export const syncRoster = (body: Score.SyncRosterReq) => scoreHttp.post<Score.SyncRosterResp>("/sync-roster", body);
 
 export const exportCourseAnalysis = (courseId: string, params: { semester: string; format?: "xlsx" | "pdf" }) =>
-  http.service.get(scorePath(`/courses/${encodePath(courseId)}/analysis/export`), {
-    params: { ...params, format: params.format ?? "xlsx" },
-    responseType: "blob",
-    ...scoreRequestOptions({ loading: true })
-  });
+  scoreDownload(
+    `/courses/${encodePath(courseId)}/analysis/export`,
+    { ...params, format: params.format ?? "xlsx" },
+    params.format === "pdf" ? PDF_MIME : XLSX_MIME
+  );
 
 export const queryAdminGradeRecords = (
   params: {
@@ -289,12 +301,7 @@ export const exportAdminGradeQuery = (
     college?: string;
     grade?: string;
   } = {}
-) =>
-  http.service.get(scorePath("/admin/grade-query/export"), {
-    params,
-    responseType: "blob",
-    ...scoreRequestOptions({ loading: true })
-  });
+) => scoreDownload("/admin/grade-query/export", params, XLSX_MIME);
 
 export const adminCreateGradeRecord = (body: Score.AdminCreateGradeRecordReq) =>
   scoreHttp.post<Score.AdminCreateGradeRecordResp>("/admin/grade-records", body);
@@ -312,9 +319,4 @@ export const exportGradeRecords = (params: {
   max_score?: number;
   status?: string;
   sort_order?: "asc" | "desc";
-}) =>
-  http.service.get(scorePath("/grade-records/export"), {
-    params,
-    responseType: "blob",
-    ...scoreRequestOptions({ loading: true })
-  });
+}) => scoreDownload("/grade-records/export", params, params.format === "pdf" ? PDF_MIME : XLSX_MIME);
