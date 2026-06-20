@@ -1,6 +1,18 @@
 <template>
   <div class="forum-moderation-page">
+    <template v-if="!canAccess">
+      <el-card class="access-denied-card">
+        <div class="access-denied">
+          <el-icon size="48" color="#9ca3af">
+            <Lock />
+          </el-icon>
+          <h3>无权限访问</h3>
+          <p>当前账号没有内容审核权限，请联系系统管理员。</p>
+        </div>
+      </el-card>
+    </template>
     <ForumPageShell
+      v-else
       title="内容审核"
       description="面向论坛管理员的内容处理页面，支持帖子和回复的审核、隐藏、删除、通过与处理原因记录。"
       :tags="['内容管理', '帖子审核', '回复审核', '处理记录']"
@@ -93,19 +105,50 @@
           <template #default="{ row }">
             <el-space>
               <el-button link type="primary" @click="openDetailDrawer(row)">详情</el-button>
-              <el-button link type="success" :disabled="row.status !== 'pending'" @click="openHandleDialog(row, 'approved')">
+              <el-button
+                v-if="canApprove"
+                link
+                type="success"
+                :disabled="row.status !== 'pending'"
+                @click="openHandleDialog(row, 'approved')"
+              >
                 通过
               </el-button>
-              <el-button link type="warning" :disabled="row.status === 'hidden'" @click="openHandleDialog(row, 'hidden')">
+              <el-button
+                v-if="canReject"
+                link
+                type="warning"
+                :disabled="row.status === 'hidden'"
+                @click="openHandleDialog(row, 'hidden')"
+              >
                 隐藏
               </el-button>
-              <el-button link type="danger" :disabled="row.status === 'deleted'" @click="openHandleDialog(row, 'deleted')">
+              <el-button
+                v-if="canReject"
+                link
+                type="danger"
+                :disabled="row.status === 'deleted'"
+                @click="openHandleDialog(row, 'deleted')"
+              >
                 删除
               </el-button>
             </el-space>
           </template>
         </el-table-column>
       </el-table>
+
+      <div class="pagination-wrapper">
+        <el-pagination
+          :background="true"
+          :current-page="pageNum"
+          :page-size="pageSize"
+          :page-sizes="[10, 25, 50, 100]"
+          :total="total"
+          layout="total, sizes, prev, pager, next, jumper"
+          @size-change="handleSizeChange"
+          @current-change="handleCurrentChange"
+        ></el-pagination>
+      </div>
     </ForumPageShell>
 
     <el-dialog v-model="handleDialogVisible" :title="handleDialogTitle" width="620px">
@@ -190,6 +233,7 @@
 
           <el-space wrap>
             <el-button
+              v-if="canApprove"
               type="success"
               :disabled="currentItem.status !== 'pending'"
               @click="openHandleDialog(currentItem, 'approved')"
@@ -197,6 +241,7 @@
               通过
             </el-button>
             <el-button
+              v-if="canReject"
               type="warning"
               :disabled="currentItem.status === 'hidden'"
               @click="openHandleDialog(currentItem, 'hidden')"
@@ -204,6 +249,7 @@
               隐藏
             </el-button>
             <el-button
+              v-if="canReject"
               type="danger"
               :disabled="currentItem.status === 'deleted'"
               @click="openHandleDialog(currentItem, 'deleted')"
@@ -226,9 +272,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from "vue";
+import { computed, reactive, ref, watch } from "vue";
+import { Lock } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import ForumPageShell from "../components/ForumPageShell.vue";
+import { useForumAuthButtons } from "../auth";
 import {
   mockModerationItems,
   moderationStatusTextMap,
@@ -236,6 +284,11 @@ import {
   type ModerationStatus,
   type ModerationTargetType
 } from "../mock";
+
+const { BUTTONS } = useForumAuthButtons();
+const canApprove = computed(() => BUTTONS.approve);
+const canReject = computed(() => BUTTONS.reject);
+const canAccess = computed(() => BUTTONS.approve || BUTTONS.reject);
 
 interface ModerationQueryForm {
   keyword: string;
@@ -274,7 +327,11 @@ const handleForm = reactive({
   reason: ""
 });
 
-const filteredItems = computed(() => {
+const pageNum = ref(1);
+const pageSize = ref(10);
+const total = ref(0);
+
+const allFilteredItems = computed(() => {
   const keyword = activeQuery.keyword.trim().toLowerCase();
 
   return items.value.filter(item => {
@@ -293,6 +350,34 @@ const filteredItems = computed(() => {
     return matchKeyword && matchCourse && matchTargetType && matchStatus;
   });
 });
+
+total.value = allFilteredItems.value.length;
+
+const filteredItems = computed(() => {
+  const start = (pageNum.value - 1) * pageSize.value;
+  const end = start + pageSize.value;
+  return allFilteredItems.value.slice(start, end);
+});
+
+watch(
+  [activeQuery, pageNum, pageSize],
+  () => {
+    total.value = allFilteredItems.value.length;
+    if (pageNum.value > Math.ceil(total.value / pageSize.value) && pageNum.value > 1) {
+      pageNum.value = 1;
+    }
+  },
+  { immediate: true }
+);
+
+const handleSizeChange = (size: number) => {
+  pageSize.value = size;
+  pageNum.value = 1;
+};
+
+const handleCurrentChange = (currentPage: number) => {
+  pageNum.value = currentPage;
+};
 
 const courseOptions = computed(() => {
   return Array.from(new Set(items.value.map(item => item.courseName)));

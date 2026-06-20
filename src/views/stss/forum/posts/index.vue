@@ -11,7 +11,7 @@
       empty-description="当前筛选条件下暂无帖子。"
     >
       <template #actions>
-        <el-button type="primary" @click="openCreateDialog">创建帖子</el-button>
+        <el-button v-if="canCreate" type="primary" @click="openCreateDialog">创建帖子</el-button>
       </template>
 
       <template #filters>
@@ -113,15 +113,28 @@
           <template #default="{ row }">
             <el-space>
               <el-button link type="primary" @click="openDetailDrawer(row)">详情</el-button>
-              <el-button link @click="openEditDialog(row)">编辑</el-button>
-              <el-button link type="warning" @click="handleHide(row)">
+              <el-button v-if="canEdit" link @click="openEditDialog(row)">编辑</el-button>
+              <el-button v-if="canEdit" link type="warning" @click="handleHide(row)">
                 {{ row.status === "hidden" ? "恢复" : "隐藏" }}
               </el-button>
-              <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+              <el-button v-if="canEdit" link type="danger" @click="handleDelete(row)">删除</el-button>
             </el-space>
           </template>
         </el-table-column>
       </el-table>
+
+      <div class="pagination-wrapper">
+        <el-pagination
+          :background="true"
+          :current-page="pageNum"
+          :page-size="pageSize"
+          :page-sizes="[10, 25, 50, 100]"
+          :total="total"
+          layout="total, sizes, prev, pager, next, jumper"
+          @size-change="handleSizeChange"
+          @current-change="handleCurrentChange"
+        ></el-pagination>
+      </div>
     </ForumPageShell>
 
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="760px">
@@ -319,11 +332,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 import { Document, UploadFilled } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import type { UploadUserFile } from "element-plus";
 import ForumPageShell from "../components/ForumPageShell.vue";
+import { useForumAuthButtons } from "../auth";
 import {
   mockAttachments,
   mockBoards,
@@ -336,6 +350,10 @@ import {
   type PostModule,
   type PostStatus
 } from "../mock";
+
+const { BUTTONS } = useForumAuthButtons();
+const canCreate = computed(() => BUTTONS.create);
+const canEdit = computed(() => BUTTONS.edit);
 
 type DialogMode = "create" | "edit";
 
@@ -415,7 +433,11 @@ const replyForm = reactive({
   content: ""
 });
 
-const filteredPosts = computed(() => {
+const pageNum = ref(1);
+const pageSize = ref(10);
+const total = ref(0);
+
+const allFilteredPosts = computed(() => {
   const keyword = activeQuery.keyword.trim().toLowerCase();
 
   return posts.value.filter(post => {
@@ -432,6 +454,34 @@ const filteredPosts = computed(() => {
     return matchKeyword && matchCourse && matchModule && matchStatus;
   });
 });
+
+total.value = allFilteredPosts.value.length;
+
+const filteredPosts = computed(() => {
+  const start = (pageNum.value - 1) * pageSize.value;
+  const end = start + pageSize.value;
+  return allFilteredPosts.value.slice(start, end);
+});
+
+watch(
+  [activeQuery, pageNum, pageSize],
+  () => {
+    total.value = allFilteredPosts.value.length;
+    if (pageNum.value > Math.ceil(total.value / pageSize.value) && pageNum.value > 1) {
+      pageNum.value = 1;
+    }
+  },
+  { immediate: true }
+);
+
+const handleSizeChange = (size: number) => {
+  pageSize.value = size;
+  pageNum.value = 1;
+};
+
+const handleCurrentChange = (currentPage: number) => {
+  pageNum.value = currentPage;
+};
 
 const currentReplies = computed(() => {
   if (!currentPost.value) return [];
