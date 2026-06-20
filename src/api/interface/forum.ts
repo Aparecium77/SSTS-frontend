@@ -1,8 +1,5 @@
-/**
- * 论坛交流组的同学在这里补充论坛交流相关类型。
- * 建议把公告、帖子、回复、审核记录、检索条件等类型定义在这里。
- */
 export namespace Forum {
+  export type BoardStatus = "active" | "inactive";
   export type NoticeStatus = "published" | "hidden" | "deleted";
   export type PostStatus = "published" | "hot" | "pinned" | "hidden" | "deleted";
   export type PostModule = "discussion" | "homework" | "exam" | "general";
@@ -10,6 +7,7 @@ export namespace Forum {
   export type ModerationStatus = "pending" | "approved" | "hidden" | "deleted";
   export type ModerationTargetType = "post" | "reply";
   export type AuthorRole = "student" | "teacher" | "admin";
+  export type FrontendRole = "student" | "teacher" | "academic_admin";
   export type SortBy = "relevance" | "created_at" | "hot_score";
   export type SortOrder = "desc" | "asc";
   export type ReplyView = "flat" | "tree";
@@ -18,6 +16,64 @@ export namespace Forum {
   export interface ReqPage {
     page: number;
     page_size: number;
+  }
+
+  export interface Pagination {
+    total: number;
+    page: number;
+    page_size: number;
+  }
+
+  export interface BoardListQuery extends ReqPage {
+    keyword?: string;
+    course_id?: string;
+    status?: BoardStatus | string;
+  }
+
+  export interface BoardCreateForm {
+    course_id: string;
+    course_name: string;
+    offering_id?: string | null;
+    title: string;
+    description?: string;
+    status?: BoardStatus | string;
+    popup_enabled?: boolean;
+  }
+
+  export interface BoardUpdateForm {
+    course_id?: string;
+    course_name?: string;
+    offering_id?: string | null;
+    title?: string;
+    description?: string;
+    status?: BoardStatus | string;
+    popup_enabled?: boolean;
+  }
+
+  export interface BoardItem {
+    id: number;
+    course_id: string;
+    course_name: string;
+    offering_id?: string | null;
+    title: string;
+    name: string;
+    description: string;
+    status: BoardStatus | string;
+    popup_enabled: boolean;
+    created_at?: string | null;
+    updated_at?: string | null;
+
+    courseId?: string;
+    courseName?: string;
+    offeringId?: string | null;
+    popupEnabled?: boolean;
+    createdAt?: string | null;
+    updatedAt?: string | null;
+  }
+
+  export interface ResBoardList {
+    items: BoardItem[];
+    pagination: Pagination;
   }
 
   export interface NoticeListQuery extends ReqPage {
@@ -60,16 +116,12 @@ export namespace Forum {
     status: NoticeStatus;
     author_id: number;
     created_at: string;
-    updated_at?: string;
+    updated_at?: string | null;
   }
 
   export interface ResNoticeList {
     items: NoticeItem[];
-    pagination: {
-      total: number;
-      page: number;
-      page_size: number;
-    };
+    pagination: Pagination;
   }
 
   export interface PostListQuery extends ReqPage {
@@ -118,22 +170,18 @@ export namespace Forum {
     hot_score: number;
     author_id: number;
     created_at: string;
-    updated_at?: string;
+    updated_at?: string | null;
   }
 
   export interface ResPostList {
     items: PostItem[];
-    pagination: {
-      total: number;
-      page: number;
-      page_size: number;
-    };
+    pagination: Pagination;
   }
 
   export interface ResPostDetail extends PostItem {
     board_name?: string;
     author_name?: string;
-    author_role?: AuthorRole;
+    author_role?: AuthorRole | string;
   }
 
   export interface ReplyCreateForm {
@@ -163,11 +211,28 @@ export namespace Forum {
 
   export interface ResReplyList {
     items: ReplyItem[];
-    pagination?: {
-      total: number;
-      page: number;
-      page_size: number;
-    };
+    pagination?: Pagination;
+  }
+
+  export interface AttachmentCreateForm {
+    file: File;
+  }
+
+  export interface AttachmentItem {
+    id: number;
+    post_id: number;
+    file_name: string;
+    file_url: string;
+    file_size: number;
+    mime_type: string;
+    uploader_id: number;
+    created_at: string;
+  }
+
+  export interface ResAttachment extends AttachmentItem {}
+
+  export interface ResAttachmentList {
+    items: AttachmentItem[];
   }
 
   export interface SearchPostsQuery extends ReqPage {
@@ -194,11 +259,7 @@ export namespace Forum {
 
   export interface ResSearchPosts {
     items: SearchPostItem[];
-    pagination: {
-      total: number;
-      page: number;
-      page_size: number;
-    };
+    pagination: Pagination;
   }
 
   export interface HotPostsQuery {
@@ -247,28 +308,10 @@ export namespace Forum {
     items: UserActivityItem[];
   }
 
-  export interface AttachmentCreateForm {
-    file: File;
-  }
-
-  export interface AttachmentItem {
-    id: number;
-    post_id: number;
-    file_name: string;
-    file_url: string;
-    file_size: number;
-    mime_type: string;
-    uploader_id: number;
-    created_at: string;
-  }
-
-  export interface ResAttachment {
-    id: number;
-    post_id: number;
-    file_name: string;
-    file_url: string;
-    file_size: number;
-    mime_type: string;
+  export interface ForumActivityQuery {
+    course_id?: string;
+    offering_id?: string;
+    period: string;
   }
 
   export interface ForumActivityItem {
@@ -281,12 +324,6 @@ export namespace Forum {
     view_count: number;
     like_count: number;
     activity_score: number;
-  }
-
-  export interface ForumActivityQuery {
-    course_id?: string;
-    offering_id?: string;
-    period: string;
   }
 
   export interface ResForumActivity {
@@ -305,5 +342,66 @@ export namespace Forum {
       like_count: number;
       activity_score: number;
     }[];
+  }
+
+  export interface ResActivityBatch {
+    outbox_id: number;
+    status: string;
+  }
+
+  export interface ModerationListQuery extends ReqPage {
+    keyword?: string;
+    course_name?: string;
+    target_type?: ModerationTargetType;
+    status?: ModerationStatus;
+  }
+
+  export interface ModerationReportCreateForm {
+    target_type: ModerationTargetType;
+    target_id: number;
+    reason: string;
+    reporter_name?: string | null;
+  }
+
+  export interface ModerationHandleForm {
+    status: ModerationStatus;
+    reason?: string | null;
+  }
+
+  export interface ModerationItem {
+    id: number;
+    target_type: ModerationTargetType;
+    target_id: number;
+    title: string;
+    content: string;
+    course_name: string;
+    author_name: string;
+    reporter_name: string;
+    reason: string;
+    status: ModerationStatus;
+    created_at: string;
+    handled_at?: string | null;
+    handler_name?: string | null;
+
+    targetType?: ModerationTargetType;
+    targetId?: number;
+    courseName?: string;
+    authorName?: string;
+    reporterName?: string;
+    createdAt?: string;
+    handledAt?: string | null;
+    handlerName?: string | null;
+  }
+
+  export interface ResModerationList {
+    items: ModerationItem[];
+    pagination: Pagination;
+  }
+
+  export interface ForumCurrentUser {
+    id: number;
+    name: string;
+    frontend_role: FrontendRole | string;
+    backend_role: AuthorRole | string;
   }
 }

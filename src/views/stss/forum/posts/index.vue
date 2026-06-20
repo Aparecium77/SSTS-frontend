@@ -1,157 +1,305 @@
 <template>
-  <div class="forum-posts-page">
+  <div class="forum-my-posts-page">
     <ForumPageShell
-      title="发帖/回帖"
-      description="维护课程论坛帖子，支持发帖、编辑、删除、查看详情、附件上传和回复留言的本地 mock 演示。"
-      :tags="['课程讨论', '楼层回复', '附件上传', '状态流转']"
+      v-if="canUseMyPosts"
+      title="我的帖子"
+      description="查看、检索和管理自己发布过的课程论坛帖子。"
+      :tags="['我的发布', '帖子管理', '回复查看', '附件查看']"
       :stats="stats"
-      content-title="帖子列表"
-      content-description="设置筛选条件后点击筛选。真实接入后对应帖子、回复与附件接口。"
-      :data-count="filteredPosts.length"
-      empty-description="当前筛选条件下暂无帖子。"
+      content-title="我的帖子列表"
+      content-description="按课程、模块、状态和关键词筛选当前账号发布的帖子。"
+      :data-count="posts.length"
+      empty-description="当前账号暂未发布帖子。"
     >
       <template #actions>
-        <el-button v-if="canCreate" type="primary" @click="openCreateDialog">创建帖子</el-button>
+        <el-space>
+          <el-button :loading="loading.boards || loading.posts" @click="reloadPageData">刷新</el-button>
+          <el-button type="primary" @click="goCreateHint">去课程论坛发帖</el-button>
+        </el-space>
       </template>
 
       <template #filters>
-        <el-form :model="queryForm" class="filter-form" inline>
-          <el-form-item label="关键词">
-            <el-input v-model="queryForm.keyword" clearable placeholder="搜索标题、正文或作者" style="width: 260px" />
-          </el-form-item>
+        <div class="my-posts-toolbar">
+          <el-alert
+            :closable="false"
+            show-icon
+            :title="`当前论坛用户：${currentUser.name}（ID: ${currentUser.id}，角色: ${currentUser.backend_role}）`"
+            type="info"
+          />
 
-          <el-form-item label="课程">
-            <el-select v-model="queryForm.courseId" clearable placeholder="全部课程" style="width: 170px">
-              <el-option v-for="board in mockBoards" :key="board.id" :label="board.courseName" :value="board.courseId" />
-            </el-select>
-          </el-form-item>
+          <el-alert v-if="apiMessage" :closable="false" show-icon :title="apiMessage" :type="apiMessageType" />
 
-          <el-form-item label="模块">
-            <el-select v-model="queryForm.module" clearable placeholder="全部模块" style="width: 170px">
-              <el-option label="课程讨论" value="discussion" />
-              <el-option label="作业答疑" value="homework" />
-              <el-option label="考试说明" value="exam" />
-              <el-option label="综合交流" value="general" />
-            </el-select>
-          </el-form-item>
+          <el-form :model="queryForm" class="filter-form" inline>
+            <el-form-item label="课程论坛">
+              <el-select v-model="queryForm.boardId" clearable filterable placeholder="全部课程论坛" style="width: 220px">
+                <el-option v-for="board in boardOptions" :key="board.id" :label="board.title" :value="board.id">
+                  <span>{{ board.title }}</span>
+                  <span class="select-option-extra">{{ board.courseName || board.courseId }}</span>
+                </el-option>
+              </el-select>
+            </el-form-item>
 
-          <el-form-item label="状态">
-            <el-select v-model="queryForm.status" clearable placeholder="全部状态" style="width: 170px">
-              <el-option label="已发布" value="published" />
-              <el-option label="热门" value="hot" />
-              <el-option label="置顶" value="pinned" />
-              <el-option label="已隐藏" value="hidden" />
-              <el-option label="已删除" value="deleted" />
-            </el-select>
-          </el-form-item>
+            <el-form-item label="关键词">
+              <el-input
+                v-model="queryForm.keyword"
+                clearable
+                placeholder="搜索我的帖子标题或正文"
+                style="width: 260px"
+                @keyup.enter="handleFilter"
+              />
+            </el-form-item>
 
-          <el-form-item>
-            <el-space>
-              <el-button type="primary" @click="handleFilter">筛选</el-button>
-              <el-button @click="resetQuery">重置</el-button>
-            </el-space>
-          </el-form-item>
-        </el-form>
+            <el-form-item label="模块">
+              <el-select v-model="queryForm.module" clearable placeholder="全部模块" style="width: 150px">
+                <el-option label="课程讨论" value="discussion" />
+                <el-option label="作业答疑" value="homework" />
+                <el-option label="考试说明" value="exam" />
+                <el-option label="综合交流" value="general" />
+              </el-select>
+            </el-form-item>
 
-        <el-alert
-          :closable="false"
-          show-icon
-          title="当前为本地 mock 数据。后续接入时，筛选条件对应 GET /posts 的 keyword、course_id、module、status 等参数。"
-          type="info"
-        />
+            <el-form-item label="状态">
+              <el-select v-model="queryForm.status" clearable placeholder="全部状态" style="width: 150px">
+                <el-option label="已发布" value="published" />
+                <el-option label="热门" value="hot" />
+                <el-option label="置顶" value="pinned" />
+                <el-option label="已隐藏" value="hidden" />
+                <el-option label="已删除" value="deleted" />
+              </el-select>
+            </el-form-item>
+
+            <el-form-item label="排序">
+              <el-select v-model="queryForm.sortBy" style="width: 150px">
+                <el-option label="最新发布" value="created_at" />
+                <el-option label="热度优先" value="hot_score" />
+              </el-select>
+            </el-form-item>
+
+            <el-form-item>
+              <el-space>
+                <el-button type="primary" :loading="loading.posts" @click="handleFilter">筛选</el-button>
+                <el-button @click="resetQuery">重置</el-button>
+              </el-space>
+            </el-form-item>
+          </el-form>
+        </div>
       </template>
 
-      <el-table :data="filteredPosts" border>
-        <el-table-column label="帖子内容" min-width="300">
+      <el-table v-loading="loading.posts" :data="posts" border>
+        <el-table-column label="帖子内容" min-width="360">
           <template #default="{ row }">
-            <div class="post-title-cell">
+            <div class="post-title-row">
               <span class="post-title">{{ row.title }}</span>
               <el-tag v-if="row.pinned" size="small" type="danger">置顶</el-tag>
               <el-tag v-if="row.status === 'hot'" size="small" type="warning">热门</el-tag>
-              <el-tag v-if="getPostAttachments(row.id).length" size="small" type="info">
-                附件 {{ getPostAttachments(row.id).length }}
-              </el-tag>
+              <el-tag v-if="row.status === 'hidden'" size="small" type="info">已隐藏</el-tag>
+              <el-tag v-if="row.status === 'deleted'" size="small" type="danger">已删除</el-tag>
             </div>
-            <div class="post-content-preview">{{ row.content }}</div>
-            <div class="post-meta">{{ row.authorName }} · {{ roleTextMap[row.authorRole] }} · {{ row.createdAt }}</div>
+
+            <div class="post-preview">{{ row.content }}</div>
+
+            <div class="post-meta">
+              {{ getBoardName(row.board_id) }} · {{ postModuleTextMap[row.module] || "综合交流" }} ·
+              {{ formatTime(row.created_at) }}
+            </div>
           </template>
         </el-table-column>
 
-        <el-table-column prop="courseName" label="所属课程" min-width="130" />
-
-        <el-table-column label="模块" min-width="110" align="center">
+        <el-table-column label="互动数据" width="210">
           <template #default="{ row }">
-            <el-tag>{{ postModuleTextMap[row.module] }}</el-tag>
+            <div class="metrics-row">
+              <span>浏览 {{ row.views_count ?? 0 }}</span>
+              <span>回复 {{ row.replies_count ?? 0 }}</span>
+              <span>热度 {{ formatHotScore(row.hot_score) }}</span>
+            </div>
           </template>
         </el-table-column>
 
-        <el-table-column label="状态" min-width="100" align="center">
+        <el-table-column label="状态" width="110" align="center">
           <template #default="{ row }">
-            <el-tag :type="postStatusTagMap[row.status]">
-              {{ postStatusTextMap[row.status] }}
+            <el-tag :type="postStatusTagMap[row.status] || 'info'">
+              {{ postStatusTextMap[row.status] || row.status }}
             </el-tag>
           </template>
         </el-table-column>
 
-        <el-table-column label="数据" min-width="190">
+        <el-table-column label="更新时间" width="160">
           <template #default="{ row }">
-            <div class="metric-line">浏览 {{ row.viewsCount }} / 回复 {{ row.repliesCount }}</div>
-            <div class="metric-line">点赞 {{ row.likesCount }} / 热度 {{ row.hotScore }}</div>
+            {{ formatTime(row.updated_at || row.created_at) }}
           </template>
         </el-table-column>
 
-        <el-table-column label="附件" min-width="130" align="center">
+        <el-table-column label="操作" width="260" fixed="right">
           <template #default="{ row }">
-            <el-tag v-if="getPostAttachments(row.id).length" type="success">
-              {{ getPostAttachments(row.id).length }} 个附件
-            </el-tag>
-            <span v-else class="empty-text">无附件</span>
-          </template>
-        </el-table-column>
-
-        <el-table-column label="操作" width="230">
-          <template #default="{ row }">
-            <el-space>
-              <el-button link type="primary" @click="openDetailDrawer(row)">详情</el-button>
-              <el-button v-if="canEdit" link @click="openEditDialog(row)">编辑</el-button>
-              <el-button v-if="canEdit" link type="warning" @click="handleHide(row)">
-                {{ row.status === "hidden" ? "恢复" : "隐藏" }}
-              </el-button>
-              <el-button v-if="canEdit" link type="danger" @click="handleDelete(row)">删除</el-button>
+            <el-space wrap>
+              <el-button link type="primary" @click="openPostDetail(row)">详情</el-button>
+              <el-button v-if="canEditOwnPost(row)" link type="primary" @click="openEditPostDialog(row)"> 编辑 </el-button>
+              <el-button v-if="canDeleteOwnPost(row)" link type="danger" @click="deletePost(row)"> 删除 </el-button>
             </el-space>
           </template>
         </el-table-column>
       </el-table>
 
-      <div class="pagination-wrapper">
+      <div v-if="pagination.total > pagination.pageSize" class="pagination-row">
         <el-pagination
-          :background="true"
-          :current-page="pageNum"
-          :page-size="pageSize"
-          :page-sizes="[10, 25, 50, 100]"
-          :total="total"
-          layout="total, sizes, prev, pager, next, jumper"
-          @size-change="handleSizeChange"
-          @current-change="handleCurrentChange"
-        ></el-pagination>
+          background
+          layout="prev, pager, next, total"
+          :current-page="pagination.page"
+          :page-size="pagination.pageSize"
+          :total="pagination.total"
+          @current-change="handlePageChange"
+        />
       </div>
     </ForumPageShell>
 
-    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="760px">
-      <el-form :model="postForm" label-width="90px">
-        <el-form-item label="所属课程">
-          <el-select v-model="postForm.boardId" class="full-width" placeholder="请选择课程论坛">
+    <ForumPageShell
+      v-else
+      title="我的帖子"
+      description="当前账号无我的帖子页面权限。"
+      :tags="['权限控制']"
+      :stats="permissionStats"
+      content-title="无权限访问"
+      content-description="当前账号不能查看或管理个人帖子。"
+      :data-count="0"
+      empty-description="无我的帖子权限。"
+    >
+      <el-result icon="warning" title="无权限访问" sub-title="当前账号没有我的帖子页面权限。" />
+    </ForumPageShell>
+
+    <el-drawer v-model="detailDrawerVisible" size="720px" title="帖子详情">
+      <template v-if="currentPost">
+        <div class="drawer-title-row">
+          <div>
+            <div class="drawer-title">{{ currentPost.title }}</div>
+            <div class="drawer-meta">
+              {{ getBoardName(currentPost.board_id) }} · {{ getAuthorName(currentPost.author_name, currentPost.author_id) }} ·
+              {{ formatTime(currentPost.created_at) }}
+            </div>
+          </div>
+          <el-tag>{{ postModuleTextMap[currentPost.module] || "综合交流" }}</el-tag>
+        </div>
+
+        <p class="drawer-content">{{ currentPost.content }}</p>
+
+        <div class="drawer-metrics">
+          <el-tag>浏览 {{ currentPost.views_count ?? 0 }}</el-tag>
+          <el-tag type="success">回复 {{ currentPost.replies_count ?? 0 }}</el-tag>
+          <el-tag type="warning">热度 {{ formatHotScore(currentPost.hot_score) }}</el-tag>
+          <el-tag :type="postStatusTagMap[currentPost.status] || 'info'">
+            {{ postStatusTextMap[currentPost.status] || currentPost.status }}
+          </el-tag>
+        </div>
+
+        <div class="drawer-actions">
+          <el-button v-if="canEditOwnPost(currentPost)" type="primary" plain @click="openEditPostDialog(currentPost)">
+            编辑帖子
+          </el-button>
+          <el-button v-if="canDeleteOwnPost(currentPost)" type="danger" plain @click="deletePost(currentPost)">
+            删除帖子
+          </el-button>
+        </div>
+
+        <el-divider />
+
+        <el-card shadow="never" class="detail-card">
+          <template #header>
+            <div class="card-header">
+              <span>附件</span>
+              <el-tag size="small" effect="plain">{{ attachments.length }} 个</el-tag>
+            </div>
+          </template>
+
+          <el-empty v-if="!loading.attachments && attachments.length === 0" description="暂无附件" />
+
+          <div v-else v-loading="loading.attachments" class="attachment-list">
+            <div v-for="file in attachments" :key="file.id" class="attachment-item">
+              <div>
+                <div class="attachment-name">{{ file.file_name }}</div>
+                <div class="metric-line">{{ formatFileSize(file.file_size) }} · {{ file.mime_type || "未知类型" }}</div>
+              </div>
+
+              <el-space>
+                <el-link :href="file.file_url" target="_blank" type="primary">查看</el-link>
+                <el-button v-if="canDeleteOwnPost(currentPost)" link type="danger" @click="deleteAttachment(file)">
+                  删除
+                </el-button>
+              </el-space>
+            </div>
+          </div>
+        </el-card>
+
+        <el-card shadow="never" class="detail-card">
+          <template #header>
+            <div class="card-header">
+              <span>回复</span>
+              <el-tag size="small" effect="plain">{{ countReplies(replies) }} 条</el-tag>
+            </div>
+          </template>
+
+          <el-empty v-if="!loading.replies && replies.length === 0" description="暂无回复" />
+
+          <div v-else v-loading="loading.replies" class="reply-list">
+            <div v-for="reply in replies" :key="reply.id" class="reply-item">
+              <div class="reply-header">
+                <div>
+                  <span class="reply-author">{{ getAuthorName(reply.author_name, reply.author_id) }}</span>
+                  <span class="reply-time">#{{ reply.floor }} · {{ formatTime(reply.created_at) }}</span>
+                </div>
+                <el-button v-if="canDeleteReply(reply)" link type="danger" @click="deleteReply(reply)">删除</el-button>
+              </div>
+
+              <div class="reply-content">{{ reply.content }}</div>
+
+              <div v-if="reply.children?.length" class="reply-children">
+                <div v-for="child in reply.children" :key="child.id" class="reply-child">
+                  <div class="reply-header">
+                    <div>
+                      <span class="reply-author">{{ getAuthorName(child.author_name, child.author_id) }}</span>
+                      <span class="reply-time">#{{ child.floor }} · {{ formatTime(child.created_at) }}</span>
+                    </div>
+                    <el-button v-if="canDeleteReply(child)" link type="danger" @click="deleteReply(child)">删除</el-button>
+                  </div>
+                  <div class="reply-content">{{ child.content }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <template v-if="canReply">
+            <el-divider />
+
+            <el-input
+              v-model="replyContent"
+              :rows="4"
+              maxlength="800"
+              placeholder="给自己的帖子补充回复或说明"
+              show-word-limit
+              type="textarea"
+            />
+
+            <div class="reply-action-row">
+              <el-button type="primary" :loading="submitting.reply" @click="submitReply">发布回复</el-button>
+            </div>
+          </template>
+        </el-card>
+      </template>
+    </el-drawer>
+
+    <el-dialog v-model="editDialogVisible" title="编辑帖子" width="720px">
+      <el-form ref="postFormRef" :model="postForm" :rules="postRules" label-width="90px">
+        <el-form-item label="课程论坛" prop="board_id">
+          <el-select v-model="postForm.board_id" filterable placeholder="请选择课程论坛" style="width: 100%">
             <el-option
-              v-for="board in mockBoards"
+              v-for="board in boardOptions"
               :key="board.id"
-              :label="`${board.courseName} - ${board.title}`"
+              :label="`${board.title} / ${board.courseName || board.courseId}`"
               :value="board.id"
             />
           </el-select>
         </el-form-item>
 
-        <el-form-item label="讨论模块">
-          <el-select v-model="postForm.module" class="full-width" placeholder="请选择模块">
+        <el-form-item label="模块" prop="module">
+          <el-select v-model="postForm.module" placeholder="请选择模块" style="width: 100%">
             <el-option label="课程讨论" value="discussion" />
             <el-option label="作业答疑" value="homework" />
             <el-option label="考试说明" value="exam" />
@@ -159,229 +307,139 @@
           </el-select>
         </el-form-item>
 
-        <el-form-item label="帖子标题">
-          <el-input v-model="postForm.title" maxlength="80" placeholder="请输入帖子标题" show-word-limit />
+        <el-form-item label="标题" prop="title">
+          <el-input v-model="postForm.title" maxlength="80" show-word-limit placeholder="请输入帖子标题" />
         </el-form-item>
 
-        <el-form-item label="帖子正文">
+        <el-form-item label="正文" prop="content">
           <el-input
             v-model="postForm.content"
-            :rows="7"
-            maxlength="800"
-            placeholder="请输入帖子正文"
-            show-word-limit
             type="textarea"
+            :rows="8"
+            maxlength="2000"
+            show-word-limit
+            placeholder="请输入帖子正文"
           />
-        </el-form-item>
-
-        <el-form-item label="附件">
-          <div class="attachment-uploader">
-            <el-upload
-              v-model:file-list="postForm.attachments"
-              :auto-upload="false"
-              :limit="5"
-              :on-exceed="handleAttachmentExceed"
-              accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.png,.jpg,.jpeg,.zip,.rar,.txt,.md"
-              drag
-            >
-              <el-icon class="attachment-uploader__icon">
-                <UploadFilled />
-              </el-icon>
-              <div class="el-upload__text">将附件拖到此处，或 <em>点击选择文件</em></div>
-              <template #tip>
-                <div class="el-upload__tip">
-                  当前为本地 mock 附件，不会真正上传；后续接入
-                  <code>/posts/{post_id}/attachments</code>
-                  接口。
-                </div>
-              </template>
-            </el-upload>
-          </div>
-        </el-form-item>
-
-        <el-form-item label="展示设置">
-          <el-checkbox v-model="postForm.pinned">置顶帖子</el-checkbox>
         </el-form-item>
       </el-form>
 
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSubmit">保存</el-button>
+        <el-button @click="editDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="submitting.post" @click="submitEditPost">保存</el-button>
       </template>
     </el-dialog>
-
-    <el-drawer v-model="drawerVisible" size="580px" title="帖子详情与回复">
-      <template v-if="currentPost">
-        <div class="drawer-post">
-          <div class="drawer-title">{{ currentPost.title }}</div>
-          <div class="drawer-meta">
-            {{ currentPost.courseName }} · {{ postModuleTextMap[currentPost.module] }} · {{ currentPost.authorName }} ·
-            {{ roleTextMap[currentPost.authorRole] }}
-          </div>
-          <p class="drawer-content">{{ currentPost.content }}</p>
-
-          <div class="drawer-metrics">
-            <el-tag>浏览 {{ currentPost.viewsCount }}</el-tag>
-            <el-tag type="success">回复 {{ currentPost.repliesCount }}</el-tag>
-            <el-tag type="warning">点赞 {{ currentPost.likesCount }}</el-tag>
-            <el-tag type="danger">热度 {{ currentPost.hotScore }}</el-tag>
-          </div>
-        </div>
-
-        <el-card class="attachment-card" shadow="never">
-          <template #header>
-            <div class="card-header">
-              <span>帖子附件</span>
-              <el-tag size="small" effect="plain">{{ getPostAttachments(currentPost.id).length }} 个</el-tag>
-            </div>
-          </template>
-
-          <el-empty v-if="getPostAttachments(currentPost.id).length === 0" description="暂无附件" />
-
-          <div v-else class="attachment-list">
-            <div v-for="attachment in getPostAttachments(currentPost.id)" :key="attachment.id" class="attachment-item">
-              <div class="attachment-item__main">
-                <el-icon>
-                  <Document />
-                </el-icon>
-                <div>
-                  <div class="attachment-item__name">{{ attachment.fileName }}</div>
-                  <div class="attachment-item__meta">
-                    {{ formatFileSize(attachment.fileSize) }} · {{ attachment.uploaderName }} · {{ attachment.createdAt }}
-                  </div>
-                </div>
-              </div>
-              <el-button link type="primary" @click="previewAttachment(attachment)">预览</el-button>
-            </div>
-          </div>
-        </el-card>
-
-        <el-divider />
-
-        <div class="reply-header">
-          <span>回复列表</span>
-          <el-tag effect="plain">{{ currentReplies.length }} 条主回复</el-tag>
-        </div>
-
-        <el-card class="reply-form-card" shadow="never">
-          <template #header>
-            <div class="card-header">
-              <span>{{ replyForm.parentReplyId ? `回复 #${replyForm.parentFloor}` : "回复帖子" }}</span>
-              <el-button v-if="replyForm.parentReplyId" link type="primary" @click="clearReplyTarget">取消楼层回复</el-button>
-            </div>
-          </template>
-
-          <el-input
-            v-model="replyForm.content"
-            :rows="3"
-            maxlength="300"
-            placeholder="请输入回复内容"
-            show-word-limit
-            type="textarea"
-          />
-
-          <div class="reply-form-actions">
-            <el-button type="primary" @click="submitReply">发布回复</el-button>
-          </div>
-        </el-card>
-
-        <el-empty v-if="currentReplies.length === 0" description="暂无回复" />
-
-        <div v-else class="reply-list">
-          <div v-for="reply in currentReplies" :key="reply.id" class="reply-item">
-            <div class="reply-title">
-              <span>#{{ reply.floor }} {{ reply.authorName }}</span>
-              <div class="reply-title__actions">
-                <el-tag size="small">{{ roleTextMap[reply.authorRole] }}</el-tag>
-                <el-button link type="primary" @click="setReplyTarget(reply)">回复</el-button>
-              </div>
-            </div>
-            <div class="reply-content">{{ reply.content }}</div>
-            <div class="reply-meta">{{ reply.createdAt }} · 点赞 {{ reply.likesCount }}</div>
-
-            <div v-if="getReplyAttachments(reply.id).length" class="reply-attachments">
-              <el-tag v-for="attachment in getReplyAttachments(reply.id)" :key="attachment.id" size="small" type="info">
-                {{ attachment.fileName }}
-              </el-tag>
-            </div>
-
-            <div v-if="reply.children?.length" class="child-replies">
-              <div v-for="child in reply.children" :key="child.id" class="child-reply">
-                <div class="reply-title">
-                  <span>#{{ child.floor }} {{ child.authorName }} 回复 #{{ reply.floor }}</span>
-                  <div class="reply-title__actions">
-                    <el-tag size="small">{{ roleTextMap[child.authorRole] }}</el-tag>
-                    <el-button link type="primary" @click="setReplyTarget(child)">回复</el-button>
-                  </div>
-                </div>
-                <div class="reply-content">{{ child.content }}</div>
-                <div class="reply-meta">{{ child.createdAt }} · 点赞 {{ child.likesCount }}</div>
-
-                <div v-if="getReplyAttachments(child.id).length" class="reply-attachments">
-                  <el-tag v-for="attachment in getReplyAttachments(child.id)" :key="attachment.id" size="small" type="info">
-                    {{ attachment.fileName }}
-                  </el-tag>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </template>
-    </el-drawer>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from "vue";
-import { Document, UploadFilled } from "@element-plus/icons-vue";
+import { computed, onMounted, reactive, ref } from "vue";
+import type { FormInstance, FormRules } from "element-plus";
 import { ElMessage, ElMessageBox } from "element-plus";
-import type { UploadUserFile } from "element-plus";
 import ForumPageShell from "../components/ForumPageShell.vue";
+import { ForumAPI } from "@/api/modules/forum";
+import type { Forum } from "@/api/interface/forum";
+import { mockBoards, mockPosts, mockReplies, mockAttachments, postModuleTextMap } from "../mock";
 import { useForumAuthButtons } from "../auth";
-import {
-  mockAttachments,
-  mockBoards,
-  mockPosts,
-  mockReplies,
-  postModuleTextMap,
-  type ForumAttachmentMock,
-  type ForumPostMock,
-  type ForumReplyMock,
-  type PostModule,
-  type PostStatus
-} from "../mock";
 
-const { BUTTONS } = useForumAuthButtons();
-const canCreate = computed(() => BUTTONS.create);
-const canEdit = computed(() => BUTTONS.edit);
+interface BoardView {
+  id: number;
+  courseId: string;
+  courseName?: string;
+  title: string;
+  description?: string;
+  status: Forum.BoardStatus | string;
+}
 
-type DialogMode = "create" | "edit";
+type PostRow = Forum.PostItem & {
+  author_name?: string;
+  author_role?: string;
+  board_name?: string;
+};
+
+type ReplyRow = Forum.ReplyItem & {
+  author_name?: string;
+  author_role?: string;
+  children?: ReplyRow[];
+};
+
+interface QueryForm {
+  boardId?: number;
+  keyword: string;
+  module: Forum.PostModule | "";
+  status: Forum.PostStatus | "";
+  sortBy: "created_at" | "hot_score";
+}
 
 interface PostForm {
   id?: number;
-  boardId: number | null;
-  module: PostModule;
+  board_id?: number;
+  module: Forum.PostModule;
   title: string;
   content: string;
-  pinned: boolean;
-  attachments: UploadUserFile[];
 }
 
-interface PostQueryForm {
-  keyword: string;
-  courseId: string;
-  module: PostModule | "";
-  status: PostStatus | "";
-}
+type ApiMessageType = "success" | "warning" | "error" | "info";
 
-const createEmptyQuery = (): PostQueryForm => ({
-  keyword: "",
-  courseId: "",
-  module: "",
-  status: ""
+const { BUTTONS } = useForumAuthButtons();
+const currentUser = ForumAPI.getCurrentForumUser();
+
+const boards = ref<BoardView[]>([]);
+const posts = ref<PostRow[]>([]);
+const replies = ref<ReplyRow[]>([]);
+const attachments = ref<Forum.AttachmentItem[]>([]);
+const currentPost = ref<PostRow | null>(null);
+const editingPost = ref<PostRow | null>(null);
+const postFormRef = ref<FormInstance>();
+const detailDrawerVisible = ref(false);
+const editDialogVisible = ref(false);
+const replyContent = ref("");
+const useMockData = ref(false);
+const apiMessage = ref("");
+const apiMessageType = ref<ApiMessageType>("info");
+
+const loading = reactive({
+  boards: false,
+  posts: false,
+  detail: false,
+  replies: false,
+  attachments: false
 });
 
-const postStatusTextMap: Record<PostStatus, string> = {
+const submitting = reactive({
+  post: false,
+  reply: false
+});
+
+const pagination = reactive({
+  page: 1,
+  pageSize: 10,
+  total: 0
+});
+
+const queryForm = reactive<QueryForm>({
+  boardId: undefined,
+  keyword: "",
+  module: "",
+  status: "",
+  sortBy: "created_at"
+});
+
+const postForm = reactive<PostForm>({
+  id: undefined,
+  board_id: undefined,
+  module: "discussion",
+  title: "",
+  content: ""
+});
+
+const postRules: FormRules = {
+  board_id: [{ required: true, message: "请选择课程论坛", trigger: "change" }],
+  module: [{ required: true, message: "请选择模块", trigger: "change" }],
+  title: [{ required: true, message: "请输入帖子标题", trigger: "blur" }],
+  content: [{ required: true, message: "请输入帖子正文", trigger: "blur" }]
+};
+
+const postStatusTextMap: Record<Forum.PostStatus, string> = {
   published: "已发布",
   hot: "热门",
   pinned: "置顶",
@@ -389,132 +447,577 @@ const postStatusTextMap: Record<PostStatus, string> = {
   deleted: "已删除"
 };
 
-const postStatusTagMap: Record<PostStatus, "success" | "warning" | "danger" | "info"> = {
+const postStatusTagMap: Record<Forum.PostStatus, "success" | "warning" | "danger" | "info"> = {
   published: "success",
   hot: "warning",
   pinned: "danger",
   hidden: "info",
-  deleted: "info"
+  deleted: "danger"
 };
 
-const roleTextMap = {
-  student: "学生",
-  teacher: "教师",
-  admin: "管理员"
-};
+const canView = computed(() => Boolean(BUTTONS.view));
+const canReply = computed(() => Boolean(BUTTONS.reply));
+const canUseMyPosts = computed(() => canView.value && Boolean(BUTTONS.create || BUTTONS.reply || BUTTONS.edit || BUTTONS.delete));
 
-const posts = ref<ForumPostMock[]>(mockPosts.map(item => ({ ...item })));
-const replies = ref<ForumReplyMock[]>(
-  mockReplies.map(item => ({ ...item, children: item.children?.map(child => ({ ...child })) }))
-);
-const attachments = ref<ForumAttachmentMock[]>(mockAttachments.map(item => ({ ...item })));
-
-const queryForm = reactive<PostQueryForm>(createEmptyQuery());
-const activeQuery = reactive<PostQueryForm>(createEmptyQuery());
-
-const dialogVisible = ref(false);
-const dialogMode = ref<DialogMode>("create");
-const drawerVisible = ref(false);
-const currentPost = ref<ForumPostMock | null>(null);
-
-const postForm = reactive<PostForm>({
-  id: undefined,
-  boardId: null,
-  module: "discussion",
-  title: "",
-  content: "",
-  pinned: false,
-  attachments: []
-});
-
-const replyForm = reactive({
-  parentReplyId: null as number | null,
-  parentFloor: null as number | null,
-  content: ""
-});
-
-const pageNum = ref(1);
-const pageSize = ref(10);
-const total = ref(0);
-
-const allFilteredPosts = computed(() => {
-  const keyword = activeQuery.keyword.trim().toLowerCase();
-
-  return posts.value.filter(post => {
-    const matchKeyword =
-      !keyword ||
-      post.title.toLowerCase().includes(keyword) ||
-      post.content.toLowerCase().includes(keyword) ||
-      post.authorName.toLowerCase().includes(keyword);
-
-    const matchCourse = !activeQuery.courseId || post.courseId === activeQuery.courseId;
-    const matchModule = !activeQuery.module || post.module === activeQuery.module;
-    const matchStatus = !activeQuery.status || post.status === activeQuery.status;
-
-    return matchKeyword && matchCourse && matchModule && matchStatus;
-  });
-});
-
-total.value = allFilteredPosts.value.length;
-
-const filteredPosts = computed(() => {
-  const start = (pageNum.value - 1) * pageSize.value;
-  const end = start + pageSize.value;
-  return allFilteredPosts.value.slice(start, end);
-});
-
-watch(
-  [activeQuery, pageNum, pageSize],
-  () => {
-    total.value = allFilteredPosts.value.length;
-    if (pageNum.value > Math.ceil(total.value / pageSize.value) && pageNum.value > 1) {
-      pageNum.value = 1;
-    }
-  },
-  { immediate: true }
-);
-
-const handleSizeChange = (size: number) => {
-  pageSize.value = size;
-  pageNum.value = 1;
-};
-
-const handleCurrentChange = (currentPage: number) => {
-  pageNum.value = currentPage;
-};
-
-const currentReplies = computed(() => {
-  if (!currentPost.value) return [];
-
-  return replies.value.filter(reply => reply.postId === currentPost.value?.id);
-});
+const boardOptions = computed(() => boards.value);
 
 const stats = computed(() => [
   {
-    label: "帖子总数",
+    label: "我的帖子",
     value: posts.value.length,
-    help: "课程论坛帖子数量"
+    help: "当前筛选条件下的个人帖子数量"
   },
   {
-    label: "回复总数",
-    value: getTotalReplyCount(),
-    help: "帖子下的互动回复"
+    label: "已发布",
+    value: posts.value.filter(item => item.status === "published" || item.status === "hot" || item.status === "pinned").length,
+    help: "正常展示的帖子"
   },
   {
-    label: "附件总数",
-    value: attachments.value.length,
-    help: "帖子与回复附件数量"
+    label: "总回复",
+    value: posts.value.reduce((sum, item) => sum + Number(item.replies_count || 0), 0),
+    help: "当前列表帖子收到的回复数"
   },
   {
-    label: "热门帖子",
-    value: posts.value.filter(item => item.status === "hot").length,
-    help: "热度较高的讨论内容"
+    label: "当前用户",
+    value: `#${currentUser.id}`,
+    help: currentUser.name
   }
 ]);
 
-const dialogTitle = computed(() => {
-  return dialogMode.value === "create" ? "创建帖子" : "编辑帖子";
+const permissionStats = computed(() => [
+  {
+    label: "我的帖子权限",
+    value: "无",
+    help: "当前账号没有我的帖子页面权限"
+  }
+]);
+
+const setApiMessage = (message: string, type: ApiMessageType = "info") => {
+  apiMessage.value = message;
+  apiMessageType.value = type;
+};
+
+const normalizeBoard = (board: Forum.BoardItem & Record<string, any>): BoardView => ({
+  id: board.id,
+  courseId: board.course_id || board.courseId || "",
+  courseName: board.course_name || board.courseName || "",
+  title: board.title || board.name || board.course_name || "课程论坛",
+  description: board.description || "",
+  status: board.status || "active"
 });
+
+const normalizeMockBoard = (board: (typeof mockBoards)[number]): BoardView => ({
+  id: board.id,
+  courseId: board.courseId,
+  courseName: board.courseName,
+  title: board.title,
+  description: board.description,
+  status: board.status
+});
+
+const normalizePost = (post: (Forum.PostItem | Forum.ResPostDetail) & Record<string, any>): PostRow => ({
+  id: post.id,
+  board_id: post.board_id,
+  course_id: post.course_id || "",
+  module: post.module || "general",
+  title: post.title || "未命名帖子",
+  content: post.content || "",
+  status: post.status || "published",
+  pinned: Boolean(post.pinned),
+  views_count: Number(post.views_count ?? 0),
+  replies_count: Number(post.replies_count ?? 0),
+  likes_count: Number(post.likes_count ?? 0),
+  hot_score: Number(post.hot_score ?? 0),
+  author_id: Number(post.author_id ?? 0),
+  author_name: post.author_name || post.authorName,
+  author_role: post.author_role || post.authorRole,
+  board_name: post.board_name || post.boardName,
+  created_at: post.created_at || "",
+  updated_at: post.updated_at
+});
+
+const normalizeMockPost = (post: (typeof mockPosts)[number]): PostRow => ({
+  id: post.id,
+  board_id: post.boardId,
+  course_id: post.courseId,
+  module: post.module,
+  title: post.title,
+  content: post.content,
+  status: post.status,
+  pinned: post.pinned,
+  views_count: post.viewsCount,
+  replies_count: post.repliesCount,
+  likes_count: post.likesCount,
+  hot_score: post.hotScore,
+  author_id: currentUser.id,
+  author_name: post.authorName,
+  author_role: post.authorRole,
+  created_at: post.createdAt,
+  updated_at: post.updatedAt
+});
+
+const normalizeMockReply = (reply: any): ReplyRow => ({
+  id: reply.id,
+  post_id: reply.postId,
+  floor: reply.floor,
+  parent_reply_id: reply.parentReplyId,
+  content: reply.content,
+  author_id: currentUser.id,
+  author_name: reply.authorName,
+  author_role: reply.authorRole,
+  likes_count: reply.likesCount,
+  status: reply.status,
+  created_at: reply.createdAt,
+  children: reply.children?.map((child: any) => normalizeMockReply(child))
+});
+
+const normalizeMockAttachment = (file: (typeof mockAttachments)[number]): Forum.AttachmentItem => ({
+  id: file.id,
+  post_id: file.ownerId,
+  file_name: file.fileName,
+  file_url: file.fileUrl,
+  file_size: file.fileSize,
+  mime_type: file.mimeType,
+  uploader_id: currentUser.id,
+  created_at: file.createdAt
+});
+
+const loadBoards = async () => {
+  loading.boards = true;
+
+  try {
+    const res = await ForumAPI.getBoardList({
+      page: 1,
+      page_size: 100,
+      status: "active"
+    });
+
+    boards.value = (res.data?.items ?? []).map(item => normalizeBoard(item as Forum.BoardItem & Record<string, any>));
+
+    if (boards.value.length === 0) {
+      boards.value = mockBoards.map(normalizeMockBoard);
+    }
+  } catch (error) {
+    console.error("加载课程论坛板块失败：", error);
+    boards.value = mockBoards.map(normalizeMockBoard);
+  } finally {
+    loading.boards = false;
+  }
+};
+
+const loadMyPosts = async () => {
+  if (!canUseMyPosts.value) {
+    posts.value = [];
+    pagination.total = 0;
+    return;
+  }
+
+  loading.posts = true;
+
+  try {
+    const res = await ForumAPI.getMyPostList({
+      page: pagination.page,
+      page_size: pagination.pageSize,
+      board_id: queryForm.boardId,
+      module: queryForm.module || undefined,
+      status: queryForm.status || undefined,
+      keyword: queryForm.keyword.trim() || undefined,
+      sort_by: queryForm.sortBy,
+      sort_order: "desc"
+    });
+
+    posts.value = (res.data?.items ?? []).map(item => normalizePost(item as Forum.PostItem & Record<string, any>));
+    pagination.total = res.data?.pagination?.total ?? posts.value.length;
+    useMockData.value = false;
+    setApiMessage("已连接我的帖子接口。", "success");
+  } catch (error) {
+    console.error("加载我的帖子失败：", error);
+
+    const keyword = queryForm.keyword.trim().toLowerCase();
+    const currentRole = String(currentUser.backend_role || "");
+
+    posts.value = mockPosts.map(normalizeMockPost).filter(post => {
+      const matchOwner =
+        post.author_id === currentUser.id ||
+        post.author_name === currentUser.name ||
+        String(post.author_role || "").includes(currentRole);
+
+      const matchBoard = !queryForm.boardId || post.board_id === queryForm.boardId;
+      const matchModule = !queryForm.module || post.module === queryForm.module;
+      const matchStatus = !queryForm.status || post.status === queryForm.status;
+      const matchKeyword = !keyword || post.title.toLowerCase().includes(keyword) || post.content.toLowerCase().includes(keyword);
+
+      return matchOwner && matchBoard && matchModule && matchStatus && matchKeyword;
+    });
+
+    pagination.total = posts.value.length;
+    useMockData.value = true;
+    setApiMessage("我的帖子接口异常，当前使用本地数据兜底。", "warning");
+  } finally {
+    loading.posts = false;
+  }
+};
+
+const reloadPageData = async () => {
+  await loadBoards();
+  await loadMyPosts();
+};
+
+const handleFilter = async () => {
+  pagination.page = 1;
+  await loadMyPosts();
+};
+
+const resetQuery = async () => {
+  queryForm.boardId = undefined;
+  queryForm.keyword = "";
+  queryForm.module = "";
+  queryForm.status = "";
+  queryForm.sortBy = "created_at";
+  pagination.page = 1;
+  await loadMyPosts();
+};
+
+const handlePageChange = async (page: number) => {
+  pagination.page = page;
+  await loadMyPosts();
+};
+
+const openPostDetail = async (post: PostRow) => {
+  currentPost.value = post;
+  detailDrawerVisible.value = true;
+
+  await Promise.all([loadPostDetail(post.id), loadAttachments(post.id), loadReplies(post.id)]);
+};
+
+const loadPostDetail = async (postId: number) => {
+  loading.detail = true;
+
+  try {
+    if (useMockData.value) return;
+
+    const res = await ForumAPI.getPostDetail(postId);
+    currentPost.value = normalizePost(res.data as Forum.ResPostDetail & Record<string, any>);
+  } catch (error) {
+    console.error("加载帖子详情失败：", error);
+  } finally {
+    loading.detail = false;
+  }
+};
+
+const loadAttachments = async (postId: number) => {
+  loading.attachments = true;
+
+  try {
+    if (useMockData.value) {
+      attachments.value = mockAttachments
+        .filter(file => file.ownerType === "post" && file.ownerId === postId)
+        .map(normalizeMockAttachment);
+      return;
+    }
+
+    const res = await ForumAPI.getAttachmentList(postId);
+    attachments.value = res.data?.items ?? [];
+  } catch (error) {
+    console.error("加载附件失败：", error);
+    attachments.value = [];
+  } finally {
+    loading.attachments = false;
+  }
+};
+
+const loadReplies = async (postId: number) => {
+  loading.replies = true;
+
+  try {
+    if (useMockData.value) {
+      replies.value = mockReplies.filter(reply => reply.postId === postId).map(normalizeMockReply);
+      return;
+    }
+
+    const res = await ForumAPI.getReplyList(postId, {
+      view: "tree",
+      page: 1,
+      page_size: 100
+    });
+
+    replies.value = (res.data?.items ?? []) as ReplyRow[];
+  } catch (error) {
+    console.error("加载回复失败：", error);
+    replies.value = [];
+  } finally {
+    loading.replies = false;
+  }
+};
+
+const openEditPostDialog = (post: PostRow) => {
+  if (!canEditOwnPost(post)) return;
+
+  editingPost.value = post;
+  postForm.id = post.id;
+  postForm.board_id = post.board_id;
+  postForm.module = post.module;
+  postForm.title = post.title;
+  postForm.content = post.content;
+  editDialogVisible.value = true;
+};
+
+const submitEditPost = async () => {
+  if (!postFormRef.value || !editingPost.value) return;
+
+  await postFormRef.value.validate(async valid => {
+    if (!valid || !editingPost.value) return;
+
+    submitting.post = true;
+
+    try {
+      if (useMockData.value) {
+        updateLocalPost(editingPost.value.id, {
+          board_id: Number(postForm.board_id),
+          module: postForm.module,
+          title: postForm.title,
+          content: postForm.content,
+          updated_at: getCurrentTimeText()
+        });
+
+        editDialogVisible.value = false;
+        ElMessage.success("帖子已更新");
+        return;
+      }
+
+      const res = await ForumAPI.updatePost(editingPost.value.id, {
+        board_id: Number(postForm.board_id),
+        module: postForm.module,
+        title: postForm.title,
+        content: postForm.content
+      });
+
+      const updated = normalizePost(res.data as Forum.PostItem & Record<string, any>);
+      updateLocalPost(updated.id, updated);
+
+      editDialogVisible.value = false;
+      ElMessage.success("帖子已更新");
+      await loadMyPosts();
+    } catch (error) {
+      console.error("更新帖子失败：", error);
+      ElMessage.error("更新失败，请检查帖子编辑接口或权限");
+    } finally {
+      submitting.post = false;
+    }
+  });
+};
+
+const deletePost = async (post: PostRow) => {
+  if (!canDeleteOwnPost(post)) return;
+
+  try {
+    await ElMessageBox.confirm(`确认删除帖子「${post.title}」吗？`, "删除帖子", {
+      type: "warning",
+      confirmButtonText: "确认删除",
+      cancelButtonText: "取消"
+    });
+
+    if (useMockData.value) {
+      posts.value = posts.value.filter(item => item.id !== post.id);
+      if (currentPost.value?.id === post.id) {
+        detailDrawerVisible.value = false;
+      }
+      pagination.total = Math.max(0, pagination.total - 1);
+      ElMessage.success("帖子已删除");
+      return;
+    }
+
+    await ForumAPI.deletePost(post.id);
+    posts.value = posts.value.filter(item => item.id !== post.id);
+
+    if (currentPost.value?.id === post.id) {
+      detailDrawerVisible.value = false;
+    }
+
+    pagination.total = Math.max(0, pagination.total - 1);
+    ElMessage.success("帖子已删除");
+  } catch (error) {
+    if (error !== "cancel") {
+      console.error("删除帖子失败：", error);
+      ElMessage.error("删除失败，请检查删除权限");
+    }
+  }
+};
+
+const deleteAttachment = async (file: Forum.AttachmentItem) => {
+  try {
+    await ElMessageBox.confirm(`确认删除附件「${file.file_name}」吗？`, "删除附件", {
+      type: "warning",
+      confirmButtonText: "确认删除",
+      cancelButtonText: "取消"
+    });
+
+    if (useMockData.value) {
+      attachments.value = attachments.value.filter(item => item.id !== file.id);
+      ElMessage.success("附件已删除");
+      return;
+    }
+
+    await ForumAPI.deleteAttachment(file.id);
+    attachments.value = attachments.value.filter(item => item.id !== file.id);
+    ElMessage.success("附件已删除");
+  } catch (error) {
+    if (error !== "cancel") {
+      console.error("删除附件失败：", error);
+      ElMessage.error("删除失败，请检查附件权限");
+    }
+  }
+};
+
+const submitReply = async () => {
+  if (!currentPost.value || !replyContent.value.trim()) {
+    ElMessage.warning("请输入回复内容");
+    return;
+  }
+
+  submitting.reply = true;
+
+  try {
+    if (useMockData.value) {
+      const newReply: ReplyRow = {
+        id: Date.now(),
+        post_id: currentPost.value.id,
+        floor: countReplies(replies.value) + 1,
+        parent_reply_id: null,
+        content: replyContent.value.trim(),
+        author_id: currentUser.id,
+        author_name: currentUser.name,
+        likes_count: 0,
+        status: "published",
+        created_at: getCurrentTimeText()
+      };
+
+      replies.value.push(newReply);
+      replyContent.value = "";
+      ElMessage.success("回复已发布");
+      return;
+    }
+
+    await ForumAPI.createReply(currentPost.value.id, {
+      parent_reply_id: null,
+      content: replyContent.value.trim()
+    });
+
+    replyContent.value = "";
+    ElMessage.success("回复已发布");
+    await loadReplies(currentPost.value.id);
+    await loadMyPosts();
+  } catch (error) {
+    console.error("发布回复失败：", error);
+    ElMessage.error("回复失败，请检查回复接口或权限");
+  } finally {
+    submitting.reply = false;
+  }
+};
+
+const deleteReply = async (reply: ReplyRow) => {
+  if (!canDeleteReply(reply)) return;
+
+  try {
+    await ElMessageBox.confirm("确认删除这条回复吗？", "删除回复", {
+      type: "warning",
+      confirmButtonText: "确认删除",
+      cancelButtonText: "取消"
+    });
+
+    if (useMockData.value) {
+      removeReplyFromTree(reply.id);
+      ElMessage.success("回复已删除");
+      return;
+    }
+
+    await ForumAPI.deleteReply(reply.id);
+    ElMessage.success("回复已删除");
+
+    if (currentPost.value) {
+      await loadReplies(currentPost.value.id);
+      await loadMyPosts();
+    }
+  } catch (error) {
+    if (error !== "cancel") {
+      console.error("删除回复失败：", error);
+      ElMessage.error("删除失败，请检查回复删除权限");
+    }
+  }
+};
+
+const updateLocalPost = (id: number, patch: Partial<PostRow>) => {
+  posts.value = posts.value.map(item => (item.id === id ? { ...item, ...patch } : item));
+
+  if (currentPost.value?.id === id) {
+    currentPost.value = { ...currentPost.value, ...patch };
+  }
+
+  if (editingPost.value?.id === id) {
+    editingPost.value = { ...editingPost.value, ...patch };
+  }
+};
+
+const removeReplyFromTree = (replyId: number) => {
+  const remove = (list: ReplyRow[]): ReplyRow[] => {
+    return list
+      .filter(item => item.id !== replyId)
+      .map(item => ({
+        ...item,
+        children: item.children ? remove(item.children) : []
+      }));
+  };
+
+  replies.value = remove(replies.value);
+};
+
+const canEditOwnPost = (post?: PostRow | null) => {
+  if (!post) return false;
+  return post.author_id === currentUser.id && post.status !== "deleted";
+};
+
+const canDeleteOwnPost = (post?: PostRow | null) => {
+  if (!post) return false;
+  return post.author_id === currentUser.id && post.status !== "deleted";
+};
+
+const canDeleteReply = (reply: ReplyRow) => {
+  return reply.author_id === currentUser.id || Boolean(BUTTONS.delete);
+};
+
+const countReplies = (items: ReplyRow[]) => {
+  return items.reduce((sum, item) => sum + 1 + countReplies(item.children || []), 0);
+};
+
+const goCreateHint = () => {
+  ElMessage.info("请到“课程论坛”页面选择课程后发布帖子。");
+};
+
+const getBoardName = (boardId?: number) => {
+  const board = boards.value.find(item => item.id === boardId);
+  return board?.title || `板块 #${boardId || "-"}`;
+};
+
+const getAuthorName = (name?: string, id?: number) => {
+  return name || (id ? `用户 #${id}` : "未知用户");
+};
+
+const formatHotScore = (value?: number) => {
+  return Number(value || 0).toFixed(1);
+};
+
+const formatTime = (time?: string | null) => {
+  if (!time) return "未知时间";
+  return time.replace("T", " ").slice(0, 16);
+};
+
+const formatFileSize = (size?: number) => {
+  const value = Number(size || 0);
+
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
+};
 
 const getCurrentTimeText = () => {
   const now = new Date();
@@ -523,361 +1026,75 @@ const getCurrentTimeText = () => {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
 };
 
-const getBoardInfo = (boardId: number | null) => {
-  return mockBoards.find(board => board.id === boardId);
-};
-
-const getPostAttachments = (postId: number) => {
-  return attachments.value.filter(item => item.ownerType === "post" && item.ownerId === postId);
-};
-
-const getReplyAttachments = (replyId: number) => {
-  return attachments.value.filter(item => item.ownerType === "reply" && item.ownerId === replyId);
-};
-
-const getTotalReplyCount = () => {
-  return replies.value.reduce((sum, reply) => sum + 1 + (reply.children?.length ?? 0), 0);
-};
-
-const getMaxFloor = (postId: number) => {
-  return replies.value
-    .filter(reply => reply.postId === postId)
-    .reduce((maxFloor, reply) => Math.max(maxFloor, reply.floor, ...(reply.children?.map(child => child.floor) ?? [])), 0);
-};
-
-const toUploadFile = (attachment: ForumAttachmentMock): UploadUserFile => {
-  return {
-    uid: attachment.id,
-    name: attachment.fileName,
-    url: attachment.fileUrl,
-    size: attachment.fileSize,
-    status: "success"
-  };
-};
-
-const formatFileSize = (size: number) => {
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-
-  return `${(size / 1024 / 1024).toFixed(1)} MB`;
-};
-
-const handleFilter = () => {
-  activeQuery.keyword = queryForm.keyword;
-  activeQuery.courseId = queryForm.courseId;
-  activeQuery.module = queryForm.module;
-  activeQuery.status = queryForm.status;
-};
-
-const resetQuery = () => {
-  Object.assign(queryForm, createEmptyQuery());
-  Object.assign(activeQuery, createEmptyQuery());
-};
-
-const resetPostForm = () => {
-  postForm.id = undefined;
-  postForm.boardId = mockBoards[0]?.id ?? null;
-  postForm.module = "discussion";
-  postForm.title = "";
-  postForm.content = "";
-  postForm.pinned = false;
-  postForm.attachments = [];
-};
-
-const resetReplyForm = () => {
-  replyForm.parentReplyId = null;
-  replyForm.parentFloor = null;
-  replyForm.content = "";
-};
-
-const fillPostForm = (post: ForumPostMock) => {
-  postForm.id = post.id;
-  postForm.boardId = post.boardId;
-  postForm.module = post.module;
-  postForm.title = post.title;
-  postForm.content = post.content;
-  postForm.pinned = post.pinned;
-  postForm.attachments = getPostAttachments(post.id).map(toUploadFile);
-};
-
-const openCreateDialog = () => {
-  resetPostForm();
-  dialogMode.value = "create";
-  dialogVisible.value = true;
-};
-
-const openEditDialog = (post: ForumPostMock) => {
-  fillPostForm(post);
-  dialogMode.value = "edit";
-  dialogVisible.value = true;
-};
-
-const openDetailDrawer = (post: ForumPostMock) => {
-  currentPost.value = post;
-  resetReplyForm();
-  drawerVisible.value = true;
-};
-
-const handleAttachmentExceed = () => {
-  ElMessage.warning("本地 mock 最多展示 5 个附件");
-};
-
-const savePostAttachments = (postId: number) => {
-  attachments.value = attachments.value.filter(item => !(item.ownerType === "post" && item.ownerId === postId));
-
-  const now = getCurrentTimeText();
-  const savedAttachments = postForm.attachments.map((file, index) => {
-    const existingId = typeof file.uid === "number" ? file.uid : Date.now() + index;
-
-    return {
-      id: existingId,
-      ownerType: "post" as const,
-      ownerId: postId,
-      fileName: file.name,
-      fileUrl: file.url || "#",
-      fileSize: file.size || 0,
-      mimeType: file.raw?.type || "application/octet-stream",
-      uploaderName: "当前用户",
-      createdAt: now
-    };
-  });
-
-  attachments.value.push(...savedAttachments);
-};
-
-const handleSubmit = () => {
-  const title = postForm.title.trim();
-  const content = postForm.content.trim();
-  const board = getBoardInfo(postForm.boardId);
-
-  if (!board) {
-    ElMessage.warning("请选择所属课程论坛");
-    return;
-  }
-
-  if (!title) {
-    ElMessage.warning("请输入帖子标题");
-    return;
-  }
-
-  if (!content) {
-    ElMessage.warning("请输入帖子正文");
-    return;
-  }
-
-  if (dialogMode.value === "create") {
-    const now = getCurrentTimeText();
-    const postId = Date.now();
-
-    posts.value.unshift({
-      id: postId,
-      boardId: board.id,
-      boardName: board.title,
-      courseId: board.courseId,
-      courseName: board.courseName,
-      module: postForm.module,
-      title,
-      content,
-      authorName: "当前用户",
-      authorRole: "student",
-      status: postForm.pinned ? "pinned" : "published",
-      pinned: postForm.pinned,
-      viewsCount: 0,
-      repliesCount: 0,
-      likesCount: 0,
-      hotScore: 0,
-      createdAt: now,
-      updatedAt: now
-    });
-
-    savePostAttachments(postId);
-    ElMessage.success("帖子已添加到 mock 列表，附件已记录为本地 mock 数据");
-  }
-
-  if (dialogMode.value === "edit" && postForm.id) {
-    const target = posts.value.find(item => item.id === postForm.id);
-
-    if (target) {
-      target.boardId = board.id;
-      target.boardName = board.title;
-      target.courseId = board.courseId;
-      target.courseName = board.courseName;
-      target.module = postForm.module;
-      target.title = title;
-      target.content = content;
-      target.pinned = postForm.pinned;
-      target.status = postForm.pinned ? "pinned" : target.status === "hidden" ? "hidden" : "published";
-      target.updatedAt = getCurrentTimeText();
-
-      savePostAttachments(target.id);
-    }
-
-    ElMessage.success("帖子 mock 数据已更新，附件列表已同步");
-  }
-
-  dialogVisible.value = false;
-};
-
-const handleHide = (post: ForumPostMock) => {
-  const willHide = post.status !== "hidden";
-
-  post.status = willHide ? "hidden" : "published";
-  post.pinned = false;
-
-  ElMessage.success(`${willHide ? "已隐藏" : "已恢复"}：${post.title}`);
-};
-
-const handleDelete = async (post: ForumPostMock) => {
-  try {
-    await ElMessageBox.confirm(`确认删除帖子“${post.title}”吗？当前只会从本地 mock 列表移除。`, "删除确认", {
-      confirmButtonText: "删除",
-      cancelButtonText: "取消",
-      type: "warning"
-    });
-
-    posts.value = posts.value.filter(item => item.id !== post.id);
-    replies.value = replies.value.filter(item => item.postId !== post.id);
-    attachments.value = attachments.value.filter(item => !(item.ownerType === "post" && item.ownerId === post.id));
-
-    if (currentPost.value?.id === post.id) {
-      currentPost.value = null;
-      drawerVisible.value = false;
-    }
-
-    ElMessage.success("已从 mock 列表删除");
-  } catch {
-    // 用户取消删除，不需要提示
-  }
-};
-
-const setReplyTarget = (reply: ForumReplyMock) => {
-  replyForm.parentReplyId = reply.id;
-  replyForm.parentFloor = reply.floor;
-};
-
-const clearReplyTarget = () => {
-  replyForm.parentReplyId = null;
-  replyForm.parentFloor = null;
-};
-
-const appendChildReply = (parentReplyId: number, childReply: ForumReplyMock) => {
-  for (const reply of replies.value) {
-    if (reply.id === parentReplyId) {
-      reply.children = [...(reply.children ?? []), childReply];
-      return true;
-    }
-
-    const childTarget = reply.children?.find(child => child.id === parentReplyId);
-
-    if (childTarget) {
-      reply.children = [...(reply.children ?? []), childReply];
-      return true;
-    }
-  }
-
-  return false;
-};
-
-const submitReply = () => {
-  if (!currentPost.value) return;
-
-  const content = replyForm.content.trim();
-
-  if (!content) {
-    ElMessage.warning("请输入回复内容");
-    return;
-  }
-
-  const nextFloor = getMaxFloor(currentPost.value.id) + 1;
-  const replyId = Date.now();
-
-  const newReply: ForumReplyMock = {
-    id: replyId,
-    postId: currentPost.value.id,
-    parentReplyId: replyForm.parentReplyId,
-    floor: nextFloor,
-    content,
-    authorName: "当前用户",
-    authorRole: "student",
-    likesCount: 0,
-    status: "published",
-    createdAt: getCurrentTimeText()
-  };
-
-  if (replyForm.parentReplyId) {
-    const appended = appendChildReply(replyForm.parentReplyId, newReply);
-
-    if (!appended) {
-      replies.value.push(newReply);
-    }
-  } else {
-    replies.value.push(newReply);
-  }
-
-  currentPost.value.repliesCount += 1;
-  resetReplyForm();
-  ElMessage.success("回复已添加到 mock 列表");
-};
-
-const previewAttachment = (attachment: ForumAttachmentMock) => {
-  ElMessage.info(`当前为 mock 附件，暂不打开真实文件：${attachment.fileName}`);
-};
+onMounted(() => {
+  reloadPageData();
+});
 </script>
 
 <style scoped lang="scss">
-.forum-posts-page,
-.filter-form {
+.forum-my-posts-page,
+.my-posts-toolbar {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 .filter-form {
+  display: flex;
   flex-flow: row wrap;
 }
-.post-title-cell {
+.select-option-extra {
+  float: right;
+  margin-left: 24px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.post-title-row {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   align-items: center;
 }
 .post-title {
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-}
-.post-content-preview {
-  width: 100%;
-  margin-top: 6px;
   overflow: hidden;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
+  font-weight: 700;
+  color: var(--el-text-color-primary);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.post-meta {
-  margin-top: 6px;
-  font-size: 12px;
-  color: var(--el-text-color-placeholder);
+.post-preview {
+  display: -webkit-box;
+  margin-top: 8px;
+  overflow: hidden;
+  line-height: 1.6;
+  color: var(--el-text-color-regular);
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
-.metric-line {
-  line-height: 22px;
+.post-meta {
+  margin-top: 8px;
+  font-size: 12px;
   color: var(--el-text-color-secondary);
 }
-.empty-text {
-  color: var(--el-text-color-placeholder);
+.metrics-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
 }
-.full-width {
-  width: 100%;
+.pagination-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
 }
-.attachment-uploader {
-  width: 100%;
-}
-.attachment-uploader__icon {
-  margin-bottom: 8px;
-  font-size: 32px;
-  color: var(--el-color-primary);
+.drawer-title-row {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
 }
 .drawer-title {
-  font-size: 18px;
-  font-weight: 600;
+  font-size: 20px;
+  font-weight: 700;
   color: var(--el-text-color-primary);
 }
 .drawer-meta {
@@ -886,117 +1103,100 @@ const previewAttachment = (attachment: ForumAttachmentMock) => {
   color: var(--el-text-color-secondary);
 }
 .drawer-content {
-  margin: 16px 0;
+  margin: 18px 0 0;
   line-height: 1.8;
-  color: var(--el-text-color-regular);
+  white-space: pre-wrap;
 }
-.drawer-metrics {
+.drawer-metrics,
+.drawer-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  margin-top: 14px;
 }
-.attachment-card,
-.reply-form-card {
+.detail-card {
   margin-top: 16px;
-  border-radius: 10px;
+  border-radius: 12px;
 }
 .card-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
-.attachment-list {
+.attachment-list,
+.reply-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 .attachment-item {
   display: flex;
   gap: 12px;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px;
+  padding: 12px 14px;
   background: var(--el-fill-color-lighter);
-  border: 1px solid var(--el-border-color-light);
-  border-radius: 8px;
+  border-radius: 10px;
 }
-.attachment-item__main {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  min-width: 0;
-}
-.attachment-item__name {
-  overflow: hidden;
+.attachment-name {
   font-weight: 600;
   color: var(--el-text-color-primary);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
-.attachment-item__meta {
+.metric-line {
   margin-top: 4px;
   font-size: 12px;
   color: var(--el-text-color-secondary);
 }
+.reply-item {
+  padding: 14px 16px;
+  background: var(--el-fill-color-lighter);
+  border-radius: 10px;
+}
 .reply-header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-  font-weight: 600;
-}
-.reply-form-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 12px;
-}
-.reply-list {
-  display: flex;
-  flex-direction: column;
   gap: 12px;
-}
-.reply-item,
-.child-reply {
-  padding: 12px;
-  background: var(--el-fill-color-blank);
-  border: 1px solid var(--el-border-color-light);
-  border-radius: 8px;
-}
-.child-replies {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 10px;
-  margin-left: 20px;
-}
-.child-reply {
-  background: var(--el-fill-color-lighter);
-}
-.reply-title {
-  display: flex;
-  gap: 8px;
   align-items: center;
   justify-content: space-between;
-  font-weight: 600;
 }
-.reply-title__actions {
-  display: flex;
-  gap: 8px;
-  align-items: center;
+.reply-author {
+  font-weight: 700;
+  color: var(--el-text-color-primary);
 }
-.reply-content {
-  margin-top: 8px;
-  color: var(--el-text-color-regular);
-}
-.reply-meta {
-  margin-top: 8px;
+.reply-time {
+  margin-left: 6px;
   font-size: 12px;
   color: var(--el-text-color-secondary);
 }
-.reply-attachments {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+.reply-content {
   margin-top: 8px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+.reply-children {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-left: 14px;
+  margin-top: 12px;
+  border-left: 3px solid var(--el-border-color);
+}
+.reply-child {
+  padding: 10px 12px;
+  background: var(--el-bg-color);
+  border-radius: 8px;
+}
+.reply-action-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+@media (width <= 900px) {
+  .drawer-title-row,
+  .attachment-item,
+  .reply-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 </style>
