@@ -6,7 +6,7 @@ import { ResultEnum } from "@/enums/httpEnum";
 import { useUserStore } from "@/stores/modules/user";
 
 const SCORE_PREFIX = GRADE_API;
-const SCORE_SUCCESS = 10000;
+const SCORE_SUCCESS_CODES = new Set([0, 10000]);
 
 export interface ScoreRequestOptions {
   loading?: boolean;
@@ -45,7 +45,7 @@ export const scoreRequestOptions = (options: ScoreRequestOptions = {}) => {
 };
 
 const adaptScoreResp = <T>(resp: Score.BackendResp<T>): ResultData<T> => {
-  if (resp.code !== SCORE_SUCCESS) {
+  if (!SCORE_SUCCESS_CODES.has(resp.code)) {
     return Promise.reject({
       code: String(resp.code),
       msg: resp.message,
