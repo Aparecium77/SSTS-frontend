@@ -6,19 +6,10 @@
         <div>
           <p class="eyebrow">成绩管理</p>
           <h2>全局成绩管理</h2>
-          <p class="subtitle">教务管理员：跨课程查询、学生档案、课程对比、强制代录/代改</p>
         </div>
       </div>
       <el-button :icon="Refresh" :loading="loading" @click="reloadActiveTab">刷新</el-button>
     </section>
-
-    <el-alert
-      class="page-alert"
-      type="info"
-      :closable="false"
-      show-icon
-      title="可按课程、学期、学生与院系条件查询已汇总成绩，并支持导出当前筛选结果。"
-    />
 
     <el-tabs v-model="activeTab" class="admin-tabs">
       <el-tab-pane label="全局成绩查询" name="records">

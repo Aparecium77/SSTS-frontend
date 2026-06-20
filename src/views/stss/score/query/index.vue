@@ -133,13 +133,6 @@
           <el-button :disabled="!selectedCourseId" @click="openAuditDialog">审计日志</el-button>
         </div>
       </div>
-      <el-alert
-        class="surface-alert"
-        type="info"
-        :closable="false"
-        show-icon
-        :title="gradeSheet?.edition ? `成绩版本：${gradeSheet.edition}` : '请选择课程和学期后查看聚合成绩单。'"
-      />
       <el-table v-loading="loading" :data="pagedRows" border empty-text="请选择课程并查询">
         <el-table-column prop="student_no" label="学号" min-width="130" fixed />
         <el-table-column prop="student_name" label="姓名" min-width="110" fixed />

@@ -28,6 +28,10 @@
         <span>累计 GPA</span>
         <strong>{{ statistics?.cumulative_gpa ?? "-" }}</strong>
       </div>
+      <div class="metric-tile">
+        <span>加权平均</span>
+        <strong>{{ statistics?.weighted_average ?? "-" }}</strong>
+      </div>
     </section>
 
     <section class="credit-surface">
@@ -134,7 +138,7 @@ onMounted(loadCreditData);
 }
 .metric-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
   margin-top: 12px;
 }
