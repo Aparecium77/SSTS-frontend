@@ -12,11 +12,6 @@
     </section>
 
     <section v-if="isStudent" class="query-surface">
-      <el-alert class="student-login-tip" type="info" :closable="false" show-icon>
-        <template #title> 当前登录：{{ userStore.userInfo.name }}（{{ userStore.userInfo.userId }}） </template>
-        仅展示<strong>已发布</strong>总评。若为空，请确认教师已审批发布，且登录学号/学生 ID 与名册一致（可用学号如 20266001
-        登录）。
-      </el-alert>
       <div class="surface-head">
         <h3>我的已发布成绩</h3>
         <el-select
@@ -143,7 +138,7 @@
         type="info"
         :closable="false"
         show-icon
-        :title="gradeSheet?.edition ? `当前展示的是 ${gradeSheet.edition}` : '请选择课程和学期后查看聚合成绩单。'"
+        :title="gradeSheet?.edition ? `成绩版本：${gradeSheet.edition}` : '请选择课程和学期后查看聚合成绩单。'"
       />
       <el-table v-loading="loading" :data="pagedRows" border empty-text="请选择课程并查询">
         <el-table-column prop="student_no" label="学号" min-width="130" fixed />

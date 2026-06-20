@@ -17,7 +17,7 @@
       type="info"
       :closable="false"
       show-icon
-      title="部分查询依赖基础信息/课程外部服务；本地若未配置会返回 503，可先保证 grade.db 中已有总评数据。"
+      title="可按课程、学期、学生与院系条件查询已汇总成绩，并支持导出当前筛选结果。"
     />
 
     <el-tabs v-model="activeTab" class="admin-tabs">

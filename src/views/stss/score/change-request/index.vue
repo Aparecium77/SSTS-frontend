@@ -42,10 +42,10 @@
     <section class="request-surface">
       <el-alert
         class="surface-alert"
-        type="warning"
+        type="info"
         :closable="false"
         show-icon
-        title="改分申请时机：课程已「提交审批」且教务尚未通过时不能申请；教务审批通过、尚未发布后可对 approved 分项申请。申请后请到「改分审批」标签页处理。"
+        title="仅可对已审批且尚未发布的成绩项提交改分申请。课程审批中或已发布后，请按教务流程处理。"
       />
       <el-table v-loading="loading" :data="candidates" border empty-text="暂无可申请改分的成绩记录">
         <el-table-column prop="student_no" label="学号" min-width="130" />
