@@ -1,9 +1,12 @@
 <template>
   <div class="score-query-page">
     <section class="query-header">
-      <div>
-        <p class="eyebrow">成绩管理</p>
-        <h2>成绩查询</h2>
+      <div class="query-heading">
+        <span class="brand-bar" aria-hidden="true"></span>
+        <div>
+          <p class="eyebrow">成绩管理</p>
+          <h2>成绩查询</h2>
+        </div>
       </div>
       <el-button :icon="Refresh" :loading="loading" @click="reload">刷新</el-button>
     </section>
@@ -56,8 +59,8 @@
         <el-table-column prop="category" label="课程类别" min-width="130" show-overflow-tooltip>
           <template #default="{ row }">{{ row.category || "-" }}</template>
         </el-table-column>
-        <el-table-column prop="total_score" label="总评" width="110" />
-        <el-table-column prop="gpa" label="GPA" width="110" />
+        <el-table-column prop="total_score" label="总评" width="110" class-name="emphasis-col" />
+        <el-table-column prop="gpa" label="GPA" width="110" class-name="emphasis-col" />
         <el-table-column prop="credit" label="学分" width="100">
           <template #default="{ row }">{{ row.credit ?? "-" }}</template>
         </el-table-column>
@@ -73,7 +76,7 @@
           <h3>课程成绩明细</h3>
           <p class="surface-subtitle">支持学号/姓名/分数段筛选与排序，数据来自后端聚合成绩单。</p>
         </div>
-        <div class="teacher-filters">
+        <div class="teacher-filters filter-bar">
           <el-select
             v-model="selectedCourseKey"
             placeholder="选择课程"
@@ -138,10 +141,10 @@
             {{ getSheetScore(sheetRow(row), component.id) ?? "-" }}
           </template>
         </el-table-column>
-        <el-table-column prop="total_score" label="总评" min-width="100" align="center">
+        <el-table-column prop="total_score" label="总评" min-width="100" align="center" class-name="emphasis-col">
           <template #default="{ row }">{{ row.total_score ?? "-" }}</template>
         </el-table-column>
-        <el-table-column prop="gpa" label="GPA" min-width="90" align="center">
+        <el-table-column prop="gpa" label="GPA" min-width="90" align="center" class-name="emphasis-col">
           <template #default="{ row }">{{ row.gpa ?? "-" }}</template>
         </el-table-column>
         <el-table-column prop="status" label="状态" min-width="100" align="center" />
@@ -413,37 +416,45 @@ onMounted(reload);
 </script>
 
 <style scoped lang="scss">
+/* 设计 token 与复用 mixin 来自全局 @/styles/var.scss（vite 自动注入） */
 .score-query-page {
-  min-height: 100%;
-  padding: 18px;
-  background: linear-gradient(135deg, rgb(247 248 250 / 96%), rgb(239 244 242 / 92%));
+  @include score-page;
 }
+
+/* 卡片：页头卡 + 内容 surface 卡 */
 .query-header,
 .query-surface {
-  background: rgb(255 255 255 / 94%);
-  border: 1px solid var(--el-border-color-light);
-  border-radius: 8px;
-  box-shadow: 0 12px 30px rgb(31 45 61 / 6%);
+  @include score-card;
 }
-.query-header,
+.query-header {
+  @include score-header;
+
+  margin-bottom: 14px;
+}
 .surface-head {
   display: flex;
   gap: 14px;
   align-items: center;
   justify-content: space-between;
 }
-.query-header {
-  padding: 18px 20px;
-  margin-bottom: 14px;
+
+/* 页头标题区：signature 竖条 + eyebrow */
+.query-heading {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.brand-bar {
+  @include score-brand-bar;
 }
 .eyebrow {
-  margin: 0;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
+  @include score-eyebrow;
 }
-.query-header h2,
 .surface-head h3 {
   margin: 2px 0 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: $score-ink;
 }
 .query-surface {
   padding: 18px 20px;
@@ -454,12 +465,19 @@ onMounted(reload);
 .surface-subtitle {
   margin: 4px 0 0;
   font-size: 13px;
-  color: var(--el-text-color-secondary);
+  color: $score-ink-soft;
 }
+
+/* 筛选区 → 成块工具条 */
 .teacher-filters {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  justify-content: flex-end;
+}
+.filter-bar {
+  @include score-filter-bar;
+
   justify-content: flex-end;
 }
 .filter-control {
@@ -489,7 +507,7 @@ onMounted(reload);
   flex-direction: column;
   line-height: 1.3;
   small {
-    color: var(--el-text-color-secondary);
+    color: $score-ink-soft;
   }
 }
 .grade-detail-panel {
@@ -497,6 +515,11 @@ onMounted(reload);
 }
 .detail-empty {
   margin: 0;
-  color: var(--el-text-color-secondary);
+  color: $score-ink-soft;
+}
+
+/* 表头 signature + 总评/GPA 强调列（scoped 下需 :deep 命中 EP 内部） */
+.query-surface :deep(.el-table) {
+  @include score-table-theme;
 }
 </style>

@@ -1,9 +1,12 @@
 <template>
   <div class="course-analytics-page">
     <section class="analytics-header">
-      <div>
-        <p class="eyebrow">成绩管理</p>
-        <h2>课程成绩分析</h2>
+      <div class="score-heading">
+        <span class="brand-bar" aria-hidden="true"></span>
+        <div>
+          <p class="eyebrow">成绩管理</p>
+          <h2>课程成绩分析</h2>
+        </div>
       </div>
       <div class="header-actions">
         <el-button :icon="Refresh" :loading="loading" @click="reload">刷新</el-button>
@@ -209,46 +212,39 @@ onMounted(reload);
 
 <style scoped lang="scss">
 .course-analytics-page {
-  min-height: 100%;
-  padding: 18px;
-  background: linear-gradient(135deg, rgb(247 248 250 / 96%), rgb(240 245 246 / 92%));
+  @include score-page;
 }
 .analytics-header,
 .analytics-filters,
 .metric-tile,
 .analytics-panel,
 .empty-panel {
-  background: rgb(255 255 255 / 94%);
-  border: 1px solid var(--el-border-color-light);
-  border-radius: 8px;
-  box-shadow: 0 12px 30px rgb(31 45 61 / 6%);
+  @include score-card;
 }
 .analytics-header {
+  @include score-header;
+}
+.score-heading {
   display: flex;
+  gap: 12px;
   align-items: center;
-  justify-content: space-between;
-  padding: 18px 20px;
-  h2 {
-    margin: 2px 0 0;
-    font-size: 24px;
-    color: #1f2d3d;
-  }
+}
+.brand-bar {
+  @include score-brand-bar;
 }
 .eyebrow {
-  margin: 0;
-  font-size: 12px;
-  font-weight: 700;
-  color: #187992;
+  @include score-eyebrow;
 }
-.header-actions,
-.analytics-filters {
+.header-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
   align-items: center;
 }
 .analytics-filters {
-  padding: 12px;
+  @include score-filter-bar;
+
+  gap: 10px;
   margin-top: 12px;
 }
 .filter-control {
@@ -267,21 +263,14 @@ onMounted(reload);
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .metric-tile {
-  display: grid;
-  gap: 8px;
-  min-height: 112px;
-  padding: 18px;
-  span {
-    color: var(--el-text-color-secondary);
-  }
-  strong {
-    font-size: 28px;
-    color: #1f2d3d;
-  }
+  @include score-metric-tile;
 }
 .analytics-panel,
 .empty-panel {
   padding: 16px;
+}
+.analytics-panel :deep(.el-table) {
+  @include score-table-theme;
 }
 .summary-panel,
 .table-panel {

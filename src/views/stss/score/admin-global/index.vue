@@ -1,10 +1,13 @@
 <template>
   <div class="admin-global-page">
     <section class="page-header">
-      <div>
-        <p class="eyebrow">成绩管理</p>
-        <h2>全局成绩管理</h2>
-        <p class="subtitle">教务管理员：跨课程查询、学生档案、课程对比、强制代录/代改</p>
+      <div class="score-heading">
+        <span class="brand-bar" aria-hidden="true"></span>
+        <div>
+          <p class="eyebrow">成绩管理</p>
+          <h2>全局成绩管理</h2>
+          <p class="subtitle">教务管理员：跨课程查询、学生档案、课程对比、强制代录/代改</p>
+        </div>
       </div>
       <el-button :icon="Refresh" :loading="loading" @click="reloadActiveTab">刷新</el-button>
     </section>
@@ -354,46 +357,44 @@ const reloadActiveTab = async () => {
 
 <style scoped lang="scss">
 .admin-global-page {
-  min-height: 100%;
-  padding: 18px;
-  background: linear-gradient(135deg, rgb(247 248 250 / 96%), rgb(240 245 246 / 92%));
+  @include score-page;
 }
 .page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 18px 20px;
+  @include score-card;
+  @include score-header;
+
   margin-bottom: 12px;
-  background: rgb(255 255 255 / 94%);
-  border: 1px solid var(--el-border-color-light);
-  border-radius: 8px;
+}
+.score-heading {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.brand-bar {
+  @include score-brand-bar;
 }
 .eyebrow {
-  margin: 0;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
+  @include score-eyebrow;
 }
 .page-header h2 {
-  margin: 4px 0;
+  margin: 4px 0 2px;
 }
 .subtitle {
   margin: 0;
   font-size: 13px;
-  color: var(--el-text-color-secondary);
+  color: $score-ink-soft;
 }
 .page-alert {
   margin-bottom: 12px;
 }
 .admin-tabs {
+  @include score-card;
+
   padding: 16px 20px 20px;
-  background: rgb(255 255 255 / 94%);
-  border: 1px solid var(--el-border-color-light);
-  border-radius: 8px;
 }
 .filter-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  @include score-filter-bar;
+
   margin-bottom: 12px;
 }
 .filter-item {
@@ -409,11 +410,14 @@ const reloadActiveTab = async () => {
 }
 .override-card {
   padding: 16px;
-  border: 1px solid var(--el-border-color-light);
-  border-radius: 8px;
+  border: 1px solid $score-line;
+  border-radius: $score-radius-sm;
 }
 .override-card h3 {
   margin: 0 0 12px;
+}
+.admin-tabs :deep(.el-table) {
+  @include score-table-theme;
 }
 
 @media (width <= 900px) {

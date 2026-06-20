@@ -1,9 +1,12 @@
 <template>
   <div class="change-request-page">
     <section class="request-header">
-      <div>
-        <p class="eyebrow">成绩管理</p>
-        <h2>改分申请</h2>
+      <div class="score-heading">
+        <span class="brand-bar" aria-hidden="true"></span>
+        <div>
+          <p class="eyebrow">成绩管理</p>
+          <h2>改分申请</h2>
+        </div>
       </div>
       <el-button :icon="Refresh" :loading="loading" @click="reload">刷新</el-button>
     </section>
@@ -221,41 +224,30 @@ onMounted(reload);
 
 <style scoped lang="scss">
 .change-request-page {
-  min-height: 100%;
-  padding: 18px;
-  background: linear-gradient(135deg, rgb(247 248 250 / 96%), rgb(239 244 242 / 92%));
+  @include score-page;
 }
 .request-header,
-.request-filters,
 .request-surface {
-  background: rgb(255 255 255 / 94%);
-  border: 1px solid var(--el-border-color-light);
-  border-radius: 8px;
-  box-shadow: 0 12px 30px rgb(31 45 61 / 6%);
+  @include score-card;
 }
 .request-header {
+  @include score-header;
+}
+.score-heading {
   display: flex;
+  gap: 12px;
   align-items: center;
-  justify-content: space-between;
-  padding: 18px 20px;
-  h2 {
-    margin: 2px 0 0;
-    font-size: 24px;
-    color: #1f2d3d;
-  }
+}
+.brand-bar {
+  @include score-brand-bar;
 }
 .eyebrow {
-  margin: 0;
-  font-size: 12px;
-  font-weight: 700;
-  color: #1c846d;
+  @include score-eyebrow;
 }
 .request-filters {
-  display: flex;
-  flex-wrap: wrap;
+  @include score-filter-bar;
+
   gap: 10px;
-  align-items: center;
-  padding: 12px;
   margin-top: 12px;
 }
 .filter-control {
@@ -267,6 +259,9 @@ onMounted(reload);
 }
 .surface-alert {
   margin-bottom: 12px;
+}
+.request-surface :deep(.el-table) {
+  @include score-table-theme;
 }
 
 @media (width <= 900px) {

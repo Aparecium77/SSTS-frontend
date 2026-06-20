@@ -1,9 +1,12 @@
 <template>
   <div class="personal-analytics-page">
     <section class="analytics-header">
-      <div>
-        <p class="eyebrow">成绩管理</p>
-        <h2>个人成绩统计</h2>
+      <div class="score-heading">
+        <span class="brand-bar" aria-hidden="true"></span>
+        <div>
+          <p class="eyebrow">成绩管理</p>
+          <h2>个人成绩统计</h2>
+        </div>
       </div>
       <el-button :icon="Refresh" :loading="loading" @click="loadStatistics">刷新</el-button>
     </section>
@@ -109,34 +112,26 @@ onMounted(loadStatistics);
 
 <style scoped lang="scss">
 .personal-analytics-page {
-  min-height: 100%;
-  padding: 18px;
-  background: linear-gradient(135deg, rgb(247 248 250 / 96%), rgb(239 244 242 / 92%));
+  @include score-page;
 }
 .analytics-header,
 .metric-tile,
 .analytics-surface {
-  background: rgb(255 255 255 / 94%);
-  border: 1px solid var(--el-border-color-light);
-  border-radius: 8px;
-  box-shadow: 0 12px 30px rgb(31 45 61 / 6%);
+  @include score-card;
 }
 .analytics-header {
+  @include score-header;
+}
+.score-heading {
   display: flex;
+  gap: 12px;
   align-items: center;
-  justify-content: space-between;
-  padding: 18px 20px;
-  h2 {
-    margin: 2px 0 0;
-    font-size: 24px;
-    color: #1f2d3d;
-  }
+}
+.brand-bar {
+  @include score-brand-bar;
 }
 .eyebrow {
-  margin: 0;
-  font-size: 12px;
-  font-weight: 700;
-  color: #1c846d;
+  @include score-eyebrow;
 }
 .metric-grid {
   display: grid;
@@ -145,17 +140,7 @@ onMounted(loadStatistics);
   margin-top: 12px;
 }
 .metric-tile {
-  display: grid;
-  gap: 8px;
-  min-height: 112px;
-  padding: 18px;
-  span {
-    color: var(--el-text-color-secondary);
-  }
-  strong {
-    font-size: 28px;
-    color: #1f2d3d;
-  }
+  @include score-metric-tile;
 }
 .analytics-surface {
   padding: 14px;
@@ -170,6 +155,12 @@ onMounted(loadStatistics);
   h3 {
     margin: 0;
   }
+}
+.analytics-surface :deep(.el-table) {
+  @include score-table-theme;
+}
+.trend-block {
+  margin-top: 16px;
 }
 
 @media (width <= 900px) {

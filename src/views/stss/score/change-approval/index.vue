@@ -1,9 +1,12 @@
 <template>
   <div class="approval-page">
     <section class="approval-header">
-      <div>
-        <p class="eyebrow">成绩管理</p>
-        <h2>审批与发布</h2>
+      <div class="score-heading">
+        <span class="brand-bar" aria-hidden="true"></span>
+        <div>
+          <p class="eyebrow">成绩管理</p>
+          <h2>审批与发布</h2>
+        </div>
       </div>
       <el-button :icon="Refresh" :loading="loading" @click="reloadAll">刷新</el-button>
     </section>
@@ -414,44 +417,31 @@ onMounted(reloadAll);
 
 <style scoped lang="scss">
 .approval-page {
-  min-height: 100%;
-  padding: 18px;
-  background:
-    linear-gradient(135deg, rgb(247 248 250 / 96%), rgb(240 245 246 / 92%)),
-    radial-gradient(circle at 84% 10%, rgb(24 121 146 / 13%), transparent 34%);
+  @include score-page;
 }
 .approval-header,
 .approval-filters,
 .approval-surface {
-  background: rgb(255 255 255 / 94%);
-  border: 1px solid var(--el-border-color-light);
-  border-radius: 8px;
-  box-shadow: 0 12px 30px rgb(31 45 61 / 6%);
+  @include score-card;
 }
 .approval-header {
+  @include score-header;
+}
+.score-heading {
   display: flex;
+  gap: 12px;
   align-items: center;
-  justify-content: space-between;
-  padding: 18px 20px;
-  h2 {
-    margin: 2px 0 0;
-    font-size: 24px;
-    font-weight: 700;
-    color: #1f2d3d;
-  }
+}
+.brand-bar {
+  @include score-brand-bar;
 }
 .eyebrow {
-  margin: 0;
-  font-size: 12px;
-  font-weight: 700;
-  color: #187992;
+  @include score-eyebrow;
 }
 .approval-filters {
-  display: flex;
-  flex-wrap: wrap;
+  @include score-filter-bar;
+
   gap: 10px;
-  align-items: center;
-  padding: 12px;
   margin-top: 12px;
 }
 .filter-control {
@@ -463,6 +453,9 @@ onMounted(reloadAll);
 .approval-surface {
   padding: 14px;
   margin-top: 12px;
+}
+.approval-surface :deep(.el-table) {
+  @include score-table-theme;
 }
 .tab-hint {
   margin-bottom: 12px;
