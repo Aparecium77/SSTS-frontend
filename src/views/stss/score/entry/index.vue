@@ -95,7 +95,6 @@
           >
             仅清成绩与审批
           </el-button>
-          <span class="reset-hint">保留名册；用于本地联调，生产环境请慎用</span>
         </div>
       </div>
     </section>
@@ -113,33 +112,11 @@
         show-icon
         title="当前课程成绩已提交，状态：审批中。审批完成前不可再次提交或编辑成绩。"
       />
-      <el-alert class="flow-guide" type="info" :closable="true" show-icon>
-        <template #title>成绩录入在做什么？</template>
-        <ol class="flow-guide-list">
-          <li>
-            <strong>分项与权重（左侧配置区）</strong>：只填「叫什么、占多少 %、分数从哪来」，不在这里填具体分数。权重合计 100%。
-          </li>
-          <li>
-            <strong>录入分数（下方表格 / 导入）</strong>：来源选「手工录入」→ 表格或 Excel；选「考试/论坛系统」→
-            在权重区选好对应活动后点「拉取」，或用上方「导入成绩」批量拉取。
-          </li>
-          <li>
-            <strong>考试/论坛活动</strong>：在权重区「对应活动」列选择（如
-            quiz1），保存配置后拉取；同一课可有多个考试分项，各选各的活动。
-          </li>
-          <li><strong>计算检查 → 提交审批</strong>：确认无缺项后提交。</li>
-        </ol>
-      </el-alert>
       <section class="entry-grid">
         <div class="panel filter-panel">
           <div class="panel-title">
-            <span>筛选学生</span>
-            <small>课程与学期请在页头选择</small>
-          </div>
-          <div class="filter-stats">
-            <span>
-              本课学生：<strong>{{ rows.length }}</strong>
-            </span>
+            <span>学生名单</span>
+            <small>{{ rows.length }} 人</small>
           </div>
           <div class="status-filter">
             <span>状态筛选</span>
@@ -153,10 +130,9 @@
             </el-radio-group>
           </div>
           <div class="student-search">
-            <label>学生搜索</label>
-            <el-input v-model="studentKeyword" :prefix-icon="Search" placeholder="学号/姓名" clearable />
+            <label>搜索</label>
+            <el-input v-model="studentKeyword" :prefix-icon="Search" placeholder="输入学号或姓名" clearable />
           </div>
-          <p v-if="courseScopeTip" class="scope-tip">*后端课程列表暂未按教师过滤，不能作为权限边界*</p>
         </div>
 
         <div class="panel config-panel">
@@ -646,7 +622,6 @@ const submitDisabledReason = computed(() => {
   if (outOfRangeCount.value > 0) return "存在超出 0–100 分的成绩，请修正后再提交。";
   return "";
 });
-const courseScopeTip = computed(() => Boolean(courses.value.length));
 const totalWeight = computed(() => configDrafts.value.reduce((sum, component) => sum + Number(component.weight || 0), 0));
 const weightAbnormal = computed(() => configDrafts.value.length > 0 && totalWeight.value !== 100);
 const configLocked = computed(() => configDrafts.value.some(item => item.is_locked === 1));
@@ -1364,7 +1339,7 @@ const handleWorkflowReset = async (keepConfig: boolean) => {
   try {
     await ElMessageBox.confirm(
       `课程：${courseLabel}（${selectedCourseId.value}）\n学期：${selectedSemester.value}\n\n${actionText}\n名册学生名单会保留。`,
-      keepConfig ? "仅清成绩与审批" : "重置本课联调数据",
+      keepConfig ? "仅清成绩与审批" : "重置本课成绩流程",
       { type: "warning", confirmButtonText: "确认重置", cancelButtonText: "取消" }
     );
   } catch {
@@ -1544,12 +1519,6 @@ onMounted(reloadAll);
   justify-content: center;
   padding-top: 4px;
 }
-.reset-hint {
-  flex: 1 1 100%;
-  font-size: 12px;
-  color: var(--score-muted);
-  text-align: center;
-}
 .entry-steps {
   min-width: 0;
   :deep(.el-step__title) {
@@ -1560,16 +1529,6 @@ onMounted(reloadAll);
     color: var(--score-blue);
     border-color: var(--score-blue);
   }
-}
-.flow-guide {
-  margin-bottom: 12px;
-}
-.flow-guide-list {
-  padding-left: 18px;
-  margin: 6px 0 0;
-  font-size: 13px;
-  line-height: 1.65;
-  color: var(--score-muted);
 }
 .config-hint {
   margin: 0 0 12px;
@@ -1621,7 +1580,7 @@ onMounted(reloadAll);
 }
 .filter-panel {
   grid-area: filter;
-  min-height: 230px;
+  min-height: 190px;
 }
 .config-panel {
   position: relative;
@@ -1669,18 +1628,6 @@ onMounted(reloadAll);
     color: var(--score-ink);
   }
 }
-.filter-stats {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  margin-bottom: 12px;
-  font-size: 15px;
-  color: var(--score-ink);
-  strong {
-    font-size: 17px;
-    color: var(--score-blue-dark);
-  }
-}
 .status-filter {
   display: flex;
   flex-wrap: wrap;
@@ -1697,18 +1644,12 @@ onMounted(reloadAll);
 }
 .student-search {
   display: grid;
-  grid-template-columns: 84px 1fr;
+  grid-template-columns: 48px 1fr;
   gap: 8px;
   align-items: center;
   label {
     font-weight: 700;
   }
-}
-.scope-tip {
-  margin: 12px 0 0;
-  font-size: 14px;
-  font-weight: 700;
-  color: #5b3413;
 }
 .component-list {
   display: grid;

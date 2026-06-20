@@ -122,7 +122,7 @@ export const getGradeConfig = (courseId: string, params: { semester: string }) =
 export const saveGradeConfig = (courseId: string, body: Score.SaveGradeConfigReq) =>
   scoreHttp.put<Score.SaveGradeConfigResp>(`/courses/${encodePath(courseId)}/grade-config`, body);
 
-/** 联调：回退单门课流程数据（默认删分项配置；keep_config 仅清成绩与审批） */
+/** 回退单门课流程数据（默认删分项配置；keep_config 仅清成绩与审批） */
 export const resetCourseWorkflow = (courseId: string, params: { semester: string; keep_config?: boolean }) => {
   const query = new URLSearchParams({
     semester: params.semester,
