@@ -21,10 +21,10 @@
         @change="handleCourseChange"
       >
         <el-option
-          v-for="course in courses"
-          :key="toCourseKey(course.course_id, course.semester)"
+          v-for="course in courseOptions"
+          :key="course.course_id"
           :label="courseOptionLabel(course)"
-          :value="toCourseKey(course.course_id, course.semester)"
+          :value="course.course_id"
         />
       </el-select>
       <el-select
@@ -200,7 +200,7 @@ import {
   getScoreUserId
 } from "@/api/modules/score";
 import { useUserStore } from "@/stores/modules/user";
-import { courseOptionLabel, parseCourseKey, toCourseKey } from "@/views/stss/score/_shared/courseSelection";
+import { courseOptionLabel, semesterOptionsForCourse, uniqueCourseOptions } from "@/views/stss/score/_shared/courseSelection";
 
 type ReviewAction = "approve" | "reject";
 
@@ -211,10 +211,9 @@ const modifyRequests = ref<Score.ModifyRequest[]>([]);
 const modifyLogs = ref<Score.ModifyRequestLog[]>([]);
 const selectedCourseKey = ref("");
 const selectedSemester = ref("");
-const parsedSelectedCourse = computed(() => parseCourseKey(selectedCourseKey.value || ""));
-const filterCourseId = computed(() => parsedSelectedCourse.value.courseId);
-const selectedCourseSemester = computed(() => parsedSelectedCourse.value.semester);
-const filterSemester = computed(() => selectedSemester.value || selectedCourseSemester.value);
+const courseOptions = computed(() => uniqueCourseOptions(courses.value));
+const filterCourseId = computed(() => selectedCourseKey.value);
+const filterSemester = computed(() => selectedSemester.value);
 const modifyStatus = ref("pending");
 const activeTab = ref("submissions");
 const loading = ref(false);
@@ -223,12 +222,7 @@ const refreshingGpa = ref(false);
 const logDialogVisible = ref(false);
 const actingId = ref("");
 
-const semesterOptions = computed(() => {
-  const semesters = courses.value
-    .filter(course => !filterCourseId.value || course.course_id === filterCourseId.value)
-    .map(course => course.semester);
-  return Array.from(new Set(semesters));
-});
+const semesterOptions = computed(() => semesterOptionsForCourse(courses.value, filterCourseId.value));
 
 const pendingModifyCount = computed(() => modifyRequests.value.filter(item => item.status === "pending").length);
 
@@ -293,9 +287,7 @@ const reloadAll = async () => {
 };
 
 const handleCourseChange = () => {
-  const { semester } = parsedSelectedCourse.value;
-  if (semester) selectedSemester.value = semester;
-  else if (selectedSemester.value && !semesterOptions.value.includes(selectedSemester.value)) {
+  if (selectedSemester.value && !semesterOptions.value.includes(selectedSemester.value)) {
     selectedSemester.value = "";
   }
   loadApprovalData();

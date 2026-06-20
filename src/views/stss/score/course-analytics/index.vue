@@ -29,11 +29,21 @@
         @change="handleCourseChange"
       >
         <el-option
-          v-for="course in availableCourses"
-          :key="toCourseKey(course.course_id, course.semester)"
+          v-for="course in courseOptions"
+          :key="course.course_id"
           :label="courseOptionLabel(course)"
-          :value="toCourseKey(course.course_id, course.semester)"
+          :value="course.course_id"
         />
+      </el-select>
+      <el-select
+        v-model="selectedSemester"
+        placeholder="选择学期"
+        clearable
+        filterable
+        class="filter-control semester-control"
+        @change="handleSemesterChange"
+      >
+        <el-option v-for="semester in semesterOptions" :key="semester" :label="semester" :value="semester" />
       </el-select>
     </section>
 
@@ -137,28 +147,37 @@ import { ElMessage } from "element-plus";
 import type { Score } from "@/api/interface/score";
 import { exportCourseAnalysis, getCourseAnalysis, getGradeCourses } from "@/api/modules/score";
 import { saveBlob } from "@/utils/download";
-import { courseOptionLabel, findCourseByKey, parseCourseKey, toCourseKey } from "@/views/stss/score/_shared/courseSelection";
+import {
+  courseOptionLabel,
+  firstCourseOffering,
+  semesterOptionsForCourse,
+  uniqueCourseOptions
+} from "@/views/stss/score/_shared/courseSelection";
 
 const loading = ref(false);
 const exportingXlsx = ref(false);
 const exportingPdf = ref(false);
 const courses = ref<Score.Course[]>([]);
 const selectedCourseKey = ref("");
+const selectedSemester = ref("");
 const analysis = ref<Score.CourseAnalysis | null>(null);
 
 const availableCourses = computed(() => courses.value.filter(course => course.course_id && course.semester));
-const parsedSelectedCourse = computed(() => parseCourseKey(selectedCourseKey.value || ""));
-const selectedCourseId = computed(() => parsedSelectedCourse.value.courseId);
-const selectedSemester = computed(() => parsedSelectedCourse.value.semester);
+const courseOptions = computed(() => uniqueCourseOptions(availableCourses.value));
+const selectedCourseId = computed(() => selectedCourseKey.value);
+const semesterOptions = computed(() => semesterOptionsForCourse(availableCourses.value, selectedCourseId.value));
 
 const rankingSummaryEntries = computed(() => Object.entries(analysis.value?.ranking_summary ?? {}));
 
 const loadCourses = async () => {
   const resp = await getGradeCourses();
   courses.value = resp.data.courses;
-  if (!findCourseByKey(availableCourses.value, selectedCourseKey.value) && availableCourses.value[0]) {
-    const first = availableCourses.value[0];
-    selectedCourseKey.value = toCourseKey(first.course_id, first.semester);
+  if (!selectedCourseKey.value) {
+    const first = firstCourseOffering(availableCourses.value);
+    selectedCourseKey.value = first?.course_id || "";
+    selectedSemester.value = first?.semester || "";
+  } else if (selectedSemester.value && !semesterOptions.value.includes(selectedSemester.value)) {
+    selectedSemester.value = semesterOptions.value[0] || "";
   }
 };
 
@@ -182,6 +201,11 @@ const reload = async () => {
 };
 
 const handleCourseChange = () => {
+  selectedSemester.value = semesterOptions.value[0] || "";
+  loadAnalysis();
+};
+
+const handleSemesterChange = () => {
   loadAnalysis();
 };
 

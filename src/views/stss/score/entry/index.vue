@@ -4,8 +4,7 @@
       <div class="hero-main">
         <div class="breadcrumb-line">当前位置：成绩管理 / <strong>成绩录入</strong></div>
         <div class="course-summary">
-          <span>当前课程：{{ currentCourse?.course_name || selectedCourseId || "未选择" }}</span>
-          <em v-if="selectedCourseId">({{ selectedCourseId }})</em>
+          <span>当前课程：{{ courseDisplayName(currentCourse) }}</span>
           <i />
           <span>学期：{{ selectedSemester || "--" }}</span>
           <i />
@@ -22,7 +21,7 @@
         </div>
         <div class="hero-controls">
           <label>
-            <span>课程名称：</span>
+            <span>课程：</span>
             <el-select
               v-model="selectedCourseKey"
               placeholder="选择课程"
@@ -31,15 +30,15 @@
               @change="handleCourseChange"
             >
               <el-option
-                v-for="course in courses"
-                :key="toCourseKey(course.course_id, course.semester)"
+                v-for="course in courseOptions"
+                :key="course.course_id"
                 :label="courseOptionLabel(course)"
-                :value="toCourseKey(course.course_id, course.semester)"
+                :value="course.course_id"
               />
             </el-select>
           </label>
           <label>
-            <span>学期合算数：</span>
+            <span>学期：</span>
             <el-select
               v-model="selectedSemester"
               placeholder="选择学期"
@@ -492,7 +491,14 @@ import {
   updateGradeRecord,
   upsertExternalMappings
 } from "@/api/modules/score";
-import { courseOptionLabel, parseCourseKey, toCourseKey } from "@/views/stss/score/_shared/courseSelection";
+import {
+  courseDisplayName,
+  courseOptionLabel,
+  firstCourseOffering,
+  findCourseOffering,
+  semesterOptionsForCourse,
+  uniqueCourseOptions
+} from "@/views/stss/score/_shared/courseSelection";
 
 type EntryRow = Score.GradeRecordRow & {
   total_score: number | null;
@@ -527,8 +533,7 @@ const configDrafts = ref<ConfigDraftItem[]>([]);
 const rows = ref<EntryRow[]>([]);
 const selectedCourseKey = ref("");
 const selectedSemester = ref("");
-const parsedSelectedCourse = computed(() => parseCourseKey(selectedCourseKey.value || ""));
-const selectedCourseId = computed(() => parsedSelectedCourse.value.courseId);
+const selectedCourseId = computed(() => selectedCourseKey.value);
 const statusFilter = ref<StatusFilter>("all");
 const studentKeyword = ref("");
 const loading = ref(false);
@@ -574,16 +579,10 @@ const normalizeWorkflowStatus = (status?: string | null) => {
 };
 const nextLocalId = () => `local-${Date.now()}-${localSeed++}`;
 
-const semesterOptions = computed(() => {
-  const semesters = courses.value
-    .filter(course => !selectedCourseId.value || course.course_id === selectedCourseId.value)
-    .map(course => course.semester);
-  return Array.from(new Set(semesters));
-});
+const courseOptions = computed(() => uniqueCourseOptions(courses.value));
+const semesterOptions = computed(() => semesterOptionsForCourse(courses.value, selectedCourseId.value));
 
-const currentCourse = computed(() =>
-  courses.value.find(course => course.course_id === selectedCourseId.value && course.semester === selectedSemester.value)
-);
+const currentCourse = computed(() => findCourseOffering(courses.value, selectedCourseId.value, selectedSemester.value));
 
 const canOperateCourse = computed(() => Boolean(selectedCourseId.value && selectedSemester.value && components.value.length));
 const currentCourseWorkflowStatus = computed(() => {
@@ -849,9 +848,11 @@ const loadCourses = async () => {
   const resp = await getGradeCourses();
   courses.value = resp.data.courses;
   if (!selectedCourseKey.value && courses.value.length) {
-    const first = courses.value[0];
-    selectedCourseKey.value = toCourseKey(first.course_id, first.semester);
-    selectedSemester.value = first.semester;
+    const first = firstCourseOffering(courses.value);
+    selectedCourseKey.value = first?.course_id || "";
+    selectedSemester.value = first?.semester || "";
+  } else if (selectedSemester.value && !semesterOptions.value.includes(selectedSemester.value)) {
+    selectedSemester.value = semesterOptions.value[0] || "";
   }
 };
 
@@ -882,15 +883,11 @@ const reloadAll = async () => {
 };
 
 const handleCourseChange = () => {
-  const { semester } = parsedSelectedCourse.value;
-  if (semester) selectedSemester.value = semester;
+  selectedSemester.value = semesterOptions.value[0] || "";
   loadEntryData();
 };
 
 const handleSemesterChange = () => {
-  if (selectedCourseId.value && selectedSemester.value) {
-    selectedCourseKey.value = toCourseKey(selectedCourseId.value, selectedSemester.value);
-  }
   loadEntryData();
 };
 

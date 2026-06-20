@@ -14,18 +14,28 @@
     <section class="request-filters">
       <el-select
         v-model="selectedCourseKey"
-        placeholder="选择课程与学期"
+        placeholder="选择课程"
         clearable
         filterable
         class="filter-control"
-        @change="loadRecords"
+        @change="handleCourseChange"
       >
         <el-option
-          v-for="course in courses"
-          :key="toCourseKey(course.course_id, course.semester)"
+          v-for="course in courseOptions"
+          :key="course.course_id"
           :label="courseOptionLabel(course)"
-          :value="toCourseKey(course.course_id, course.semester)"
+          :value="course.course_id"
         />
+      </el-select>
+      <el-select
+        v-model="selectedSemester"
+        placeholder="选择学期"
+        clearable
+        filterable
+        class="filter-control semester-control"
+        @change="loadRecords"
+      >
+        <el-option v-for="semester in semesterOptions" :key="semester" :label="semester" :value="semester" />
       </el-select>
     </section>
 
@@ -102,7 +112,12 @@ import { ElMessage } from "element-plus";
 import type { Score } from "@/api/interface/score";
 import { createModifyRequest, getCourseRecords, getGradeCourses, getScoreUserId } from "@/api/modules/score";
 import { useUserStore } from "@/stores/modules/user";
-import { courseOptionLabel, parseCourseKey, toCourseKey } from "@/views/stss/score/_shared/courseSelection";
+import {
+  courseOptionLabel,
+  firstCourseOffering,
+  semesterOptionsForCourse,
+  uniqueCourseOptions
+} from "@/views/stss/score/_shared/courseSelection";
 
 type CandidateRecord = {
   id: number;
@@ -127,9 +142,10 @@ const dialogVisible = ref(false);
 const courses = ref<Score.Course[]>([]);
 const records = ref<CandidateRecord[]>([]);
 const selectedCourseKey = ref("");
-const parsedSelectedCourse = computed(() => parseCourseKey(selectedCourseKey.value || ""));
-const selectedCourseId = computed(() => parsedSelectedCourse.value.courseId);
-const selectedSemester = computed(() => parsedSelectedCourse.value.semester);
+const selectedSemester = ref("");
+const courseOptions = computed(() => uniqueCourseOptions(courses.value));
+const selectedCourseId = computed(() => selectedCourseKey.value);
+const semesterOptions = computed(() => semesterOptionsForCourse(courses.value, selectedCourseId.value));
 const activeRecord = ref<CandidateRecord | null>(null);
 const form = reactive({
   new_score: null as number | null,
@@ -145,9 +161,17 @@ const loadCourses = async () => {
   const resp = await getGradeCourses();
   courses.value = resp.data.courses;
   if (!selectedCourseKey.value && courses.value.length) {
-    const first = courses.value[0];
-    selectedCourseKey.value = toCourseKey(first.course_id, first.semester);
+    const first = firstCourseOffering(courses.value);
+    selectedCourseKey.value = first?.course_id || "";
+    selectedSemester.value = first?.semester || "";
+  } else if (selectedSemester.value && !semesterOptions.value.includes(selectedSemester.value)) {
+    selectedSemester.value = semesterOptions.value[0] || "";
   }
+};
+
+const handleCourseChange = () => {
+  selectedSemester.value = semesterOptions.value[0] || "";
+  loadRecords();
 };
 
 const loadRecords = async () => {

@@ -86,11 +86,21 @@
             @change="handleCourseChange"
           >
             <el-option
-              v-for="course in courses"
-              :key="toCourseKey(course.course_id, course.semester)"
+              v-for="course in courseOptions"
+              :key="course.course_id"
               :label="courseOptionLabel(course)"
-              :value="toCourseKey(course.course_id, course.semester)"
+              :value="course.course_id"
             />
+          </el-select>
+          <el-select
+            v-model="selectedSemester"
+            placeholder="选择学期"
+            clearable
+            filterable
+            class="filter-control semester-control"
+            @change="handleSemesterChange"
+          >
+            <el-option v-for="semester in semesterOptions" :key="semester" :label="semester" :value="semester" />
           </el-select>
           <el-input v-model="filterStudentNo" placeholder="学号" clearable class="filter-control narrow" />
           <el-input v-model="filterStudentName" placeholder="姓名" clearable class="filter-control narrow" />
@@ -114,8 +124,17 @@
             <el-option label="总分降序" value="desc" />
             <el-option label="总分升序" value="asc" />
           </el-select>
-          <el-button type="primary" :disabled="!selectedCourseKey" :loading="loading" @click="searchCourseGrades">查询</el-button>
-          <el-button :disabled="!selectedCourseKey" :loading="exporting" @click="handleExport">导出成绩</el-button>
+          <el-button
+            type="primary"
+            :disabled="!selectedCourseId || !selectedSemester"
+            :loading="loading"
+            @click="searchCourseGrades"
+          >
+            查询
+          </el-button>
+          <el-button :disabled="!selectedCourseId || !selectedSemester" :loading="exporting" @click="handleExport">
+            导出成绩
+          </el-button>
           <el-button :disabled="!selectedCourseId" @click="openAuditDialog">审计日志</el-button>
         </div>
       </div>
@@ -194,7 +213,12 @@ import {
 } from "@/api/modules/score";
 import { useUserStore } from "@/stores/modules/user";
 import { saveBlob } from "@/utils/download";
-import { courseOptionLabel, parseCourseKey, toCourseKey } from "@/views/stss/score/_shared/courseSelection";
+import {
+  courseOptionLabel,
+  firstCourseOffering,
+  semesterOptionsForCourse,
+  uniqueCourseOptions
+} from "@/views/stss/score/_shared/courseSelection";
 
 const userStore = useUserStore();
 const loading = ref(false);
@@ -207,6 +231,7 @@ const studentGrades = ref<Score.StudentGrade[]>([]);
 const gradeDetailMap = ref<Record<string, Score.StudentGradeComponentItem[]>>({});
 const courses = ref<Score.Course[]>([]);
 const selectedCourseKey = ref("");
+const selectedSemester = ref("");
 const filterStudentNo = ref("");
 const filterStudentName = ref("");
 const filterMinScore = ref<number | undefined>();
@@ -220,9 +245,9 @@ const page = ref(1);
 const pageSize = ref(20);
 
 const isStudent = computed(() => userStore.userInfo.role === "student");
-const parsedSelectedCourse = computed(() => parseCourseKey(selectedCourseKey.value || ""));
-const selectedCourseId = computed(() => parsedSelectedCourse.value.courseId);
-const selectedSemester = computed(() => parsedSelectedCourse.value.semester);
+const courseOptions = computed(() => uniqueCourseOptions(courses.value));
+const selectedCourseId = computed(() => selectedCourseKey.value);
+const semesterOptions = computed(() => semesterOptionsForCourse(courses.value, selectedCourseId.value));
 const studentSemesters = computed(() => Array.from(new Set(studentGrades.value.map(item => item.semester))));
 
 const pagedRows = computed(() => {
@@ -292,9 +317,12 @@ const loadMyGrades = async () => {
 const loadCourses = async () => {
   const resp = await getGradeCourses();
   courses.value = resp.data.courses;
-  if (!selectedCourseKey.value && courses.value.length) {
-    const first = courses.value[0];
-    selectedCourseKey.value = toCourseKey(first.course_id, first.semester);
+  if (!selectedCourseKey.value) {
+    const first = firstCourseOffering(courses.value);
+    selectedCourseKey.value = first?.course_id || "";
+    selectedSemester.value = first?.semester || "";
+  } else if (selectedSemester.value && !semesterOptions.value.includes(selectedSemester.value)) {
+    selectedSemester.value = semesterOptions.value[0] || "";
   }
 };
 
@@ -337,12 +365,18 @@ const searchCourseGrades = () => {
 
 const handleCourseChange = () => {
   page.value = 1;
-  if (selectedCourseKey.value) loadCourseGrades();
+  selectedSemester.value = semesterOptions.value[0] || "";
+  if (selectedCourseId.value && selectedSemester.value) loadCourseGrades();
   else {
     gradeSheet.value = null;
     courseRows.value = [];
     components.value = [];
   }
+};
+
+const handleSemesterChange = () => {
+  page.value = 1;
+  if (selectedCourseId.value && selectedSemester.value) loadCourseGrades();
 };
 
 const handlePageChange = (nextPage: number) => {
@@ -398,7 +432,7 @@ const reload = async () => {
     loading.value = true;
     try {
       await loadCourses();
-      if (selectedCourseKey.value) await loadCourseGrades();
+      if (selectedCourseId.value && selectedSemester.value) await loadCourseGrades();
     } finally {
       loading.value = false;
     }
