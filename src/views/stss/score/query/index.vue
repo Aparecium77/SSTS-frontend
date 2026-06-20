@@ -69,7 +69,6 @@
       <div class="surface-head">
         <div>
           <h3>课程成绩明细</h3>
-          <p class="surface-subtitle">支持学号/姓名/分数段筛选与排序，数据来自后端聚合成绩单。</p>
         </div>
         <div class="teacher-filters filter-bar">
           <el-select
