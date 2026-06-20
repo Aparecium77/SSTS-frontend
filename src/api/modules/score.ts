@@ -1,10 +1,11 @@
 import http from "@/api";
+import { GRADE_API } from "@/api/config/servicePort";
 import type { ResultData } from "@/api/interface";
 import type { Score } from "@/api/interface/score";
 import { ResultEnum } from "@/enums/httpEnum";
 import { useUserStore } from "@/stores/modules/user";
 
-const SCORE_PREFIX = "/v1/grade";
+const SCORE_PREFIX = GRADE_API;
 const SCORE_SUCCESS = 10000;
 
 export interface ScoreRequestOptions {

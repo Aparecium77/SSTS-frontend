@@ -1,6 +1,6 @@
 import type { ProxyOptions } from "vite";
 
-type ProxyItem = [string, string];
+type ProxyItem = [string, string, boolean?];
 
 type ProxyList = ProxyItem[];
 
@@ -12,7 +12,7 @@ type ProxyTargetList = Record<string, ProxyOptions>;
  */
 export function createProxy(list: ProxyList = []) {
   const ret: ProxyTargetList = {};
-  for (const [prefix, target] of list) {
+  for (const [prefix, target, rewritePrefix = true] of list) {
     const httpsRE = /^https:\/\//;
     const isHttps = httpsRE.test(target);
 
@@ -21,10 +21,7 @@ export function createProxy(list: ProxyList = []) {
       target: target,
       changeOrigin: true,
       ws: true,
-      rewrite: path => {
-        if (prefix === "/api" && path.startsWith("/api/v1/grade")) return path;
-        return path.replace(new RegExp(`^${prefix}`), "");
-      },
+      rewrite: rewritePrefix ? path => path.replace(new RegExp(`^${prefix}`), "") : path => path,
       // https is require secure=false
       ...(isHttps ? { secure: false } : {})
     };
