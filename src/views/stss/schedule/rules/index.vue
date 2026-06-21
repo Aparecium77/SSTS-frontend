@@ -7,7 +7,7 @@
       :tags="['规则分类', '优先级', '启停状态']"
       :stats="stats"
       content-title="规则列表"
-      content-description="统一展示规则优先级、影响范围和启停状态，后续阶段可直接切换到真实接口返回。"
+      content-description="统一展示规则优先级、影响范围和启停状态。"
       :data-count="ruleRecords.length"
       empty-description="当前筛选条件下没有规则记录。"
       dialog-title="规则详情"

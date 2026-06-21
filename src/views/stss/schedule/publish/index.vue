@@ -7,7 +7,7 @@
       :tags="['版本管理', '发布确认', '回滚记录']"
       :stats="stats"
       content-title="发布记录"
-      content-description="页面已拆成独立发布服务层和页面层，后续接入正式发布接口时只需要替换本地 service。"
+      content-description="管理课表版本发布、发布范围确认和回滚记录。"
       :data-count="tableData.length"
       empty-description="当前筛选条件下没有发布记录。"
       dialog-title="发布详情"
@@ -39,12 +39,6 @@
               </el-space>
             </el-form-item>
           </el-form>
-
-          <el-alert
-            title="发布页数据与回滚交互均独立落在 publish 目录，便于后续切换真实发布接口并维持页面边界清晰。"
-            type="info"
-            :closable="false"
-          />
         </div>
       </template>
 
@@ -129,7 +123,7 @@
 
     <el-dialog v-model="rollbackVisible" title="回滚确认" width="560px">
       <el-alert
-        title="回滚将把当前版本标记为已回滚，并保留记录供后续调课复核和自动排课复跑时追踪。"
+        title="回滚将把当前版本标记为已回滚，并保留记录供调课复核和自动排课复跑时追踪。"
         type="warning"
         :closable="false"
       />
@@ -138,7 +132,7 @@
           <el-input :model-value="rollbackTarget?.version || ''" disabled />
         </el-form-item>
         <el-form-item label="回滚原因" prop="note">
-          <el-input v-model="rollbackForm.note" type="textarea" :rows="4" placeholder="填写回滚原因，便于后续复盘和联调" />
+          <el-input v-model="rollbackForm.note" type="textarea" :rows="4" placeholder="填写回滚原因" />
         </el-form-item>
       </el-form>
 

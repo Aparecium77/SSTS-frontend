@@ -29,7 +29,6 @@
       <div class="section-header">
         <div>
           <h3>筛选与操作</h3>
-          <p>统一使用本地 mock 数据驱动页面结构，后续可直接替换为接口返回。</p>
         </div>
         <slot name="actions" />
       </div>
@@ -40,7 +39,7 @@
       <div class="section-header">
         <div>
           <h3>{{ contentTitle }}</h3>
-          <p>{{ contentDescription }}</p>
+          <p v-if="contentDescription">{{ contentDescription }}</p>
         </div>
       </div>
       <slot v-if="dataCount > 0" />

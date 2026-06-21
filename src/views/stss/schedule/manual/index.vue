@@ -2,7 +2,7 @@
   <SchedulePageShell
     v-model="detailVisible"
     title="手工调课"
-    description="用于处理临时调课、冲突检测和审批状态回看，当前已收敛为后续可直接接入手工调课接口壳子的页面结构。"
+    description="用于处理临时调课、冲突检测和审批状态回看。"
     :tags="['调课表单', '冲突检测', '审批状态']"
     :stats="stats"
     content-title="调课申请"
@@ -91,7 +91,7 @@
           <div class="panel-header">
             <div>
               <h4>冲突检测结果</h4>
-              <p>后续可直接替换为 `detectAdjustmentConflicts` 接口返回。</p>
+              <p>展示当前调课方案的冲突检测结果。</p>
             </div>
           </div>
           <el-empty v-if="!conflicts.length" description="当前方案未发现冲突" />

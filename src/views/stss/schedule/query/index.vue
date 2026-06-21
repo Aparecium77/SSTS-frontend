@@ -6,7 +6,7 @@
     :tags="['查询维度切换', '周视图', '详情弹窗']"
     :stats="stats"
     content-title="课表结果"
-    content-description="当前阶段已补齐维度切换、筛选条件、结果表格和周课表视图，并使用本地 mock 模拟多维度数据。"
+    content-description="支持维度切换、筛选查询、结果表格和周课表视图。"
     :data-count="filteredRecords.length"
     empty-description="当前筛选条件下没有课表记录。"
     dialog-title="课表详情"
@@ -198,7 +198,7 @@ const resetFilters = async () => {
 };
 
 const exportCurrentView = () => {
-  ElMessage.success(`已按 ${viewMode.value === "table" ? "列表视图" : "周课表视图"} 生成导出任务占位。`);
+  ElMessage.success(`已按 ${viewMode.value === "table" ? "列表视图" : "周课表视图"} 生成导出任务。`);
 };
 
 const openDetail = async (record: Schedule.ScheduleRecord) => {

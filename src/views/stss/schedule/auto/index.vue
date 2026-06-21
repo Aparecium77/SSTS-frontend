@@ -3,7 +3,7 @@
     <SchedulePageShell
       v-model="detailVisible"
       title="自动排课"
-      description="统一承接自动排课任务配置、执行进度、结果统计与冲突摘要，后续可直接切换到自动排课接口。"
+      description="统一承接自动排课任务配置、执行进度、结果统计与冲突摘要。"
       :tags="['任务配置', '执行进度', '冲突结果']"
       :stats="stats"
       content-title="任务队列"

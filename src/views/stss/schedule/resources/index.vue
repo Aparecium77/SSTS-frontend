@@ -7,7 +7,7 @@
       :tags="['分类切换', '资源建档', '状态启停']"
       :stats="stats"
       content-title="资源清单"
-      content-description="当前页面已拆分为页面层和本地数据服务层，后续切换到真实接口时只需替换 service 实现。"
+      content-description="集中维护教师、教室、课程和班级等排课基础资源。"
       :data-count="tableData.length"
       empty-description="当前筛选条件下没有资源数据。"
       dialog-title="资源详情"
@@ -46,12 +46,6 @@
               </el-space>
             </el-form-item>
           </el-form>
-
-          <el-alert
-            title="资源页已独立维护本地 service 与 mock，避免与课表查询、排课规则页面并行开发时发生共享数据文件冲突。"
-            type="info"
-            :closable="false"
-          />
         </div>
       </template>
 
