@@ -14,7 +14,11 @@ export const mockExamList: ExamEntry.ExamItem[] = [
     endTime: new Date(now + 5 * day).toISOString(),
     durationMinutes: 45,
     status: "ongoing",
-    totalScore: 100
+    totalScore: 100,
+    allowedAttempts: 1,
+    submittedCount: 0,
+    scoreVisible: false,
+    answerVisible: false
   },
   {
     examId: "exam-002",
@@ -25,7 +29,11 @@ export const mockExamList: ExamEntry.ExamItem[] = [
     endTime: new Date(now + 6 * day).toISOString(),
     durationMinutes: 60,
     status: "ongoing",
-    totalScore: 100
+    totalScore: 100,
+    allowedAttempts: 2,
+    submittedCount: 0,
+    scoreVisible: false,
+    answerVisible: false
   },
   {
     examId: "exam-003",
@@ -38,7 +46,11 @@ export const mockExamList: ExamEntry.ExamItem[] = [
     status: "ended",
     totalScore: 50,
     submitted: true,
-    score: 42
+    score: 42,
+    allowedAttempts: 1,
+    submittedCount: 1,
+    scoreVisible: true,
+    answerVisible: true
   },
   {
     examId: "exam-004",
@@ -51,7 +63,11 @@ export const mockExamList: ExamEntry.ExamItem[] = [
     status: "ended",
     totalScore: 100,
     submitted: true,
-    score: 88
+    score: 88,
+    allowedAttempts: 1,
+    submittedCount: 1,
+    scoreVisible: true,
+    answerVisible: true
   },
   {
     examId: "exam-005",
@@ -62,7 +78,11 @@ export const mockExamList: ExamEntry.ExamItem[] = [
     endTime: new Date(now + 3 * hour).toISOString(),
     durationMinutes: 120,
     status: "upcoming",
-    totalScore: 150
+    totalScore: 150,
+    allowedAttempts: 1,
+    submittedCount: 0,
+    scoreVisible: false,
+    answerVisible: false
   },
   {
     examId: "exam-006",
@@ -74,6 +94,10 @@ export const mockExamList: ExamEntry.ExamItem[] = [
     durationMinutes: 120,
     status: "ended",
     totalScore: 100,
-    submitted: false
+    submitted: false,
+    allowedAttempts: 1,
+    submittedCount: 0,
+    scoreVisible: false,
+    answerVisible: false
   }
 ];

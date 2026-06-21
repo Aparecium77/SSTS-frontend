@@ -176,6 +176,16 @@ import { ref, onMounted } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { UploadFilled } from "@element-plus/icons-vue";
 import { queryQuestionBank, addQuestion, updateQuestion, deleteQuestion, importQuestionsByExcel } from "@/api/modules/onlineTest";
+import {
+  buildQuestionBankQuery,
+  buildQuestionRequest,
+  cloneQuestionForEdit,
+  createDefaultQuestionForm,
+  createEmptyQuestionSearchForm,
+  getQuestionFormByType,
+  shouldMoveToPreviousPageAfterDelete,
+  validateQuestionForm
+} from "./logic";
 
 const getTeacherId = () => {
   try {
@@ -188,11 +198,7 @@ const getTeacherId = () => {
 const teacherId = getTeacherId();
 const courseId = 101;
 
-const searchForm = ref({
-  keyword: "",
-  type: "" as number | "",
-  difficulty: "" as number | ""
-});
+const searchForm = ref(createEmptyQuestionSearchForm());
 
 const loading = ref(false);
 const currentPage = ref(1);
@@ -204,13 +210,7 @@ const fetchData = async () => {
   loading.value = true;
   try {
     const res = await queryQuestionBank({
-      current: currentPage.value,
-      size: pageSize.value,
-      teacherId,
-      courseId,
-      keyword: searchForm.value.keyword || undefined,
-      type: searchForm.value.type || undefined,
-      difficulty: searchForm.value.difficulty || undefined
+      ...buildQuestionBankQuery(searchForm.value, currentPage.value, pageSize.value, teacherId, courseId)
     });
     tableData.value = res.records;
     total.value = res.total;
@@ -231,7 +231,7 @@ const handleSearch = () => {
 };
 
 const resetSearch = () => {
-  searchForm.value = { keyword: "", type: "", difficulty: "" };
+  searchForm.value = createEmptyQuestionSearchForm();
   handleSearch();
 };
 
@@ -239,68 +239,32 @@ const dialogVisible = ref(false);
 const dialogTitle = ref("新增题目");
 const submitLoading = ref(false);
 
-const formData = ref({
-  id: undefined as number | undefined,
-  type: 1,
-  stem: "",
-  options: ["", "", "", ""],
-  answer: "",
-  difficulty: 1,
-  knowledgePoints: [] as string[]
-});
+const formData = ref(createDefaultQuestionForm());
 
 const handleTypeChange = (val: number) => {
-  formData.value.answer = "";
-  if (val === 2) {
-    formData.value.options = ["正确", "错误"];
-  } else {
-    formData.value.options = ["", "", "", ""];
-  }
+  Object.assign(formData.value, getQuestionFormByType(val));
 };
 
 const handleAdd = () => {
   dialogTitle.value = "新增题目";
-  formData.value = {
-    id: undefined,
-    type: 1,
-    stem: "",
-    options: ["", "", "", ""],
-    answer: "",
-    difficulty: 1,
-    knowledgePoints: []
-  };
+  formData.value = createDefaultQuestionForm();
   dialogVisible.value = true;
 };
 
 const handleEdit = (row: any) => {
   dialogTitle.value = "修改题目";
-  const cloneRow = JSON.parse(JSON.stringify(row));
-  if (!cloneRow.options || cloneRow.options.length === 0) {
-    cloneRow.options = cloneRow.type === 1 ? ["", "", "", ""] : ["正确", "错误"];
-  }
-  formData.value = cloneRow;
+  formData.value = cloneQuestionForEdit(row);
   dialogVisible.value = true;
 };
 
 const saveData = async () => {
-  if (!formData.value.stem || !formData.value.answer) {
+  if (!validateQuestionForm(formData.value)) {
     return ElMessage.warning("题干和正确答案为必填项！");
   }
 
   submitLoading.value = true;
   try {
-    const reqData = {
-      teacherId,
-      courseId,
-      ...formData.value,
-      options:
-        formData.value.type === 1
-          ? formData.value.options.map((opt, idx) => {
-              const prefix = String.fromCharCode(65 + idx) + ". ";
-              return opt.startsWith(prefix.trim().charAt(0)) ? opt : prefix + opt;
-            })
-          : ["正确", "错误"]
-    };
+    const reqData = buildQuestionRequest(formData.value, teacherId, courseId);
 
     if (formData.value.id) {
       await updateQuestion({ ...reqData, id: formData.value.id });
@@ -328,7 +292,7 @@ const handleDelete = (row: any) => {
       try {
         await deleteQuestion({ teacherId, id: row.id, force: true });
         ElMessage.success("删除成功！");
-        if (tableData.value.length === 1 && currentPage.value > 1) {
+        if (shouldMoveToPreviousPageAfterDelete(tableData.value.length, currentPage.value)) {
           currentPage.value -= 1;
         }
         fetchData();

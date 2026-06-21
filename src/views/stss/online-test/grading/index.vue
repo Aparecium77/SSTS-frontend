@@ -139,6 +139,7 @@ import {
   openExamAnswer,
   getExamRecordReview
 } from "@/api/modules/onlineTest";
+import { buildExportFileName, buildReviewRequest, filterAnalyzableExams, formatGradingTime } from "./logic";
 
 const route = useRoute();
 
@@ -168,7 +169,7 @@ const customColors = [
 onMounted(async () => {
   try {
     const res = await queryExamPapers({ current: 1, size: 100, teacherId, courseId });
-    examList.value = (res.records || []).filter(exam => exam.status !== 0);
+    examList.value = filterAnalyzableExams(res.records || []);
     if (route.query.examId) {
       searchForm.value.examId = Number(route.query.examId);
       handleAnalyze();
@@ -178,10 +179,7 @@ onMounted(async () => {
   }
 });
 
-const formatTime = (isoStr: string) => {
-  if (!isoStr) return "-";
-  return new Date(isoStr).toLocaleString("zh-CN", { hour12: false });
-};
+const formatTime = formatGradingTime;
 
 const handleAnalyze = async () => {
   if (!searchForm.value.examId) return ElMessage.warning("请先选择一场考试");
@@ -206,8 +204,7 @@ const handleExport = async () => {
     const url = window.URL.createObjectURL(new Blob([blob]));
     const link = document.createElement("a");
     link.href = url;
-    const examName = examList.value.find(e => e.id === searchForm.value.examId)?.title || "考试";
-    link.setAttribute("download", `${examName}成绩单.xlsx`);
+    link.setAttribute("download", buildExportFileName(examList.value, searchForm.value.examId));
     document.body.appendChild(link);
     link.click();
     link.parentNode?.removeChild(link);
@@ -247,7 +244,7 @@ const handleReviewRecord = async (row: any) => {
   reviewLoading.value = true;
   reviewData.value = null;
   try {
-    const res = await getExamRecordReview({ teacherId, recordId: row.recordId });
+    const res = await getExamRecordReview(buildReviewRequest(teacherId, row.recordId));
     reviewData.value = res;
   } catch (error: any) {
     ElMessage.error(error?.message || "获取答卷详情失败");

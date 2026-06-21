@@ -43,6 +43,16 @@
                 <span>时长：{{ exam.durationMinutes }} 分钟</span>
                 <span class="meta-sep">|</span>
                 <span>总分：{{ exam.totalScore }} 分</span>
+                <span class="meta-sep">|</span>
+                <span :class="{ 'attempts-exhausted': exam.allowedAttempts - exam.submittedCount <= 0 && !exam.hasDraft }">
+                  剩余次数：{{ Math.max(exam.allowedAttempts - exam.submittedCount, 0) }}/{{ exam.allowedAttempts }}
+                </span>
+                <template v-if="exam.submitted">
+                  <span class="meta-sep">|</span>
+                  <span :class="exam.answerVisible ? 'answer-open' : 'answer-closed'">
+                    答案{{ exam.answerVisible ? "已" : "未" }}开放
+                  </span>
+                </template>
               </div>
               <div class="exam-time">
                 <el-icon><Clock /></el-icon>
@@ -60,7 +70,17 @@
 
               <!-- 进行中 -->
               <template v-else-if="exam.status === 'ongoing'">
-                <el-button type="primary" @click="enterExam(exam.examId)"> 进入考试 </el-button>
+                <template v-if="!exam.hasDraft && exam.submittedCount >= exam.allowedAttempts">
+                  <el-tooltip content="答题次数已用完" placement="top">
+                    <el-button type="primary" disabled>进入考试</el-button>
+                  </el-tooltip>
+                </template>
+                <template v-else>
+                  <el-button type="primary" @click="enterExam(exam.examId)"> 进入考试 </el-button>
+                </template>
+                <el-button v-if="exam.submittedCount > 0" plain style="margin-left: 8px" @click="viewAnalytics(exam.examId)">
+                  成绩分析
+                </el-button>
               </template>
 
               <!-- 已结束 -->
@@ -72,7 +92,7 @@
           </div>
 
           <!-- 已结束且有成绩时展示分数 -->
-          <div v-if="exam.status === 'ended' && exam.score !== undefined" class="exam-score-bar">
+          <div v-if="exam.scoreVisible && exam.score !== undefined" class="exam-score-bar">
             <span class="score-label">你的成绩</span>
             <span class="score-value">{{ exam.score }}</span>
             <span class="score-total">/ {{ exam.totalScore }}</span>
@@ -121,6 +141,7 @@ import { Search, Clock } from "@element-plus/icons-vue";
 import { useUserStore } from "@/stores/modules/user";
 import { listMyExamRecords } from "@/api/modules/onlineTest";
 import type { ExamEntry } from "./types";
+import { filterExamList, formatTimeRange, getTabCounts, normalizeExamRecordItem } from "./logic";
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -139,35 +160,11 @@ const showDialog = ref(false);
 const confirmChecked = ref(false);
 const selectedExam = ref<ExamEntry.ExamItem | null>(null);
 
-/** 根据 recordStatus + 时间窗口计算考试在前端的展示状态 */
-function resolveStatus(recordStatus: number | null, validStartTime: string, validEndTime: string): ExamEntry.ExamStatus {
-  if (recordStatus != null) {
-    return recordStatus === 0 ? "ongoing" : "ended";
-  }
-  const now = Date.now();
-  if (new Date(validStartTime).getTime() > now) return "upcoming";
-  if (new Date(validEndTime).getTime() < now) return "ended";
-  return "ongoing";
-}
-
 const fetchExamList = async () => {
   loading.value = true;
   try {
     const res = await listMyExamRecords({ studentId, current: 1, size: 100 });
-    apiExamList.value = res.records.map(r => ({
-      examId: `exam-00${r.examId}`,
-      examName: r.examTitle,
-      paperId: `paper-00${r.examId}`,
-      paperName: r.examTitle,
-      startTime: r.validStartTime,
-      endTime: r.validEndTime,
-      durationMinutes: r.durationMins,
-      status: resolveStatus(r.recordStatus, r.validStartTime, r.validEndTime),
-      totalScore: r.totalScore,
-      submitted: r.recordStatus === 1,
-      hasDraft: r.recordStatus === 0,
-      score: r.studentScore ?? undefined
-    }));
+    apiExamList.value = res.records.map(record => normalizeExamRecordItem(record));
   } catch {
     console.warn("考试列表 API 调用失败，使用 mock 数据");
   } finally {
@@ -200,17 +197,7 @@ const statusLabelMap: Record<ExamEntry.ExamStatus, string> = {
 const activeFilter = ref<ExamEntry.FilterTab>("all");
 const searchKeyword = ref("");
 
-const filteredList = computed(() => {
-  let list = apiExamList.value;
-  if (activeFilter.value !== "all") {
-    list = list.filter(e => e.status === activeFilter.value);
-  }
-  if (searchKeyword.value.trim()) {
-    const kw = searchKeyword.value.trim().toLowerCase();
-    list = list.filter(e => e.examName.toLowerCase().includes(kw) || e.paperName.toLowerCase().includes(kw));
-  }
-  return list;
-});
+const filteredList = computed(() => filterExamList(apiExamList.value, activeFilter.value, searchKeyword.value));
 
 const total = computed(() => filteredList.value.length);
 
@@ -219,27 +206,12 @@ const pagedList = computed(() => {
   return filteredList.value.slice(start, start + 10);
 });
 
-const tabCounts = computed(() => ({
-  all: apiExamList.value.length,
-  upcoming: apiExamList.value.filter(e => e.status === "upcoming").length,
-  ongoing: apiExamList.value.filter(e => e.status === "ongoing").length,
-  ended: apiExamList.value.filter(e => e.status === "ended").length
-}));
+const tabCounts = computed(() => getTabCounts(apiExamList.value));
 
 // 筛选或搜索变化时回到第 1 页
 watch([activeFilter, searchKeyword], () => {
   page.value = 1;
 });
-
-/* ────── 时间格式化 ────── */
-const formatTimeRange = (start: string, end: string) => {
-  const fmt = (iso: string) => {
-    const d = new Date(iso);
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  };
-  return `${fmt(start)} — ${fmt(end)}`;
-};
 
 /* ────── 操作 ────── */
 const enterExam = (examId: string) => {
@@ -272,6 +244,10 @@ const viewAnalytics = (examId: string) => {
   display: flex;
   justify-content: center;
   margin-top: 16px;
+}
+.attempts-exhausted {
+  font-weight: 600;
+  color: #f56c6c;
 }
 .confirm-dialog-body {
   .confirm-section {

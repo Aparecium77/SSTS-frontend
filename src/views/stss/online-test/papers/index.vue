@@ -114,7 +114,7 @@
         <!-- 模式A：手动组卷界面 -->
         <div v-if="formData.generateMode === 'manual'" style="padding: 15px; background-color: #f9fafc; border-radius: 4px">
           <el-alert title="请从题库中挑选题目，并为每道题设定分值。" type="info" :closable="false" style="margin-bottom: 15px" />
-          <el-button type="primary" plain icon="Plus" @click="questionSelectorVisible = true">从题库中选择题目</el-button>
+          <el-button type="primary" plain icon="Plus" @click="openQuestionSelector">从题库中选择题目</el-button>
 
           <el-table :data="selectedQuestions" :border="true" style="width: 100%; margin-top: 15px">
             <el-table-column type="index" label="序号" width="60" align="center" />
@@ -214,7 +214,7 @@
             range-separator="至"
             start-placeholder="开始时间"
             end-placeholder="结束时间"
-            value-format="YYYY-MM-DDTHH:mm:ss.000Z"
+            format="YYYY-MM-DD HH:mm"
             style="width: 100%"
           />
         </el-form-item>
@@ -230,6 +230,28 @@
 
     <!-- 5. 题库选择器弹窗 -->
     <el-dialog title="从题库选择题目" v-model="questionSelectorVisible" width="800px">
+      <el-form :inline="true" :model="bankSearchForm" class="search-form" style="margin-bottom: 16px">
+        <el-form-item label="关键字">
+          <el-input v-model="bankSearchForm.keyword" placeholder="搜题干内容" clearable />
+        </el-form-item>
+        <el-form-item label="题型">
+          <el-select v-model="bankSearchForm.type" placeholder="全部" clearable style="width: 120px">
+            <el-option label="单选题" :value="1" />
+            <el-option label="判断题" :value="2" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="难度">
+          <el-select v-model="bankSearchForm.difficulty" placeholder="全部" clearable style="width: 120px">
+            <el-option label="简单" :value="1" />
+            <el-option label="中等" :value="2" />
+            <el-option label="困难" :value="3" />
+          </el-select>
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" @click="handleBankSearch">查询</el-button>
+          <el-button @click="resetBankSearch">重置</el-button>
+        </el-form-item>
+      </el-form>
       <el-table :data="bankQuestions" :border="true" @selection-change="handleSelectionChange" max-height="400">
         <el-table-column type="selection" width="55" align="center" />
         <el-table-column label="题型" width="80">
@@ -238,6 +260,18 @@
         <el-table-column prop="stem" label="题干" show-overflow-tooltip />
         <el-table-column prop="difficulty" label="难度" width="80" />
       </el-table>
+      <div style="display: flex; justify-content: flex-end; margin-top: 16px">
+        <el-pagination
+          v-model:current-page="bankPage"
+          v-model:page-size="bankPageSize"
+          :page-sizes="[10, 20, 50, 100]"
+          :background="true"
+          layout="total, sizes, prev, pager, next"
+          :total="bankTotal"
+          @size-change="loadBankQuestions"
+          @current-change="loadBankQuestions"
+        />
+      </div>
       <template #footer>
         <el-button @click="questionSelectorVisible = false">取消</el-button>
         <el-button type="primary" @click="confirmSelectQuestions">确认添加</el-button>
@@ -303,6 +337,15 @@ import {
   openExamScore, // 加这行
   openExamAnswer
 } from "@/api/modules/onlineTest";
+import {
+  buildAutoPaperRequest,
+  buildManualPaperRequest,
+  buildPublishRequest,
+  calculatePaperTotalScore,
+  createDefaultPaperForm,
+  filterExamPaperList,
+  mergeSelectedQuestions
+} from "./logic";
 
 const router = useRouter();
 
@@ -329,10 +372,7 @@ const fetchData = async () => {
   loading.value = true;
   try {
     const res = await queryExamPapers({ current: currentPage.value, size: pageSize.value, teacherId, courseId });
-    let list = res.records || [];
-    if (searchForm.value.keyword) {
-      list = list.filter((item: any) => item.title.includes(searchForm.value.keyword));
-    }
+    const list = filterExamPaperList(res.records || [], searchForm.value.keyword);
     tableData.value = list;
     total.value = res.total;
   } catch (error) {
@@ -364,23 +404,7 @@ const drawerVisible = ref(false);
 const drawerTitle = ref("新增试卷");
 const submitLoading = ref(false);
 
-const formData = ref({
-  id: undefined as number | undefined,
-  title: "",
-  durationMins: 120,
-  totalScore: 100,
-  passScore: 60,
-  generateMode: "manual" as "manual" | "auto",
-  allowedAttempts: 1,
-  autoRules: {
-    singleChoiceCount: 4,
-    trueFalseCount: 2,
-    singleChoiceScore: 20,
-    trueFalseScore: 10,
-    targetDifficulty: 1,
-    knowledgePoints: [] as string[]
-  }
-});
+const formData = ref(createDefaultPaperForm());
 
 const selectedQuestions = ref<any[]>([]);
 // --- 自动计算试卷总分 ---
@@ -388,10 +412,9 @@ watch(
   [() => formData.value.generateMode, () => formData.value.autoRules, selectedQuestions],
   () => {
     if (formData.value.generateMode === "manual") {
-      formData.value.totalScore = selectedQuestions.value.reduce((sum, q) => sum + (q.score || 0), 0);
+      formData.value.totalScore = calculatePaperTotalScore("manual", selectedQuestions.value, formData.value.autoRules);
     } else {
-      const rules = formData.value.autoRules;
-      formData.value.totalScore = rules.singleChoiceCount * rules.singleChoiceScore + rules.trueFalseCount * rules.trueFalseScore;
+      formData.value.totalScore = calculatePaperTotalScore("auto", selectedQuestions.value, formData.value.autoRules);
     }
   },
   { deep: true }
@@ -399,41 +422,43 @@ watch(
 
 const handleAdd = () => {
   drawerTitle.value = "新增试卷";
-  formData.value = {
-    id: undefined,
-    title: "",
-    durationMins: 120,
-    totalScore: 100,
-    passScore: 60,
-    generateMode: "manual",
-    allowedAttempts: 1,
-    autoRules: {
-      singleChoiceCount: 4,
-      trueFalseCount: 2,
-      singleChoiceScore: 20,
-      trueFalseScore: 10,
-      targetDifficulty: 1,
-      knowledgePoints: []
-    }
-  };
+  formData.value = createDefaultPaperForm();
   selectedQuestions.value = [];
   drawerVisible.value = true;
 };
 
-const handleEdit = (row: any) => {
+const handleEdit = async (row: any) => {
   drawerTitle.value = "修改试卷";
-  formData.value = {
-    id: row.id,
-    title: row.title,
-    durationMins: row.durationMins,
-    totalScore: row.totalScore,
-    passScore: row.passScore,
-    generateMode: row.generateMode,
-    allowedAttempts: row.allowedAttempts || 1,
-    autoRules: formData.value.autoRules
-  };
-  selectedQuestions.value = [];
-  drawerVisible.value = true;
+  submitLoading.value = true;
+  try {
+    formData.value = {
+      id: row.id,
+      title: row.title,
+      durationMins: row.durationMins,
+      totalScore: row.totalScore,
+      passScore: row.passScore,
+      generateMode: "manual",
+      allowedAttempts: row.allowedAttempts || 1,
+      autoRules: formData.value.autoRules
+    };
+    selectedQuestions.value = [];
+
+    const res = await previewExamPaper({ teacherId, id: row.id });
+    selectedQuestions.value = (res.questions || []).map((q: any) => ({
+      id: q.questionId,
+      stem: q.stem,
+      type: q.type,
+      options: q.options || [],
+      difficulty: 1,
+      score: q.score
+    }));
+
+    drawerVisible.value = true;
+  } catch (error: any) {
+    ElMessage.error(error?.message || "加载试卷详情失败");
+  } finally {
+    submitLoading.value = false;
+  }
 };
 
 const saveData = async () => {
@@ -441,37 +466,14 @@ const saveData = async () => {
   submitLoading.value = true;
   try {
     if (formData.value.generateMode === "manual") {
-      const qIds = selectedQuestions.value.map(q => q.id);
-      const qScores = selectedQuestions.value.map(q => q.score);
-      const req = {
-        teacherId,
-        courseId,
-        title: formData.value.title,
-        totalScore: formData.value.totalScore,
-        durationMins: formData.value.durationMins,
-        passScore: formData.value.passScore,
-        allowedAttempts: formData.value.allowedAttempts,
-        generateMode: "manual" as const,
-        questionIds: qIds,
-        questionScores: qScores
-      };
+      const req = buildManualPaperRequest(formData.value, selectedQuestions.value, teacherId, courseId);
       if (formData.value.id) {
         await updateExamPaper({ ...req, id: formData.value.id });
       } else {
         await createExamPaper(req);
       }
     } else {
-      await generateExamPaper({
-        teacherId,
-        courseId,
-        title: formData.value.title,
-        totalScore: formData.value.totalScore,
-        durationMins: formData.value.durationMins,
-        passScore: formData.value.passScore,
-        allowedAttempts: formData.value.allowedAttempts,
-        generateMode: "auto" as const,
-        autoRules: formData.value.autoRules
-      });
+      await generateExamPaper(buildAutoPaperRequest(formData.value, teacherId, courseId));
     }
     ElMessage.success("试卷保存成功！");
     drawerVisible.value = false;
@@ -486,30 +488,23 @@ const saveData = async () => {
 // --- 发布、撤回、删除 ---
 const publishDialogVisible = ref(false);
 const publishTargetId = ref(0);
-const publishTimeRange = ref<[string, string]>(["", ""]);
+const publishTimeRange = ref<[Date, Date] | []>([]);
 const publishAttempts = ref(1);
 
 const openPublishDialog = (row: any) => {
   publishTargetId.value = row.id;
-  publishTimeRange.value = ["", ""];
+  publishTimeRange.value = [];
   publishAttempts.value = row.allowedAttempts || 1;
   publishDialogVisible.value = true;
 };
 
 const submitPublish = async () => {
-  if (!publishTimeRange.value || !publishTimeRange.value[0]) {
+  if (publishTimeRange.value.length !== 2) {
     return ElMessage.warning("请选择有效时间范围");
   }
   submitLoading.value = true;
   try {
-    await publishExamPaper({
-      teacherId,
-      id: publishTargetId.value,
-      validStartTime: publishTimeRange.value[0],
-      validEndTime: publishTimeRange.value[1],
-      allowedAttempts: publishAttempts.value,
-      scoringStrategy: "AUTO_GRADE"
-    });
+    await publishExamPaper(buildPublishRequest(teacherId, publishTargetId.value, publishTimeRange.value, publishAttempts.value));
     ElMessage.success("发布成功！学生现在可以参加该考试了。");
     publishDialogVisible.value = false;
     fetchData();
@@ -556,24 +551,64 @@ const handleDelete = (row: any) => {
 const questionSelectorVisible = ref(false);
 const bankQuestions = ref<any[]>([]);
 const tempSelection = ref<any[]>([]);
+const bankPage = ref(1);
+const bankPageSize = ref(50);
+const bankTotal = ref(0);
+const bankSearchForm = ref({
+  keyword: "",
+  type: "" as number | "",
+  difficulty: "" as number | ""
+});
 
-onMounted(async () => {
+const loadBankQuestions = async () => {
   try {
-    const res = await queryQuestionBank({ current: 1, size: 50, teacherId, courseId });
+    const res = await queryQuestionBank({
+      current: bankPage.value,
+      size: bankPageSize.value,
+      teacherId,
+      courseId,
+      keyword: bankSearchForm.value.keyword || undefined,
+      type: bankSearchForm.value.type || undefined,
+      difficulty: bankSearchForm.value.difficulty || undefined
+    });
     bankQuestions.value = res.records;
+    bankTotal.value = res.total;
   } catch (e) {
     // 静默失败，不影响主流程
   }
+};
+
+onMounted(async () => {
+  await loadBankQuestions();
 });
 
 const handleSelectionChange = (val: any[]) => {
   tempSelection.value = val;
 };
+
+const handleBankSearch = async () => {
+  bankPage.value = 1;
+  await loadBankQuestions();
+};
+
+const resetBankSearch = async () => {
+  bankSearchForm.value = { keyword: "", type: "", difficulty: "" };
+  bankPage.value = 1;
+  await loadBankQuestions();
+};
+
+const openQuestionSelector = async () => {
+  bankPage.value = 1;
+  await loadBankQuestions();
+  questionSelectorVisible.value = true;
+};
+
 const confirmSelectQuestions = () => {
-  const newItems = tempSelection.value.map(q => ({ ...q, score: 10 }));
-  selectedQuestions.value.push(...newItems);
+  const merged = mergeSelectedQuestions(selectedQuestions.value, tempSelection.value);
+  const addedCount = merged.length - selectedQuestions.value.length;
+  selectedQuestions.value = merged;
   questionSelectorVisible.value = false;
-  ElMessage.success(`已添加 ${newItems.length} 道题目，请为其设置分值`);
+  ElMessage.success(`已添加 ${addedCount} 道题目，请为其设置分值`);
 };
 const removeQuestion = (index: number) => {
   selectedQuestions.value.splice(index, 1);
