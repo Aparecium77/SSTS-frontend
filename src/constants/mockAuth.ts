@@ -1,6 +1,13 @@
 import md5 from "md5";
 import type { Login } from "@/api/interface";
 import { ResultEnum } from "@/enums/httpEnum";
+import { baseInfoMenu } from "@/views/stss/base-info/menu";
+import { scheduleMenu } from "@/views/stss/schedule/menu";
+import { courseSelectionMenu } from "@/views/stss/course-selection/menu";
+import { forumMenu } from "@/views/stss/forum/menu";
+import { onlineTestMenu } from "@/views/stss/online-test/menu";
+import { scoreMenu } from "@/views/stss/score/menu";
+import { cloneMenuList, createGroup, createMenu } from "@/views/stss/menu";
 
 type RoleKey = "student" | "teacher" | "academic_admin";
 
@@ -12,136 +19,7 @@ interface MockUser {
   token: string;
 }
 
-const baseMeta = {
-  isLink: "",
-  isHide: false,
-  isFull: false,
-  isAffix: false,
-  isKeepAlive: true
-};
-
-const createMenu = (
-  path: string,
-  name: string,
-  component: string,
-  title: string,
-  icon = "Menu",
-  extraMeta: Partial<Menu.MetaProps> = {}
-): Menu.MenuOptions => ({
-  path,
-  name,
-  component,
-  meta: { ...baseMeta, icon, title, ...extraMeta }
-});
-
-const createGroup = (
-  path: string,
-  name: string,
-  title: string,
-  children: Menu.MenuOptions[],
-  icon = "Menu",
-  redirect = children[0]?.path
-): Menu.MenuOptions => ({
-  path,
-  name,
-  redirect,
-  meta: { ...baseMeta, icon, title },
-  children
-});
-
 const homeMenu = createMenu("/home/index", "home", "/home/index", "首页", "HomeFilled", { isAffix: true });
-
-const baseInfoMenu = createGroup(
-  "/base-info",
-  "baseInfo",
-  "基础信息管理",
-  [
-    createMenu("/base-info/users", "baseInfoUsers", "/stss/base-info/users/index", "用户与档案"),
-    createMenu("/base-info/resources", "baseInfoResources", "/stss/base-info/resources/index", "课程/教师/教室"),
-    createMenu("/base-info/calendar", "baseInfoCalendar", "/stss/base-info/calendar/index", "学期校历"),
-    createMenu("/base-info/training-plans", "baseInfoTrainingPlans", "/stss/base-info/training-plans/index", "培养方案"),
-    createMenu("/base-info/permissions", "baseInfoPermissions", "/stss/base-info/permissions/index", "权限与回收站")
-  ],
-  "Management"
-);
-
-const scheduleMenu = createGroup(
-  "/schedule",
-  "schedule",
-  "排课管理",
-  [
-    createMenu("/schedule/resources", "scheduleResources", "/stss/schedule/resources/index", "教学资源"),
-    createMenu("/schedule/rules", "scheduleRules", "/stss/schedule/rules/index", "排课规则"),
-    createMenu("/schedule/auto", "scheduleAuto", "/stss/schedule/auto/index", "自动排课"),
-    createMenu("/schedule/manual", "scheduleManual", "/stss/schedule/manual/index", "手工调课"),
-    createMenu("/schedule/publish", "schedulePublish", "/stss/schedule/publish/index", "课表发布"),
-    createMenu("/schedule/query", "scheduleQuery", "/stss/schedule/query/index", "课表查询")
-  ],
-  "Calendar"
-);
-
-const courseSelectionMenu = createGroup(
-  "/course-selection",
-  "courseSelection",
-  "选课中心",
-  [
-    createMenu("/course-selection/study-plans", "studyPlans", "/stss/course-selection/study-plans/index", "培养方案校验"),
-    createMenu("/course-selection/search", "courseSearch", "/stss/course-selection/search/index", "课程检索"),
-    createMenu("/course-selection/enrollment", "courseEnrollment", "/stss/course-selection/enrollment/index", "选课/退课"),
-    createMenu("/course-selection/my-courses", "myEnrollments", "/stss/course-selection/my-courses/index", "我的选课"),
-    createMenu("/course-selection/timetable", "myTimetable", "/stss/course-selection/timetable/index", "我的课表"),
-    createMenu("/course-selection/ai-advisor", "aiAdvisor", "/stss/course-selection/ai-advisor/index", "AI选课助手"),
-    createMenu("/course-selection/roster", "teachingRoster", "/stss/course-selection/roster/index", "任课花名册"),
-    createMenu("/course-selection/windows", "courseWindows", "/stss/course-selection/windows/index", "选课窗口配置"),
-    createMenu("/course-selection/capacity", "courseCapacity", "/stss/course-selection/capacity/index", "抽签与容量管理"),
-    createMenu("/course-selection/monitor", "courseMonitor", "/stss/course-selection/monitor/index", "选课监控")
-  ],
-  "Reading"
-);
-
-const forumMenu = createGroup(
-  "/forum",
-  "forum",
-  "论坛交流",
-  [
-    createMenu("/forum/notices", "forumNotices", "/stss/forum/notices/index", "公告"),
-    createMenu("/forum/course-boards", "forumCourseBoards", "/stss/forum/course-boards/index", "课程论坛"),
-    createMenu("/forum/posts", "forumPosts", "/stss/forum/posts/index", "发帖/回帖"),
-    createMenu("/forum/moderation", "forumModeration", "/stss/forum/moderation/index", "内容审核"),
-    createMenu("/forum/search", "forumSearch", "/stss/forum/search/index", "检索")
-  ],
-  "ChatDotRound"
-);
-
-const onlineTestMenu = createGroup(
-  "/online-test",
-  "onlineTest",
-  "在线测试",
-  [
-    createMenu("/online-test/question-bank", "questionBank", "/stss/online-test/question-bank/index", "题库管理"),
-    createMenu("/online-test/papers", "papers", "/stss/online-test/papers/index", "组卷管理"),
-    createMenu("/online-test/entry", "examEntry", "/stss/online-test/entry/index", "考试入口"),
-    createMenu("/online-test/grading", "examGrading", "/stss/online-test/grading/index", "阅卷与发布"),
-    createMenu("/online-test/analytics", "examAnalytics", "/stss/online-test/analytics/index", "测试分析")
-  ],
-  "EditPen"
-);
-
-const scoreMenu = createGroup(
-  "/score",
-  "score",
-  "成绩管理",
-  [
-    createMenu("/score/entry", "scoreEntry", "/stss/score/entry/index", "成绩录入"),
-    createMenu("/score/query", "scoreQuery", "/stss/score/query/index", "成绩查询"),
-    createMenu("/score/change-request", "scoreChangeRequest", "/stss/score/change-request/index", "改分申请"),
-    createMenu("/score/change-approval", "scoreChangeApproval", "/stss/score/change-approval/index", "改分审批"),
-    createMenu("/score/credit-progress", "creditProgress", "/stss/score/credit-progress/index", "学分进展"),
-    createMenu("/score/personal-analytics", "personalScoreAnalytics", "/stss/score/personal-analytics/index", "个人成绩统计"),
-    createMenu("/score/course-analytics", "courseScoreAnalytics", "/stss/score/course-analytics/index", "课程成绩分析")
-  ],
-  "DataAnalysis"
-);
 
 export const mockUsers: MockUser[] = [
   {
@@ -168,7 +46,7 @@ export const mockUsers: MockUser[] = [
 ];
 
 const menuMap: Record<RoleKey, Menu.MenuOptions[]> = {
-  student: [homeMenu, courseSelectionMenu, forumMenu, onlineTestMenu, scoreMenu],
+  student: [homeMenu, courseSelectionMenu(), forumMenu(), onlineTestMenu(), scoreMenu()],
   teacher: [
     homeMenu,
     createGroup(
@@ -185,11 +63,11 @@ const menuMap: Record<RoleKey, Menu.MenuOptions[]> = {
       [createMenu("/course-selection/roster", "teachingRoster", "/stss/course-selection/roster/index", "任课花名册")],
       "Reading"
     ),
-    forumMenu,
-    onlineTestMenu,
-    scoreMenu
+    forumMenu(),
+    onlineTestMenu(),
+    scoreMenu()
   ],
-  academic_admin: [homeMenu, baseInfoMenu, scheduleMenu, courseSelectionMenu, forumMenu, onlineTestMenu, scoreMenu]
+  academic_admin: [homeMenu, baseInfoMenu(), scheduleMenu(), courseSelectionMenu(), forumMenu(), onlineTestMenu(), scoreMenu()]
 };
 
 const buttonMap: Record<RoleKey, Login.ResAuthButtons> = {
@@ -300,7 +178,7 @@ export const getMockMenuByToken = (token: string) => {
   return Promise.resolve({
     code: ResultEnum.SUCCESS,
     msg: "获取菜单成功",
-    data: menuMap[user.role]
+    data: cloneMenuList(menuMap[user.role])
   });
 };
 

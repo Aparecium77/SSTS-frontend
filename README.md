@@ -1,5 +1,9 @@
 # STSS Frontend
 
+## 零、注意事项
+
+1. 已新建6个分支，各组在自己分支内工作，可以新建分支（名称标注清晰），请勿直接在main中工作
+
 ## 一、项目定位
 
 本仓库是 `STSS` 教务系统前端基础模板，目标是统一：
@@ -72,7 +76,98 @@ pnpm install
 pnpm dev
 ```
 
-## 五、当前模板能力
+## 五、统一网关与接口约定
+
+前端公共分支参考第一组 `au12321ua/STSS-gateway`，统一约定所有后端请求先经过 STSS Gateway，不在页面或业务模块里直接写各组后端地址。
+
+### 1. 开发环境
+
+第一组 Gateway 默认监听：
+
+```text
+http://localhost:8000
+```
+
+前端开发环境保持同源请求，Vite 负责代理：
+
+```env
+VITE_API_URL = ""
+VITE_PROXY = [["/api","http://localhost:8000",false],["/auth","http://localhost:8000",false]]
+```
+
+第三项 `false` 表示保留 `/api` 或 `/auth` 前缀。例如前端请求：
+
+```text
+/api/v1/grade/transcripts
+```
+
+实际会转发到：
+
+```text
+http://localhost:8000/api/v1/grade/transcripts
+```
+
+### 2. 公共接口前缀
+
+所有业务组请从 `src/api/config/servicePort.ts` 引入自己的公共前缀，不要在页面中写死完整 URL：
+
+```ts
+export const AUTH_API = "/auth";
+export const GATEWAY_HEALTH_API = "/api/v1/health";
+export const BASE_INFO_API = "/api/v1/info";
+export const SCHEDULE_API = "/api/v1/schedule";
+export const COURSE_SELECTION_API = "/api/v1/course-selection";
+export const FORUM_API = "/api/v1/forum";
+export const ONLINE_TEST_API = "/api/v1/online-test";
+export const GRADE_API = "/api/v1/grade";
+```
+
+示例：
+
+```ts
+import http from "@/api";
+import { GRADE_API } from "@/api/config/servicePort";
+
+export const getTranscript = (params: object) => {
+  return http.get(`${GRADE_API}/transcripts`, params);
+};
+```
+
+### 3. 当前 Gateway 状态
+
+已从第一组 Gateway 仓库确认：
+
+- 网关默认端口：`8000`
+- 健康检查：`GET /api/v1/health`
+- 鉴权入口：`/auth/login`、`/auth/logout`、`/auth/me`、`/auth/refresh`、`/auth/change-password`
+- 已明确代理：`/api/v1/auth/*`、`/api/v1/info/*`、`/api/v1/schedule/*`、`/api/v1/course-selection/*`、`/api/v1/forum/*`、`/api/v1/online-test/*`、`/api/v1/grade/*`
+- `/api/v1/internal/*` 禁止外部访问
+- 网关注入下游请求头：`X-User-Id`、`X-User-Role`、`X-User-Permissions`、`X-Request-ID`
+
+当前统一外部路径如下：
+
+```text
+/auth/**
+/api/v1/info/**
+/api/v1/schedule/**
+/api/v1/course-selection/**
+/api/v1/forum/**
+/api/v1/online-test/**
+/api/v1/grade/**
+```
+
+前端只依赖这些统一外部路径；各组后端实际服务名、端口、内部路径由 Gateway 或部署编排负责适配。
+
+### 4. 各组接口开发要求
+
+- 页面中不要直接写 `axios`，统一在 `src/api/modules/<group>.ts` 封装接口。
+- 不要写死 `http://localhost:xxxx`、`http://127.0.0.1:xxxx` 或各组后端端口。
+- 不要自行新增另一套请求封装；统一使用 `src/api/index.ts`。
+- 业务成功码统一支持 `0`、`"0"`、`200`、`"200"`。
+- 错误消息统一支持后端返回的 `msg`、`message`、`error` 字段。
+- 如果某个接口返回值没有标准 `code`，可以在请求配置里使用 `{ skipCodeCheck: true }`，但需要在接口函数旁注明原因。
+
+## 六、当前模板能力
 
 - 统一登录页
 - 三角色本地鉴权与菜单控制
@@ -81,9 +176,10 @@ pnpm dev
 - 菜单未开发页面的占位页兜底
 - 公共个人信息 / 修改密码入口
 
-## 六、各组同学的开发边界参考
+## 七、各组同学的开发边界参考
 
 - 总原则：各组只改自己负责的业务页面目录、对应接口目录、对应类型目录，不改公共壳层。
+- 每个业务组现在都可以在自己目录下维护本板块的菜单细分页面名称，具体文件为 `src/views/stss/<group>/menu.ts`。
 - 页面相关的局部组件、局部 hooks、局部 mock 数据，优先放在自己业务目录下，不要直接往 `src/components/**` 和 `src/hooks/**` 塞公共代码。
 - 如果需要新增页面，建议统一按下面结构创建：
 
@@ -98,55 +194,61 @@ src/views/stss/<group>/<module>/index.scss
 
 - 目前已经在各组的文件夹中新建了一些空白文件，各组同学可以视需要进行增删
 
-### 基础信息管理组
+### 基础信息管理组 分支feat/base-info
 
 - 负责边界：用户与档案、课程/教师/教室、学期校历、培养方案、权限与回收站，以及个人中心。
 - 个人中心归这个组负责，包含个人资料、头像、联系方式、密码等“用户自己可维护”的信息页面。
 - 允许改动：
   - `src/views/stss/base-info/**`
+  - `src/views/stss/base-info/menu.ts`
   - `src/views/stss/base-info/profile/**`
   - `src/api/modules/baseInfo.ts`
   - `src/api/interface/baseInfo.ts`
   - 如需拆分个人中心接口，可新增 `src/api/modules/profile.ts`
   - 如需拆分个人中心类型，可新增 `src/api/interface/profile.ts`
 
-### 排课管理组
+### 排课管理组 分支feat/schedule
 
 - 负责边界：教学资源、排课规则、自动排课、手工调课、课表发布、课表查询等页面。
 - 允许改动：
   - `src/views/stss/schedule/**`
+  - `src/views/stss/schedule/menu.ts`
   - `src/api/modules/schedule.ts`
   - `src/api/interface/schedule.ts`
 
-### 选课中心组
+### 智能选课组 分支feat/course-selection
 
 - 负责边界：培养方案校验、课程检索、选课/退课、我的选课、我的课表、AI 选课助手、任课花名册、选课窗口、容量管理、选课监控等页面。
 - 允许改动：
   - `src/views/stss/course-selection/**`
+  - `src/views/stss/course-selection/menu.ts`
   - `src/api/modules/courseSelection.ts`
   - `src/api/interface/courseSelection.ts`
 
-### 论坛交流组
+### 论坛交流组 分支feat/forum
 
 - 负责边界：公告、课程论坛、发帖/回帖、内容审核、帖子检索等页面。
 - 允许改动：
   - `src/views/stss/forum/**`
+  - `src/views/stss/forum/menu.ts`
   - `src/api/modules/forum.ts`
   - `src/api/interface/forum.ts`
 
-### 在线测试组
+### 在线测试组 分支feat/online-test
 
 - 负责边界：题库管理、组卷管理、考试入口、阅卷与发布、测试分析等页面。
 - 允许改动：
   - `src/views/stss/online-test/**`
+  - `src/views/stss/online-test/menu.ts`
   - `src/api/modules/onlineTest.ts`
   - `src/api/interface/onlineTest.ts`
 
-### 成绩管理组
+### 成绩管理组 分支feat/score
 
 - 负责边界：成绩录入、成绩查询、改分申请、改分审批、学分进展、个人成绩统计、课程成绩分析等页面。
 - 允许改动：
   - `src/views/stss/score/**`
+  - `src/views/stss/score/menu.ts`
   - `src/api/modules/score.ts`
   - `src/api/interface/score.ts`
 
@@ -164,7 +266,7 @@ src/views/stss/<group>/<module>/index.scss
 - `src/views/proTable/**`
 - `src/views/assembly/**`
 
-## 七、前端协作约定
+## 八、前端协作约定
 
 这部分除了`1. 不要随意改的公共文件`之外，仅供参考
 
@@ -260,18 +362,18 @@ src/api/modules/<group>.ts
 推荐接法：
 
 ```text
-页面 -> src/api/modules/<group>.ts -> src/api/index.ts -> /api -> nginx / gateway -> 后端各服务
+页面 -> src/api/modules/<group>.ts -> src/api/index.ts -> /auth 或 /api/v1/<module> -> STSS Gateway -> 后端各服务
 ```
 
 推荐接口前缀：
 
-- `/api/auth`
-- `/api/base-info`
-- `/api/schedule`
-- `/api/course-selection`
-- `/api/forum`
-- `/api/online-test`
-- `/api/score`
+- `/auth`
+- `/api/v1/info`
+- `/api/v1/schedule`
+- `/api/v1/course-selection`
+- `/api/v1/forum`
+- `/api/v1/online-test`
+- `/api/v1/grade`
 
 ### 5.2 前后端响应格式统一
 
@@ -328,7 +430,7 @@ Authorization: Bearer <token>
 - 任何业务页面文件，例如 `src/views/stss/forum/posts/index.vue`
 
 ```ts
-axios.get("/api/forum/posts");
+axios.get("/api/v1/forum/posts");
 ```
 
 应该统一写成：
@@ -341,9 +443,10 @@ axios.get("/api/forum/posts");
 ```ts
 // src/api/modules/forum.ts
 import http from "@/api";
+import { FORUM_API } from "@/api/config/servicePort";
 
 export const getForumPostListApi = (params: Forum.ReqPostList) => {
-  return http.get<Forum.ResPostList>("/forum/posts", params);
+  return http.get<Forum.ResPostList>(`${FORUM_API}/posts`, params);
 };
 ```
 
@@ -373,7 +476,7 @@ const { data } = await getForumPostListApi(params);
 - 目录名：短横线
 - store 字段：小驼峰
 
-## 八、开发流程建议
+## 九、开发流程建议
 
 如果进入并行开发阶段，优先顺序建议是：
 

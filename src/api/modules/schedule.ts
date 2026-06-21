@@ -1,9 +1,9 @@
 import type { ResPage, ResultData } from "@/api/interface";
-import { PORT1 } from "@/api/config/servicePort";
+import { SCHEDULE_API } from "@/api/config/servicePort";
 import type { Schedule } from "@/api/interface/schedule";
 import http from "@/api";
 
-const SCHEDULE_PREFIX = PORT1 + "/schedule";
+const SCHEDULE_PREFIX = SCHEDULE_API;
 
 // 课表查询
 export const getScheduleOverview = (params: Schedule.ScheduleQuery) => {
