@@ -164,28 +164,7 @@ const fetchExamList = async () => {
   loading.value = true;
   try {
     const res = await listMyExamRecords({ studentId, current: 1, size: 100 });
-<<<<<<< HEAD
     apiExamList.value = res.records.map(record => normalizeExamRecordItem(record));
-=======
-    apiExamList.value = res.records.map(r => ({
-      examId: `exam-00${r.examId}`,
-      examName: r.examTitle,
-      paperId: `paper-00${r.examId}`,
-      paperName: r.examTitle,
-      startTime: r.validStartTime,
-      endTime: r.validEndTime,
-      durationMinutes: r.durationMins,
-      status: resolveStatus(r.recordStatus, r.validStartTime, r.validEndTime, r.submittedCount ?? 0, r.allowedAttempts ?? 1),
-      totalScore: r.totalScore,
-      submitted: r.recordStatus === 1,
-      hasDraft: r.recordStatus === 0,
-      allowedAttempts: r.allowedAttempts ?? 1,
-      submittedCount: r.submittedCount ?? 0,
-      score: r.studentScore ?? undefined,
-      scoreVisible: r.scoreVisible ?? false,
-      answerVisible: r.answerVisible ?? false
-    }));
->>>>>>> 74c5ba8 (fix(entry): resolveStatus 改为时间优先判断，支持重考与成绩分析)
   } catch {
     console.warn("考试列表 API 调用失败，使用 mock 数据");
   } finally {
