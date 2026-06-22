@@ -3,6 +3,7 @@
  * 页面中不要直接写 axios/http，统一从这里导出。
  */
 import http from "@/api";
+import { ONLINE_TEST_API } from "@/api/config/servicePort";
 import type {
   ApiRequestBody,
   PageResult,
@@ -31,7 +32,7 @@ import type {
   ExamStatsVO
 } from "@/api/interface/onlineTest";
 
-const ACTIONS_URL = "/api/ot/v1/actions";
+const ACTIONS_URL = `${ONLINE_TEST_API}/actions`;
 
 /** 通用 POST action 请求 */
 function postAction<T>(action: string, data: Record<string, unknown>, opts?: { silent?: boolean }): Promise<T> {
@@ -110,7 +111,7 @@ export function importQuestionsByExcel(teacherId: number, file: File): Promise<a
   const formData = new FormData();
   formData.append("teacherId", teacherId.toString());
   formData.append("file", file);
-  return http.post("/api/ot/v1/actions/question-bank/import", formData, {
+  return http.post(`${ONLINE_TEST_API}/actions/question-bank/import`, formData, {
     headers: { "Content-Type": "multipart/form-data" }
   });
 }
@@ -165,5 +166,9 @@ export function getExamStats(params: ActionByIdReq): Promise<ExamStatsVO> {
 
 /** 导出成绩 Excel (指定 responseType 为 blob) */
 export function exportExamScores(teacherId: number, id: number): Promise<Blob> {
-  return http.post("/api/ot/v1/actions/exams/export", { teacherId, id }, { responseType: "blob" }) as unknown as Promise<Blob>;
+  return http.post(
+    `${ONLINE_TEST_API}/actions/exams/export`,
+    { teacherId, id },
+    { responseType: "blob" }
+  ) as unknown as Promise<Blob>;
 }

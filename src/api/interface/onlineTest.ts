@@ -1,6 +1,6 @@
 /**
  * 在线测试 — 后端 API 对应的 TypeScript 类型。
- * 对齐 STSS-Online-Testing 的 /api/ot/v1/actions 接口。
+ * 对齐 STSS-Online-Testing 的 /api/v1/online-test/actions 接口。
  */
 
 /* ────── 通用请求体 ────── */
