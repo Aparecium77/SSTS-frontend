@@ -1,2 +1,136 @@
 /* global css variable */
 $primary-color: var(--el-color-primary);
+
+/* ───────────────────────────────────────────────────────────────
+ * 成绩管理 · 专业后台风 design tokens
+ * 本文件经 vite additionalData 注入到每个 .vue 的 scoped scss，
+ * 因此这里只能放「变量 / mixin」（不被 @include 时不产出任何 CSS，
+ * 零重复）。各成绩页通过 @include score-* 复用统一风格。
+ * ─────────────────────────────────────────────────────────────── */
+
+// 强调主色（跟随 Element 主题色 #009688 Teal），仅用于 eyebrow 竖条 / 表头底纹 / 强调数值
+$score-brand: var(--el-color-primary);
+$score-brand-wash: rgb(0 150 136 / 6%); // 表头 / 工具条极淡底纹
+$score-brand-line: rgb(0 150 136 / 24%); // 表头细下线 / 竖条
+
+// 表面与文字层级
+$score-surface: #ffffff;
+$score-ink: #1f2733; // 主文字 / 标题
+$score-ink-soft: #5b6b7c; // 次要文字 / eyebrow
+$score-line: #e6eaf0; // 极细分隔线
+
+// 卡片几何
+$score-radius: 10px;
+$score-radius-sm: 8px;
+
+// 双层淡影：贴地 1px + 远处柔影，专业且不浮夸
+$score-card-shadow:
+  0 1px 2px rgb(31 45 61 / 6%),
+  0 8px 24px rgb(31 45 61 / 6%);
+
+// 页面渐变底（柔和冷调，保留原有渐变观感但更统一克制）
+$score-page-bg: linear-gradient(135deg, rgb(246 248 250 / 96%), rgb(238 243 242 / 94%));
+
+/* 页面根容器：渐变底 + 内边距 */
+@mixin score-page {
+  min-height: 100%;
+  padding: 18px;
+  background: $score-page-bg;
+}
+
+/* 卡片：白底 + 细边 + 圆角 + 双层淡影 */
+@mixin score-card($radius: $score-radius) {
+  background: $score-surface;
+  border: 1px solid $score-line;
+  border-radius: $radius;
+  box-shadow: $score-card-shadow;
+}
+
+/* 页头卡：flex 两端对齐 + 标题层级 */
+@mixin score-header {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px;
+  h2 {
+    margin: 2px 0 0;
+    font-size: 20px;
+    font-weight: 600;
+    color: $score-ink;
+  }
+}
+
+/* 页头小标（eyebrow）：带字间距，主色弱化 */
+@mixin score-eyebrow {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: $score-ink-soft;
+  letter-spacing: 0.08em;
+}
+
+/* 页头 signature 竖条（3px 主色），配合 .score-heading 包裹层使用 */
+@mixin score-brand-bar {
+  flex: none;
+  align-self: stretch;
+  width: 3px;
+  min-height: 34px;
+  background: $score-brand;
+  border-radius: 2px;
+}
+
+/* 工具条：成块的浅色容器（淡主色底 + 细边） */
+@mixin score-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 12px;
+  background: $score-brand-wash;
+  border: 1px solid $score-line;
+  border-radius: $score-radius-sm;
+}
+
+/* 数据指标卡（大字 metric） */
+@mixin score-metric-tile {
+  display: grid;
+  gap: 8px;
+  min-height: 112px;
+  padding: 18px;
+  span {
+    font-size: 13px;
+    color: $score-ink-soft;
+  }
+  strong {
+    font-size: 28px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: $score-ink;
+  }
+}
+
+/* el-table 统一主题：淡主色表头 + 细下线 + 强调列。
+ * 在 scoped 下需用 :deep 命中 Element 内部，故调用处写：
+ *   .xxx-surface :deep(.el-table) { @include score-table-theme; }
+ */
+@mixin score-table-theme {
+  border-radius: $score-radius-sm;
+  .el-table__header th.el-table__cell {
+    font-size: 13px;
+    font-weight: 600;
+    color: $score-ink;
+    background: $score-brand-wash;
+    border-bottom: 1px solid $score-brand-line;
+  }
+  .el-table__row td.el-table__cell {
+    border-bottom-color: $score-line;
+  }
+
+  // 强调列（class-name="emphasis-col"）：主色 + 等宽数字加粗
+  td.el-table__cell.emphasis-col .cell {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: $score-brand;
+  }
+}
