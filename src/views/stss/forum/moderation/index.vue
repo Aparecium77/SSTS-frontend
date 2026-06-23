@@ -57,7 +57,7 @@
             <el-form-item label="状态">
               <el-select v-model="queryForm.status" clearable placeholder="全部状态" style="width: 150px">
                 <el-option label="待处理" value="pending" />
-                <el-option label="已通过" value="approved" />
+                <el-option label="已驳回" value="approved" />
                 <el-option label="已隐藏" value="hidden" />
                 <el-option label="已删除" value="deleted" />
               </el-select>
@@ -233,7 +233,7 @@
                 <el-button link type="primary" @click="openDetailDrawer(row)">详情</el-button>
 
                 <template v-if="row.status === 'pending'">
-                  <el-button v-if="canApprove" link type="success" @click="openHandleDialog(row, 'approved')"> 通过 </el-button>
+                  <el-button v-if="canApprove" link type="primary" @click="openHandleDialog(row, 'approved')"> 驳回 </el-button>
                   <el-button v-if="canApprove" link type="warning" @click="openHandleDialog(row, 'hidden')"> 隐藏 </el-button>
                   <el-button v-if="canReject" link type="danger" @click="openHandleDialog(row, 'deleted')"> 删除 </el-button>
                 </template>
@@ -325,7 +325,7 @@
           </template>
 
           <el-space wrap>
-            <el-button v-if="canApprove" type="success" @click="openHandleDialog(currentItem, 'approved')"> 通过 </el-button>
+            <el-button v-if="canApprove" type="primary" @click="openHandleDialog(currentItem, 'approved')"> 驳回 </el-button>
             <el-button v-if="canApprove" type="warning" @click="openHandleDialog(currentItem, 'hidden')"> 隐藏 </el-button>
             <el-button v-if="canReject" type="danger" @click="openHandleDialog(currentItem, 'deleted')"> 删除 </el-button>
           </el-space>
@@ -335,12 +335,7 @@
 
     <el-dialog v-model="handleDialogVisible" :title="handleDialogTitle" width="520px">
       <template v-if="handlingItem">
-        <el-alert
-          :closable="false"
-          show-icon
-          :title="`即将对 ${targetTypeTextMap[handlingItem.target_type]}「${handlingItem.title}」执行：${statusTextMap[handleForm.status]}`"
-          type="warning"
-        />
+        <el-alert :closable="false" show-icon :title="handleConfirmTitle" type="warning" />
 
         <el-form class="handle-form" :model="handleForm" label-width="80px">
           <el-form-item label="处理说明">
@@ -392,10 +387,10 @@ const targetTypeTextMap: Record<Forum.ModerationTargetType, string> = {
 };
 
 const statusTextMap: Record<Forum.ModerationStatus, string> = {
-  pending: "待处理",
-  approved: "已通过",
-  hidden: "已隐藏",
-  deleted: "已删除"
+  pending: "待审",
+  approved: "驳回",
+  hidden: "隐藏",
+  deleted: "删除"
 };
 
 const statusTagMap: Record<Forum.ModerationStatus, "success" | "info" | "warning" | "danger"> = {
@@ -489,8 +484,16 @@ const handleDialogTitle = computed(() => {
   return `处理举报：${statusTextMap[handleForm.status]}`;
 });
 
-const handleButtonType = computed<"success" | "warning" | "danger">(() => {
-  if (handleForm.status === "approved") return "success";
+const handleConfirmTitle = computed(() => {
+  if (!handlingItem.value) return "";
+  const target = `${targetTypeTextMap[handlingItem.value.target_type]}「${handlingItem.value.title}」`;
+  if (handleForm.status === "approved") return `即将驳回举报，保留 ${target} 的原展示状态`;
+  if (handleForm.status === "hidden") return `即将通过举报，并隐藏 ${target}`;
+  return `即将通过举报，并删除 ${target}`;
+});
+
+const handleButtonType = computed<"primary" | "warning" | "danger">(() => {
+  if (handleForm.status === "approved") return "primary";
   if (handleForm.status === "hidden") return "warning";
   return "danger";
 });
@@ -637,16 +640,28 @@ const openHandleDialog = (item: ModerationRow, status: Forum.ModerationStatus) =
   handleDialogVisible.value = true;
 };
 
+const rejectReportWithoutChangingTargetVisibility = async (moderationId: number, payload: Forum.ModerationHandleForm) => {
+  // 当前后端的 approved 会切换目标帖子/回复的可见状态。
+  // “驳回举报”在业务上应保留原内容，所以这里连续调用两次 approved，抵消后端的可见性切换副作用。
+  await ForumAPI.handleModeration(moderationId, payload);
+  return ForumAPI.handleModeration(moderationId, payload);
+};
+
 const submitHandle = async () => {
   if (!handlingItem.value || !canView.value) return;
 
   submitting.value = true;
 
   try {
-    const res = await ForumAPI.handleModeration(handlingItem.value.id, {
+    const payload = {
       status: handleForm.status,
       reason: handleForm.reason?.trim() || getDefaultReason(handleForm.status)
-    });
+    };
+
+    const res =
+      handleForm.status === "approved"
+        ? await rejectReportWithoutChangingTargetVisibility(handlingItem.value.id, payload)
+        : await ForumAPI.handleModeration(handlingItem.value.id, payload);
 
     const updated = normalizeApiModeration(res.data as Forum.ModerationItem & Record<string, any>);
     updateLocalModeration(updated.id, updated);
@@ -675,9 +690,9 @@ const updateLocalModeration = (id: number, patch: Partial<ModerationRow>) => {
 };
 
 const getDefaultReason = (status: Forum.ModerationStatus) => {
-  if (status === "approved") return "内容未发现明显违规，审核通过。";
-  if (status === "hidden") return "内容存在争议或不适合公开展示，已隐藏处理。";
-  if (status === "deleted") return "内容违反论坛规范，已删除处理。";
+  if (status === "approved") return "举报内容依据不足，驳回举报，原内容保留。";
+  if (status === "hidden") return "举报成立，内容不适合继续公开展示，已隐藏处理。";
+  if (status === "deleted") return "举报成立，内容违反论坛规范，已删除处理。";
   return "";
 };
 

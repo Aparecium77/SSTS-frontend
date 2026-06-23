@@ -46,10 +46,38 @@
       <slot v-if="dataCount > 0" />
       <el-empty v-else :description="emptyDescription" />
     </section>
+
+    <el-dialog v-model="popupVisible" class="forum-popup-dialog" width="560px" :close-on-click-modal="false">
+      <template #header>
+        <div class="popup-header">
+          <span class="popup-header__eyebrow">课程公告</span>
+          <strong>请注意查看</strong>
+        </div>
+      </template>
+
+      <div class="popup-list">
+        <article v-for="notice in popupAnnouncements" :key="notice.id" class="popup-notice">
+          <div class="popup-notice__title-row">
+            <span class="popup-notice__title">{{ notice.title }}</span>
+            <el-tag v-if="notice.pinned" size="small" type="danger">置顶</el-tag>
+          </div>
+          <div class="popup-notice__meta">{{ notice.course_id || "未知课程" }} · {{ formatPopupTime(notice.created_at) }}</div>
+          <p class="popup-notice__content">{{ notice.content }}</p>
+        </article>
+      </div>
+
+      <template #footer>
+        <el-button type="primary" @click="confirmPopupAnnouncements">我知道了</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts" name="forumPageShell">
+import { computed, onMounted, ref } from "vue";
+import { ForumAPI } from "@/api/modules/forum";
+import type { Forum } from "@/api/interface/forum";
+
 interface StatItem {
   label: string;
   value: string | number;
@@ -72,6 +100,74 @@ withDefaults(
     stats: () => []
   }
 );
+
+const popupVisible = ref(false);
+const popupAnnouncements = ref<Forum.NoticeItem[]>([]);
+const currentForumUser = computed(() => ForumAPI.getCurrentForumUser());
+
+const popupStorageKey = (noticeId: number) => `forum-popup-read-${noticeId}`;
+
+const hasReadPopup = (noticeId: number) => {
+  if (typeof window === "undefined") return true;
+  return window.sessionStorage.getItem(popupStorageKey(noticeId)) === "1";
+};
+
+const markPopupRead = (noticeId: number) => {
+  if (typeof window === "undefined") return;
+  window.sessionStorage.setItem(popupStorageKey(noticeId), "1");
+};
+
+const sortNotices = (items: Forum.NoticeItem[]) => {
+  return [...items].sort((a, b) => {
+    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+    return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+  });
+};
+
+const loadPopupAnnouncements = async () => {
+  if (currentForumUser.value.backend_role !== "student") return;
+
+  try {
+    const courseIds = await ForumAPI.CourseSelectClient.getAccessibleCourseIds();
+    if (courseIds.length === 0) return;
+
+    const results = await Promise.allSettled(
+      courseIds.map(courseId =>
+        ForumAPI.getAnnouncementList({
+          page: 1,
+          page_size: 50,
+          course_id: courseId,
+          status: "published",
+          sort_by: "created_at",
+          sort_order: "desc"
+        })
+      )
+    );
+
+    const notices = results
+      .flatMap(result => (result.status === "fulfilled" ? (result.value.data?.items ?? []) : []))
+      .filter(notice => notice.status === "published" && notice.popup && !hasReadPopup(notice.id));
+
+    popupAnnouncements.value = sortNotices(notices);
+    popupVisible.value = popupAnnouncements.value.length > 0;
+  } catch (error) {
+    console.warn("加载课程弹窗公告失败：", error);
+  }
+};
+
+const confirmPopupAnnouncements = () => {
+  popupAnnouncements.value.forEach(notice => markPopupRead(notice.id));
+  popupVisible.value = false;
+};
+
+const formatPopupTime = (time?: string | null) => {
+  if (!time) return "未知时间";
+  return time.replace("T", " ").slice(0, 16);
+};
+
+onMounted(() => {
+  loadPopupAnnouncements();
+});
 </script>
 
 <style scoped lang="scss">
@@ -167,6 +263,56 @@ withDefaults(
 .forum-section__header p {
   margin: 0;
   color: #64748b;
+}
+.popup-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.popup-header__eyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--el-color-primary);
+  letter-spacing: 0.12em;
+}
+.popup-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 52vh;
+  overflow: auto;
+}
+.popup-notice {
+  padding: 14px 16px;
+  background: var(--el-fill-color-lighter);
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 12px;
+}
+.popup-notice__title-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+.popup-notice__title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--el-text-color-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.popup-notice__meta {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.popup-notice__content {
+  margin: 10px 0 0;
+  line-height: 1.7;
+  color: var(--el-text-color-regular);
+  white-space: pre-wrap;
 }
 
 @media (width <= 1100px) {

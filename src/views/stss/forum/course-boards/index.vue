@@ -294,6 +294,7 @@
                 <div>
                   <span class="reply-author">{{ getAuthorName(reply.author_name, reply.author_id) }}</span>
                   <span class="reply-time"> #{{ reply.floor }} · {{ formatTime(reply.created_at) }}</span>
+                  <el-tag v-if="reply.status === 'hidden'" size="small" type="info">已隐藏</el-tag>
                 </div>
                 <el-space>
                   <el-button v-if="canReportContent" link type="warning" @click="openReportDialog('reply', reply.id)">
@@ -311,6 +312,7 @@
                     <div>
                       <span class="reply-author">{{ getAuthorName(child.author_name, child.author_id) }}：</span>
                       <span class="reply-time">#{{ child.floor }} · {{ formatTime(child.created_at) }}</span>
+                      <el-tag v-if="child.status === 'hidden'" size="small" type="info">已隐藏</el-tag>
                     </div>
                     <el-space>
                       <el-button v-if="canReportContent" link type="warning" @click="openReportDialog('reply', child.id)">
@@ -494,12 +496,15 @@ const postRules: FormRules = {
 };
 
 const postButtons = computed(() => authStore.authButtonListGet?.forumPosts || []);
+const currentForumUser = computed(() => ForumAPI.getCurrentForumUser());
 
 const canView = computed(() => BUTTONS.view !== false);
 const canCreatePost = computed(() => Boolean(BUTTONS.create || postButtons.value.includes("create")));
 const canReplyPost = computed(() => Boolean(BUTTONS.reply || postButtons.value.includes("reply")));
 const canDeleteContent = computed(() => Boolean(BUTTONS.delete || postButtons.value.includes("delete")));
-const canReportContent = computed(() => canCreatePost.value || canReplyPost.value);
+const canReportContent = computed(
+  () => canView.value && (canCreatePost.value || canReplyPost.value || currentForumUser.value.backend_role === "admin")
+);
 
 const boardOptions = computed(() => boards.value);
 
