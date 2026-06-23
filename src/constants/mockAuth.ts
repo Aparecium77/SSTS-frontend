@@ -46,7 +46,7 @@ export const mockUsers: MockUser[] = [
 ];
 
 const menuMap: Record<RoleKey, Menu.MenuOptions[]> = {
-  student: [homeMenu, courseSelectionMenu("student"), forumMenu(), onlineTestMenu(), scoreMenu()],
+  student: [homeMenu, courseSelectionMenu(), forumMenu(), onlineTestMenu("student"), scoreMenu()],
   teacher: [
     homeMenu,
     createGroup(
@@ -58,7 +58,7 @@ const menuMap: Record<RoleKey, Menu.MenuOptions[]> = {
     ),
     courseSelectionMenu("teacher"),
     forumMenu(),
-    onlineTestMenu(),
+    onlineTestMenu("teacher"),
     scoreMenu()
   ],
   academic_admin: [
@@ -67,7 +67,7 @@ const menuMap: Record<RoleKey, Menu.MenuOptions[]> = {
     scheduleMenu(),
     courseSelectionMenu("academic_admin"),
     forumMenu(),
-    onlineTestMenu(),
+    onlineTestMenu("teacher"),
     scoreMenu()
   ]
 };
@@ -86,6 +86,7 @@ const buttonMap: Record<RoleKey, Login.ResAuthButtons> = {
     forumPosts: ["view", "create", "reply"],
     forumSearch: ["view"],
     examEntry: ["view", "start", "submit"],
+    examTaking: ["view", "start", "submit"],
     examAnalytics: ["view"],
     scoreQuery: ["view"],
     creditProgress: ["view"],
@@ -102,6 +103,7 @@ const buttonMap: Record<RoleKey, Login.ResAuthButtons> = {
     questionBank: ["view"],
     papers: ["view"],
     examEntry: ["view"],
+    examTaking: ["view"],
     examGrading: ["view", "grade", "publish"],
     examAnalytics: ["view", "export"],
     scoreEntry: ["view", "save", "submit", "import"],
@@ -140,6 +142,7 @@ const buttonMap: Record<RoleKey, Login.ResAuthButtons> = {
     questionBank: ["view", "create", "edit"],
     papers: ["view", "create", "edit"],
     examEntry: ["view"],
+    examTaking: ["view"],
     examGrading: ["view", "publish"],
     examAnalytics: ["view", "export"],
     scoreEntry: ["view"],
