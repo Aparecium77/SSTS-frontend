@@ -18,6 +18,7 @@
     </div>
     <template #footer>
       <span class="dialog-footer">
+        <el-button type="primary" plain @click="handleEdit">编辑</el-button>
         <el-button @click="dialogVisible = false">取消</el-button>
         <el-button type="primary" @click="dialogVisible = false">确认</el-button>
       </span>
@@ -27,8 +28,10 @@
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import { useRouter } from "vue-router";
 import { useUserStore } from "@/stores/modules/user";
 
+const router = useRouter();
 const userStore = useUserStore();
 
 const dialogVisible = ref(false);
@@ -50,6 +53,11 @@ const roleAccount = computed(() => accountMap[userStore.userInfo.role] ?? "-");
 
 const openDialog = () => {
   dialogVisible.value = true;
+};
+
+const handleEdit = () => {
+  dialogVisible.value = false;
+  router.push("/base-info/profile");
 };
 
 defineExpose({ openDialog });
