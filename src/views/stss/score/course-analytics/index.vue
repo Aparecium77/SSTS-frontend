@@ -1,16 +1,340 @@
 <template>
-  <ModuleScaffold
-    group-label="成绩管理组"
-    module-label="课程成绩分析"
-    description="成绩管理组的同学在这里继续开发课程维度成绩分析、分布统计和导出页面。"
-    view-path="src/views/stss/score/course-analytics/index.vue"
-    api-path="src/api/modules/score.ts"
-    type-path="src/api/interface/score.ts"
-  />
+  <div class="course-analytics-page">
+    <section class="analytics-header">
+      <div class="score-heading">
+        <span class="brand-bar" aria-hidden="true"></span>
+        <div>
+          <p class="eyebrow">成绩管理</p>
+          <h2>课程成绩分析</h2>
+        </div>
+      </div>
+      <div class="header-actions">
+        <el-button :icon="Refresh" :loading="loading" @click="reload">刷新</el-button>
+        <el-button type="primary" :icon="Download" :disabled="!analysis" :loading="exportingXlsx" @click="handleExport('xlsx')">
+          导出 Excel
+        </el-button>
+        <el-button :icon="Download" :disabled="!analysis" :loading="exportingPdf" @click="handleExport('pdf')">
+          导出 PDF
+        </el-button>
+      </div>
+    </section>
+
+    <section class="analytics-filters">
+      <el-select
+        v-model="selectedCourseKey"
+        placeholder="选择课程"
+        clearable
+        filterable
+        class="filter-control"
+        @change="handleCourseChange"
+      >
+        <el-option
+          v-for="course in courseOptions"
+          :key="course.course_id"
+          :label="courseOptionLabel(course)"
+          :value="course.course_id"
+        />
+      </el-select>
+      <el-select
+        v-model="selectedSemester"
+        placeholder="选择学期"
+        clearable
+        filterable
+        class="filter-control semester-control"
+        @change="handleSemesterChange"
+      >
+        <el-option v-for="semester in semesterOptions" :key="semester" :label="semester" :value="semester" />
+      </el-select>
+    </section>
+
+    <template v-if="analysis">
+      <section class="metric-grid">
+        <div class="metric-tile">
+          <span>平均分</span>
+          <strong>{{ analysis.average_score }}</strong>
+        </div>
+        <div class="metric-tile">
+          <span>最高分</span>
+          <strong>{{ analysis.max_score }}</strong>
+        </div>
+        <div class="metric-tile">
+          <span>最低分</span>
+          <strong>{{ analysis.min_score }}</strong>
+        </div>
+        <div class="metric-tile">
+          <span>通过率</span>
+          <strong>{{ analysis.pass_rate }}%</strong>
+        </div>
+      </section>
+
+      <section class="analytics-grid">
+        <div class="analytics-panel">
+          <div class="panel-head">
+            <h3>分数段分布</h3>
+            <span>{{ analysis.total_students }} 人</span>
+          </div>
+          <div class="bar-list">
+            <div v-for="item in analysis.distribution" :key="item.range" class="bar-row">
+              <span>{{ item.range }}</span>
+              <el-progress :percentage="Math.round(item.percentage)" :stroke-width="12" />
+              <strong>{{ item.count }}</strong>
+            </div>
+          </div>
+        </div>
+
+        <div class="analytics-panel">
+          <div class="panel-head">
+            <h3>等级统计</h3>
+            <span>优秀率 {{ analysis.excellent_rate }}%</span>
+          </div>
+          <div class="bar-list">
+            <div v-for="item in analysis.grade_levels" :key="item.level" class="bar-row">
+              <span>{{ item.level }}</span>
+              <el-progress :percentage="Math.round(item.percentage)" :stroke-width="12" status="success" />
+              <strong>{{ item.count }}</strong>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="analytics-panel summary-panel">
+        <div class="panel-head">
+          <h3>排名摘要</h3>
+        </div>
+        <div class="summary-tags">
+          <el-tag v-for="[key, value] in rankingSummaryEntries" :key="key" effect="dark">{{ key }}：{{ value }}</el-tag>
+        </div>
+      </section>
+
+      <section v-if="analysis.rankings?.length" class="analytics-panel table-panel">
+        <div class="panel-head">
+          <h3>完整排名表</h3>
+          <span>共 {{ analysis.rankings.length }} 人</span>
+        </div>
+        <el-table :data="analysis.rankings" border max-height="360" empty-text="暂无排名数据">
+          <el-table-column prop="rank" label="名次" width="80" align="center" />
+          <el-table-column prop="student_no" label="学号" min-width="120" />
+          <el-table-column prop="student_name" label="姓名" min-width="110" />
+          <el-table-column prop="total_score" label="总评" width="100" align="center" />
+          <el-table-column prop="gpa" label="GPA" width="100" align="center" />
+        </el-table>
+      </section>
+
+      <section v-if="analysis.historical_comparison?.length" class="analytics-panel table-panel">
+        <div class="panel-head">
+          <h3>历年同课程对比</h3>
+        </div>
+        <el-table :data="analysis.historical_comparison" border empty-text="暂无历年数据">
+          <el-table-column prop="semester" label="学期" min-width="140" />
+          <el-table-column prop="student_count" label="人数" width="90" align="center" />
+          <el-table-column prop="average_score" label="平均分" width="110" align="center" />
+          <el-table-column prop="pass_rate" label="通过率(%)" width="120" align="center" />
+          <el-table-column prop="excellent_rate" label="优秀率(%)" width="120" align="center" />
+        </el-table>
+      </section>
+    </template>
+
+    <section v-else class="empty-panel">
+      <el-empty v-loading="loading" description="请选择课程和学期查看分析" />
+    </section>
+  </div>
 </template>
 
 <script setup lang="ts" name="courseScoreAnalytics">
-import ModuleScaffold from "@/views/stss/components/ModuleScaffold.vue";
+import { computed, onMounted, ref } from "vue";
+import { Download, Refresh } from "@element-plus/icons-vue";
+import { ElMessage } from "element-plus";
+import type { Score } from "@/api/interface/score";
+import { exportCourseAnalysis, getCourseAnalysis, getGradeCourses } from "@/api/modules/score";
+import { saveBlob } from "@/utils/download";
+import {
+  courseOptionLabel,
+  firstCourseOffering,
+  semesterOptionsForCourse,
+  uniqueCourseOptions
+} from "@/views/stss/score/_shared/courseSelection";
 
-// 成绩管理组的同学在这里继续补充课程成绩分析页面逻辑。
+const loading = ref(false);
+const exportingXlsx = ref(false);
+const exportingPdf = ref(false);
+const courses = ref<Score.Course[]>([]);
+const selectedCourseKey = ref("");
+const selectedSemester = ref("");
+const analysis = ref<Score.CourseAnalysis | null>(null);
+
+const availableCourses = computed(() => courses.value.filter(course => course.course_id && course.semester));
+const courseOptions = computed(() => uniqueCourseOptions(availableCourses.value));
+const selectedCourseId = computed(() => selectedCourseKey.value);
+const semesterOptions = computed(() => semesterOptionsForCourse(availableCourses.value, selectedCourseId.value));
+
+const rankingSummaryEntries = computed(() => Object.entries(analysis.value?.ranking_summary ?? {}));
+
+const loadCourses = async () => {
+  const resp = await getGradeCourses();
+  courses.value = resp.data.courses;
+  if (!selectedCourseKey.value) {
+    const first = firstCourseOffering(availableCourses.value);
+    selectedCourseKey.value = first?.course_id || "";
+    selectedSemester.value = first?.semester || "";
+  } else if (selectedSemester.value && !semesterOptions.value.includes(selectedSemester.value)) {
+    selectedSemester.value = semesterOptions.value[0] || "";
+  }
+};
+
+const loadAnalysis = async () => {
+  if (!selectedCourseId.value || !selectedSemester.value) {
+    analysis.value = null;
+    return;
+  }
+  loading.value = true;
+  try {
+    const resp = await getCourseAnalysis(selectedCourseId.value, { semester: selectedSemester.value });
+    analysis.value = resp.data;
+  } finally {
+    loading.value = false;
+  }
+};
+
+const reload = async () => {
+  await loadCourses();
+  await loadAnalysis();
+};
+
+const handleCourseChange = () => {
+  selectedSemester.value = semesterOptions.value[0] || "";
+  loadAnalysis();
+};
+
+const handleSemesterChange = () => {
+  loadAnalysis();
+};
+
+const handleExport = async (format: "xlsx" | "pdf") => {
+  if (!analysis.value || !selectedCourseId.value || !selectedSemester.value) return;
+  const exporting = format === "pdf" ? exportingPdf : exportingXlsx;
+  exporting.value = true;
+  try {
+    const blob = await exportCourseAnalysis(selectedCourseId.value, {
+      semester: selectedSemester.value,
+      format
+    });
+    saveBlob(blob, `${selectedCourseId.value}-${selectedSemester.value}-成绩分析.${format === "pdf" ? "pdf" : "xlsx"}`);
+    ElMessage.success(format === "pdf" ? "PDF 导出已开始" : "Excel 导出已开始");
+  } finally {
+    exporting.value = false;
+  }
+};
+
+onMounted(reload);
 </script>
+
+<style scoped lang="scss">
+.course-analytics-page {
+  @include score-page;
+}
+.analytics-header,
+.analytics-filters,
+.metric-tile,
+.analytics-panel,
+.empty-panel {
+  @include score-card;
+}
+.analytics-header {
+  @include score-header;
+}
+.score-heading {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.brand-bar {
+  @include score-brand-bar;
+}
+.eyebrow {
+  @include score-eyebrow;
+}
+.header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.analytics-filters {
+  @include score-filter-bar;
+
+  gap: 10px;
+  margin-top: 12px;
+}
+.filter-control {
+  width: 260px;
+}
+.metric-grid,
+.analytics-grid {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+.metric-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.analytics-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.metric-tile {
+  @include score-metric-tile;
+}
+.analytics-panel,
+.empty-panel {
+  padding: 16px;
+}
+.analytics-panel :deep(.el-table) {
+  @include score-table-theme;
+}
+.summary-panel,
+.table-panel {
+  margin-top: 12px;
+}
+.panel-head {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  h3 {
+    margin: 0;
+  }
+  span {
+    color: var(--el-text-color-secondary);
+  }
+}
+.bar-list {
+  display: grid;
+  gap: 12px;
+}
+.bar-row {
+  display: grid;
+  grid-template-columns: 72px minmax(120px, 1fr) 48px;
+  gap: 10px;
+  align-items: center;
+}
+.summary-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+@media (width <= 900px) {
+  .analytics-header,
+  .panel-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .filter-control {
+    width: 100%;
+  }
+  .metric-grid,
+  .analytics-grid {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

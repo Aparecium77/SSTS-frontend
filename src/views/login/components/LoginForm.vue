@@ -1,7 +1,7 @@
 <template>
   <el-form ref="loginFormRef" :model="loginForm" :rules="loginRules" size="large">
     <el-form-item prop="username">
-      <el-input v-model="loginForm.username" placeholder="请输入账号：student / teacher / academic_admin">
+      <el-input v-model="loginForm.username" placeholder="teacher / academic_admin / 20266003 或 联调学生丙">
         <template #prefix>
           <el-icon class="el-input__icon">
             <User />
@@ -78,7 +78,11 @@ const login = (formEl: FormInstance | undefined) => {
     try {
       const { data } = await loginApi({ ...loginForm, password: md5(loginForm.password) });
       userStore.setToken(data.access_token);
-      userStore.setUserInfo(data.user_info);
+      userStore.setUserInfo({
+        name: data.user_info.name,
+        role: data.user_info.role,
+        userId: data.user_info.user_id
+      });
 
       await initDynamicRouter();
 

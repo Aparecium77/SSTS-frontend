@@ -1,12 +1,13 @@
 import md5 from "md5";
 import type { Login } from "@/api/interface";
+import { resolveStudentLogin } from "@/api/modules/score";
 import { ResultEnum } from "@/enums/httpEnum";
 import { baseInfoMenu } from "@/views/stss/base-info/menu";
 import { scheduleMenu } from "@/views/stss/schedule/menu";
 import { courseSelectionMenu } from "@/views/stss/course-selection/menu";
 import { forumMenu } from "@/views/stss/forum/menu";
 import { onlineTestMenu } from "@/views/stss/online-test/menu";
-import { scoreMenu } from "@/views/stss/score/menu";
+import { scoreMenu, type ScoreMenuName } from "@/views/stss/score/menu";
 import { cloneMenuList, createGroup, createMenu } from "@/views/stss/menu";
 
 type RoleKey = "student" | "teacher" | "academic_admin";
@@ -17,36 +18,107 @@ interface MockUser {
   name: string;
   role: RoleKey;
   token: string;
+  /** 成绩模块联调用的真实用户 ID（对应后端 X-User-ID / grade_total.student_id） */
+  userId: string;
 }
 
+const MOCK_PASSWORD_HASH = md5("123456");
+const STUDENT_TOKEN_PREFIX = "token-student-";
+
+/** 常见学号笔误 → 正确学号 */
+const STUDENT_LOGIN_ALIASES: Record<string, string> = {
+  "20066001": "20266001",
+  "20066002": "20266002",
+  "20066003": "20266003"
+};
+
+const normalizeStudentLoginKey = (raw: string) => {
+  const key = raw.trim();
+  return STUDENT_LOGIN_ALIASES[key] ?? key;
+};
+
 const homeMenu = createMenu("/home/index", "home", "/home/index", "首页", "HomeFilled", { isAffix: true });
+
+const scoreMenuNamesByRole: Record<RoleKey, ScoreMenuName[]> = {
+  student: ["scoreQuery", "creditProgress", "personalScoreAnalytics"],
+  teacher: ["scoreEntry", "scoreQuery", "scoreChangeRequest", "courseScoreAnalytics"],
+  academic_admin: [
+    "scoreEntry",
+    "scoreQuery",
+    "scoreChangeRequest",
+    "scoreChangeApproval",
+    "scoreAdminGlobal",
+    "courseScoreAnalytics"
+  ]
+};
+
+const scoreMenuForRole = (role: RoleKey) => scoreMenu(scoreMenuNamesByRole[role]);
 
 export const mockUsers: MockUser[] = [
   {
     username: "student",
-    passwordHash: md5("123456"),
-    name: "学生用户",
+    passwordHash: MOCK_PASSWORD_HASH,
+    name: "联调学生甲（别名）",
     role: "student",
-    token: "token-student"
+    token: `${STUDENT_TOKEN_PREFIX}SXE001`,
+    userId: "SXE001"
+  },
+  {
+    username: "20266001",
+    passwordHash: MOCK_PASSWORD_HASH,
+    name: "联调学生甲",
+    role: "student",
+    token: `${STUDENT_TOKEN_PREFIX}SXE001`,
+    userId: "SXE001"
+  },
+  {
+    username: "20266002",
+    passwordHash: MOCK_PASSWORD_HASH,
+    name: "联调学生乙",
+    role: "student",
+    token: `${STUDENT_TOKEN_PREFIX}SXE002`,
+    userId: "SXE002"
+  },
+  {
+    username: "20266003",
+    passwordHash: MOCK_PASSWORD_HASH,
+    name: "联调学生丙",
+    role: "student",
+    token: `${STUDENT_TOKEN_PREFIX}SXE003`,
+    userId: "SXE003"
   },
   {
     username: "teacher",
-    passwordHash: md5("123456"),
+    passwordHash: MOCK_PASSWORD_HASH,
     name: "教师用户",
     role: "teacher",
-    token: "token-teacher"
+    token: "token-teacher",
+    userId: "T001"
   },
   {
     username: "academic_admin",
-    passwordHash: md5("123456"),
+    passwordHash: MOCK_PASSWORD_HASH,
     name: "教务管理员",
     role: "academic_admin",
-    token: "token-academic-admin"
+    token: "token-academic-admin",
+    userId: "A001"
   }
 ];
 
+const findPresetUser = (loginKey: string) => {
+  const normalized = normalizeStudentLoginKey(loginKey);
+  return (
+    mockUsers.find(user => user.username === loginKey || user.username === normalized) ??
+    mockUsers.find(
+      user =>
+        user.role === "student" &&
+        (user.name === loginKey || user.name === normalized || user.name.replace(/（别名）$/, "") === loginKey)
+    )
+  );
+};
+
 const menuMap: Record<RoleKey, Menu.MenuOptions[]> = {
-  student: [homeMenu, courseSelectionMenu(), forumMenu(), onlineTestMenu("student"), scoreMenu()],
+  student: [homeMenu, courseSelectionMenu(), forumMenu(), onlineTestMenu("student"), scoreMenuForRole("student")],
   teacher: [
     homeMenu,
     createGroup(
@@ -59,7 +131,7 @@ const menuMap: Record<RoleKey, Menu.MenuOptions[]> = {
     courseSelectionMenu("teacher"),
     forumMenu(),
     onlineTestMenu("teacher"),
-    scoreMenu()
+    scoreMenuForRole("teacher")
   ],
   academic_admin: [
     homeMenu,
@@ -68,7 +140,7 @@ const menuMap: Record<RoleKey, Menu.MenuOptions[]> = {
     courseSelectionMenu("academic_admin"),
     forumMenu(),
     onlineTestMenu("teacher"),
-    scoreMenu()
+    scoreMenuForRole("academic_admin")
   ]
 };
 
@@ -149,31 +221,79 @@ const buttonMap: Record<RoleKey, Login.ResAuthButtons> = {
     scoreQuery: ["view", "export"],
     scoreChangeRequest: ["view"],
     scoreChangeApproval: ["view", "approve", "reject"],
-    creditProgress: ["view"],
-    personalScoreAnalytics: ["view"],
+    scoreAdminGlobal: ["view", "export", "override"],
     courseScoreAnalytics: ["view", "export"]
   }
 };
 
-export const getMockUserByToken = (token: string) => mockUsers.find(user => user.token === token) ?? null;
+const buildStudentToken = (studentId: string) => `${STUDENT_TOKEN_PREFIX}${studentId}`;
 
-export const mockLogin = (params: Login.ReqLoginForm) => {
-  const matchedUser = mockUsers.find(user => user.username === params.username && user.passwordHash === params.password);
-  if (!matchedUser) {
-    return Promise.reject({ code: ResultEnum.ERROR, msg: "用户名或密码错误", data: null });
+export const getMockUserByToken = (token: string): MockUser | null => {
+  const fixed = mockUsers.find(user => user.token === token);
+  if (fixed) return fixed;
+  if (token.startsWith(STUDENT_TOKEN_PREFIX)) {
+    const userId = token.slice(STUDENT_TOKEN_PREFIX.length);
+    if (!userId) return null;
+    return {
+      username: userId,
+      passwordHash: "",
+      name: `学生 ${userId}`,
+      role: "student",
+      token,
+      userId
+    };
+  }
+  return null;
+};
+
+export const mockLogin = async (params: Login.ReqLoginForm) => {
+  // LoginForm 提交前已对密码做 md5，勿在此二次哈希
+  const passwordHash = (params.password.length === 32 ? params.password : md5(params.password)).toLowerCase();
+  if (passwordHash !== MOCK_PASSWORD_HASH.toLowerCase()) {
+    return Promise.reject({ code: ResultEnum.ERROR, msg: "密码错误，联调默认密码为 123456", data: null });
   }
 
-  return Promise.resolve({
-    code: ResultEnum.SUCCESS,
-    msg: "登录成功",
-    data: {
-      access_token: matchedUser.token,
-      user_info: {
-        name: matchedUser.name,
-        role: matchedUser.role
+  const loginKey = params.username.trim();
+  const matchedUser = findPresetUser(loginKey);
+  if (matchedUser) {
+    return Promise.resolve({
+      code: ResultEnum.SUCCESS,
+      msg: "登录成功",
+      data: {
+        access_token: matchedUser.token,
+        user_info: {
+          name: matchedUser.name,
+          role: matchedUser.role,
+          user_id: matchedUser.userId
+        }
       }
-    }
-  });
+    });
+  }
+
+  const rosterLoginKey = normalizeStudentLoginKey(loginKey);
+  try {
+    const resp = await resolveStudentLogin(rosterLoginKey);
+    const profile = resp.data;
+    return Promise.resolve({
+      code: ResultEnum.SUCCESS,
+      msg: "登录成功",
+      data: {
+        access_token: buildStudentToken(profile.student_id),
+        user_info: {
+          name: profile.student_name || profile.student_id,
+          role: "student",
+          user_id: profile.student_id
+        }
+      }
+    });
+  } catch (error: any) {
+    const isNetwork = error?.message?.includes?.("Network Error");
+    const msg = isNetwork
+      ? "无法连接成绩服务，请确认后端已启动（端口 8086）"
+      : error?.msg ||
+        `未找到该学生。请用学号 20266001～20266003、SXE001～003 或姓名「联调学生甲/乙/丙」登录；需先执行 seed_external_import_demo.py 同步名册`;
+    return Promise.reject({ code: ResultEnum.ERROR, msg, data: null });
+  }
 };
 
 export const getMockMenuByToken = (token: string) => {

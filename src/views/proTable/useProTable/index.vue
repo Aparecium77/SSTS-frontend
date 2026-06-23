@@ -109,7 +109,7 @@ const getTableList = (params: any) => {
 const { BUTTONS } = useAuthButtons();
 
 // 自定义渲染表头（使用tsx语法）
-const headerRender = (scope: HeaderRenderScope<User.ResUserList>) => {
+const headerRender = (scope: HeaderRenderScope) => {
   return (
     <el-button type="primary" onClick={() => ElMessage.success("我是通过 tsx 语法渲染的表头")}>
       {scope.column.label}
