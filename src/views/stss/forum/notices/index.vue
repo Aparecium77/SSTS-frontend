@@ -485,16 +485,33 @@ const loadBoards = async () => {
       status: "active"
     });
 
-    boards.value = (res.data?.items ?? []).map(item => normalizeBoard(item as Forum.BoardItem & Record<string, any>));
+    let allBoards = (res.data?.items ?? []).map(item => normalizeBoard(item as Forum.BoardItem & Record<string, any>));
 
-    if (boards.value.length === 0) {
-      boards.value = mockBoards.map(normalizeMockBoard);
+    if (allBoards.length === 0) {
+      allBoards = mockBoards.map(normalizeMockBoard);
     }
+
+    await filterAccessibleBoards(allBoards);
   } catch (error) {
     console.error("加载课程论坛板块失败：", error);
-    boards.value = mockBoards.map(normalizeMockBoard);
+    const allBoards = mockBoards.map(normalizeMockBoard);
+    await filterAccessibleBoards(allBoards);
   } finally {
     loading.boards = false;
+  }
+};
+
+const filterAccessibleBoards = async (allBoards: BoardView[]) => {
+  try {
+    const accessibleCourseIds = await ForumAPI.CourseSelectClient.getAccessibleCourseIds();
+
+    if (accessibleCourseIds.length === 0) {
+      boards.value = allBoards;
+    } else {
+      boards.value = allBoards.filter(board => accessibleCourseIds.includes(board.courseId));
+    }
+  } catch {
+    boards.value = allBoards;
   }
 };
 
@@ -507,6 +524,13 @@ const loadNotices = async () => {
 
   loading.notices = true;
 
+  let accessibleCourseIds: string[] = [];
+  try {
+    accessibleCourseIds = await ForumAPI.CourseSelectClient.getAccessibleCourseIds();
+  } catch {
+    accessibleCourseIds = [];
+  }
+
   try {
     const res = await ForumAPI.getAnnouncementList({
       page: pagination.page,
@@ -517,13 +541,25 @@ const loadNotices = async () => {
       sort_order: "desc"
     });
 
-    notices.value = (res.data?.items ?? []).map(item => normalizeApiNotice(item as Forum.NoticeItem & Record<string, any>));
+    let result = (res.data?.items ?? []).map(item => normalizeApiNotice(item as Forum.NoticeItem & Record<string, any>));
+
+    if (accessibleCourseIds.length > 0) {
+      result = result.filter(notice => accessibleCourseIds.includes(notice.courseId));
+    }
+
+    notices.value = result;
     pagination.total = res.data?.pagination?.total ?? notices.value.length;
     useMockData.value = false;
     setApiMessage("已连接公告接口。", "success");
   } catch (error) {
     console.error("加载公告失败：", error);
-    notices.value = mockNotices.map(normalizeMockNotice).filter(notice => notice.status !== "deleted");
+    let result = mockNotices.map(normalizeMockNotice).filter(notice => notice.status !== "deleted");
+
+    if (accessibleCourseIds.length > 0) {
+      result = result.filter(notice => accessibleCourseIds.includes(notice.courseId));
+    }
+
+    notices.value = result;
     pagination.total = notices.value.length;
     useMockData.value = true;
     setApiMessage("公告接口异常，当前使用本地数据兜底。", "warning");

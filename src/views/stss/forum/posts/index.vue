@@ -592,16 +592,32 @@ const loadBoards = async () => {
       status: "active"
     });
 
-    boards.value = (res.data?.items ?? []).map(item => normalizeBoard(item as Forum.BoardItem & Record<string, any>));
+    let allBoards = (res.data?.items ?? []).map(item => normalizeBoard(item as Forum.BoardItem & Record<string, any>));
 
-    if (boards.value.length === 0) {
-      boards.value = mockBoards.map(normalizeMockBoard);
+    if (allBoards.length === 0) {
+      allBoards = mockBoards.map(normalizeMockBoard);
     }
+
+    await filterAccessibleBoards(allBoards);
   } catch (error) {
     console.error("加载课程论坛板块失败：", error);
-    boards.value = mockBoards.map(normalizeMockBoard);
+    const allBoards = mockBoards.map(normalizeMockBoard);
+    await filterAccessibleBoards(allBoards);
   } finally {
     loading.boards = false;
+  }
+};
+
+const filterAccessibleBoards = async (allBoards: BoardView[]) => {
+  try {
+    const accessibleCourseIds = await ForumAPI.CourseSelectClient.getAccessibleCourseIds();
+    if (accessibleCourseIds.length === 0) {
+      boards.value = allBoards;
+    } else {
+      boards.value = allBoards.filter(board => accessibleCourseIds.includes(board.courseId));
+    }
+  } catch {
+    boards.value = allBoards;
   }
 };
 
@@ -613,6 +629,14 @@ const loadMyPosts = async () => {
   }
 
   loading.posts = true;
+
+  // 获取用户可访问的课程ID（用于mock数据过滤）
+  let accessibleCourseIds: string[] = [];
+  try {
+    accessibleCourseIds = await ForumAPI.CourseSelectClient.getAccessibleCourseIds();
+  } catch {
+    accessibleCourseIds = [];
+  }
 
   try {
     const res = await ForumAPI.getMyPostList({
@@ -637,6 +661,9 @@ const loadMyPosts = async () => {
     const currentRole = String(currentUser.backend_role || "");
 
     posts.value = mockPosts.map(normalizeMockPost).filter(post => {
+      // 检查课程访问权限：只有用户有权限访问的课程的帖子才能显示
+      const hasCourseAccess = accessibleCourseIds.length === 0 || accessibleCourseIds.includes(post.course_id);
+
       const matchOwner =
         post.author_id === currentUser.id ||
         post.author_name === currentUser.name ||
@@ -647,7 +674,7 @@ const loadMyPosts = async () => {
       const matchStatus = !queryForm.status || post.status === queryForm.status;
       const matchKeyword = !keyword || post.title.toLowerCase().includes(keyword) || post.content.toLowerCase().includes(keyword);
 
-      return matchOwner && matchBoard && matchModule && matchStatus && matchKeyword;
+      return hasCourseAccess && matchOwner && matchBoard && matchModule && matchStatus && matchKeyword;
     });
 
     pagination.total = posts.value.length;

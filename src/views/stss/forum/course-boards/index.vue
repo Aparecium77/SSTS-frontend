@@ -644,21 +644,42 @@ const loadBoards = async () => {
       status: "active"
     });
 
-    boards.value = (res.data?.items ?? []).map(item => normalizeBoard(item as Forum.BoardItem & Record<string, any>));
+    let allBoards = (res.data?.items ?? []).map(item => normalizeBoard(item as Forum.BoardItem & Record<string, any>));
 
-    if (boards.value.length === 0) {
-      boards.value = mockBoards.map(normalizeMockBoard);
+    if (allBoards.length === 0) {
+      allBoards = mockBoards.map(normalizeMockBoard);
       useMockData.value = true;
     } else {
       useMockData.value = false;
     }
+
+    await filterAccessibleBoards(allBoards);
   } catch (error) {
     console.error("加载课程论坛板块失败：", error);
-    boards.value = mockBoards.map(normalizeMockBoard);
+    const allBoards = mockBoards.map(normalizeMockBoard);
     useMockData.value = true;
+    await filterAccessibleBoards(allBoards);
     setApiMessage("课程论坛板块接口异常，当前使用本地板块数据兜底。", "warning");
   } finally {
     loading.boards = false;
+  }
+};
+
+const filterAccessibleBoards = async (allBoards: BoardView[]) => {
+  try {
+    const accessibleCourseIds = await ForumAPI.CourseSelectClient.getAccessibleCourseIds();
+
+    if (accessibleCourseIds.length === 0) {
+      boards.value = allBoards;
+      setApiMessage("课程访问控制：当前用户为管理员，可访问所有课程论坛。", "info");
+    } else {
+      boards.value = allBoards.filter(board => accessibleCourseIds.includes(board.courseId));
+      setApiMessage(`课程访问控制：已筛选出 ${boards.value.length} 个可访问的课程论坛。`, "success");
+    }
+  } catch (error) {
+    console.warn("课程访问控制校验失败，显示所有板块：", error);
+    boards.value = allBoards;
+    setApiMessage("课程访问控制校验失败，当前显示所有课程论坛。", "warning");
   }
 };
 

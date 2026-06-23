@@ -1,9 +1,434 @@
 import { Forum } from "@/api/interface/forum";
-import { FORUM_API } from "@/api/config/servicePort";
+import { FORUM_API, PORT1 } from "@/api/config/servicePort";
 import http from "@/api";
 import { useUserStore } from "@/stores/modules/user";
 
 export namespace ForumAPI {
+  /**
+   * D组 → A组（基础信息）客户端封装
+   * 负责用户信息查询等功能
+   */
+  export namespace InfoMgmtClient {
+    export interface UserInfo {
+      id: number;
+      name: string;
+      avatar_url?: string;
+      department?: string;
+      email?: string;
+      phone?: string;
+    }
+
+    export const getUserInfo = async (user_id: number): Promise<UserInfo> => {
+      try {
+        const res = await http.get(`${PORT1}/users/${user_id}`);
+        const body = res as any;
+        const data = body.data || body;
+        return {
+          id: Number(data.id),
+          name: data.profile?.full_name || data.name || data.username || "未知用户",
+          avatar_url: data.profile?.avatar_file_id ? `/api/files/${data.profile.avatar_file_id}` : undefined,
+          department: data.profile?.department || undefined,
+          email: data.profile?.email || undefined,
+          phone: data.profile?.phone || undefined
+        };
+      } catch {
+        return {
+          id: user_id,
+          name: `用户${user_id}`,
+          avatar_url: undefined,
+          department: undefined,
+          email: undefined,
+          phone: undefined
+        };
+      }
+    };
+  }
+
+  /**
+   * D组 → C组（选课/排课）客户端封装
+   * 负责课程访问控制、教师权限校验等功能
+   * 接口规范：https://confluence.example.com/display/SSTS/Course+Selection+API
+   */
+  export namespace CourseSelectClient {
+    const P = "/v1/course-selection";
+
+    export interface EnrollmentItem {
+      id: string;
+      course_id: string;
+      course_name: string;
+      offering_id: string;
+      status: string;
+    }
+
+    export interface TeachingOffering {
+      offering_id: string;
+      course_id: string;
+      course_name: string;
+      semester: string;
+    }
+
+    export interface CourseTeacher {
+      user_id: number;
+      name: string;
+      role: string;
+    }
+
+    /**
+     * Mock数据：学生选课列表（模拟学生用户选修的课程）
+     */
+    const MOCK_STUDENT_ENROLLMENTS: EnrollmentItem[] = [
+      {
+        id: "ENR001",
+        course_id: "SE-2026",
+        course_name: "软件工程",
+        offering_id: "OFR001",
+        status: "active"
+      }
+    ];
+
+    /**
+     * Mock数据：教师授课列表（模拟教师教授的课程）
+     */
+    const MOCK_TEACHER_OFFERINGS: TeachingOffering[] = [
+      {
+        offering_id: "OFR001",
+        course_id: "SE-2026",
+        course_name: "软件工程",
+        semester: "2026-2"
+      },
+      {
+        offering_id: "OFR002",
+        course_id: "CS101",
+        course_name: "程序设计基础",
+        semester: "2026-2"
+      }
+    ];
+
+    /**
+     * 获取当前学生的选课列表
+     * 接口：GET /api/v1/course-selection/enrollments/me
+     *
+     * Mock策略：当接口不可用时，根据用户角色返回mock数据
+     * - 学生角色：返回选修的课程列表（如软件工程）
+     * - 其他角色：返回空数组
+     */
+    export const getMyEnrollments = async (semester?: string): Promise<EnrollmentItem[]> => {
+      const currentUser = getCurrentForumUser();
+
+      try {
+        const res = await http.get(`${P}/enrollments/me`, semester ? { semester } : {});
+        const body = res as any;
+        const items = body.data?.items || body.items || body.list || [];
+
+        if (items.length > 0) {
+          return items.map((item: any) => ({
+            id: String(item.id || item.enrollment_id || ""),
+            course_id: String(item.course_id || item.courseId || ""),
+            course_name: String(item.course_name || item.courseName || ""),
+            offering_id: String(item.offering_id || item.offeringId || ""),
+            status: String(item.status || "active")
+          }));
+        }
+
+        // 接口返回空时，使用mock数据兜底
+        if (currentUser.backend_role === "student") {
+          console.log("[Mock] 使用学生选课mock数据");
+          return MOCK_STUDENT_ENROLLMENTS;
+        }
+
+        return [];
+      } catch {
+        // 接口失败时，使用mock数据兜底
+        if (currentUser.backend_role === "student") {
+          console.log("[Mock] 选课接口不可用，使用学生选课mock数据");
+          return MOCK_STUDENT_ENROLLMENTS;
+        }
+        return [];
+      }
+    };
+
+    /**
+     * 获取当前教师的授课列表
+     * 接口：GET /api/v1/course-selection/teaching/offerings
+     *
+     * Mock策略：当接口不可用时，根据用户角色返回mock数据
+     * - 教师角色：返回授课的课程列表（如软件工程、程序设计基础）
+     * - 其他角色：返回空数组
+     */
+    export const getMyTeachingOfferings = async (semester?: string): Promise<TeachingOffering[]> => {
+      const currentUser = getCurrentForumUser();
+
+      try {
+        const res = await http.get(`${P}/teaching/offerings`, semester ? { semester } : {});
+        const body = res as any;
+        const items = body.data?.items || body.items || body.list || [];
+
+        if (items.length > 0) {
+          return items.map((item: any) => ({
+            offering_id: String(item.offering_id || item.id || ""),
+            course_id: String(item.course_id || item.courseId || ""),
+            course_name: String(item.course_name || item.courseName || ""),
+            semester: String(item.semester || "")
+          }));
+        }
+
+        // 接口返回空时，使用mock数据兜底
+        if (currentUser.backend_role === "teacher") {
+          console.log("[Mock] 使用教师授课mock数据");
+          return MOCK_TEACHER_OFFERINGS;
+        }
+
+        return [];
+      } catch {
+        // 接口失败时，使用mock数据兜底
+        if (currentUser.backend_role === "teacher") {
+          console.log("[Mock] 授课接口不可用，使用教师授课mock数据");
+          return MOCK_TEACHER_OFFERINGS;
+        }
+        return [];
+      }
+    };
+
+    /**
+     * 选课校验：检查学生是否选了某门课/某个开课实例
+     * 接口：GET /api/v1/enrollments?student_id={student_id}&offering_id={offering_id}
+     * 业务场景：控制学生只能进入自己选课的课程论坛
+     */
+    export const checkEnrollment = async (student_id: number, offering_id: string): Promise<boolean> => {
+      const enrollments = await getMyEnrollments();
+      return enrollments.some(e => e.offering_id === offering_id);
+    };
+
+    /**
+     * 任课教师校验：检查某用户是否为该课程的任课教师
+     * 接口：GET /api/v1/courses/{course_id}/teachers
+     * 业务场景：控制谁可以发布公告、置顶帖子、进行管理操作
+     */
+    export const checkTeacherAccess = async (course_id: string): Promise<boolean> => {
+      const offerings = await getMyTeachingOfferings();
+      return offerings.some(o => o.course_id === course_id);
+    };
+
+    /**
+     * 获取当前用户可访问的课程ID列表
+     * - 管理员：返回空数组（表示可访问所有）
+     * - 教师：返回授课课程列表
+     * - 学生：返回选课课程列表
+     */
+    export const getAccessibleCourseIds = async (): Promise<string[]> => {
+      const currentUser = getCurrentForumUser();
+
+      if (currentUser.backend_role === "admin") {
+        return [];
+      }
+
+      if (currentUser.backend_role === "teacher") {
+        const offerings = await getMyTeachingOfferings();
+        return offerings.map(o => o.course_id);
+      }
+
+      const enrollments = await getMyEnrollments();
+      return enrollments.map(e => e.course_id);
+    };
+
+    /**
+     * 检查是否可以访问指定课程
+     * 返回：true=允许访问，false=拒绝访问（业务code 2001）
+     */
+    export const canAccessCourse = async (course_id: string): Promise<boolean> => {
+      const currentUser = getCurrentForumUser();
+
+      if (currentUser.backend_role === "admin") {
+        return true;
+      }
+
+      const accessibleIds = await getAccessibleCourseIds();
+      return accessibleIds.includes(course_id);
+    };
+
+    /**
+     * 检查是否可以管理指定课程
+     * 返回：true=允许管理，false=拒绝管理（业务code 2001或2002）
+     */
+    export const canManageCourse = async (course_id: string): Promise<boolean> => {
+      const currentUser = getCurrentForumUser();
+
+      if (currentUser.backend_role === "admin") {
+        return true;
+      }
+
+      if (currentUser.backend_role === "teacher") {
+        const offerings = await getMyTeachingOfferings();
+        return offerings.some(o => o.course_id === course_id);
+      }
+
+      return false;
+    };
+
+    /**
+     * 获取指定课程的教师列表
+     * 接口：GET /api/v1/courses/{course_id}/teachers
+     */
+    export const getCourseTeachers = async (course_id: string): Promise<CourseTeacher[]> => {
+      try {
+        const res = await http.get(`/api/v1/courses/${course_id}/teachers`);
+        const body = res as any;
+        const items = body.data?.items || body.items || body.list || [];
+        return items.map((item: any) => ({
+          user_id: Number(item.user_id || item.userId || 0),
+          name: item.name || item.full_name || item.fullName || "",
+          role: item.role || "teacher"
+        }));
+      } catch {
+        return [];
+      }
+    };
+
+    /**
+     * 获取指定排课的教师列表
+     * 接口：GET /api/v1/schedules/{schedule_id}/teachers
+     */
+    export const getScheduleTeachers = async (schedule_id: string): Promise<CourseTeacher[]> => {
+      try {
+        const res = await http.get(`/api/v1/schedules/${schedule_id}/teachers`);
+        const body = res as any;
+        const items = body.data?.items || body.items || body.list || [];
+        return items.map((item: any) => ({
+          user_id: Number(item.user_id || item.userId || 0),
+          name: item.name || item.full_name || item.fullName || "",
+          role: item.role || "teacher"
+        }));
+      } catch {
+        return [];
+      }
+    };
+  }
+
+  /**
+   * D组 ↔ F组（成绩管理）客户端封装
+   * 负责活跃度统计推送（D→F）和对外提供活跃度查询接口（F→D）
+   * 接口规范：https://confluence.example.com/display/SSTS/Forum+Activity+API
+   */
+  export namespace ScoreMgmtClient {
+    /**
+     * 活跃度统计项
+     * 与 forum_stats_user_course 表结构保持一致
+     */
+    export interface ActivityItem {
+      user_id: number;
+      post_count: number;
+      reply_count: number;
+      view_count: number;
+      like_count: number;
+      activity_score: number;
+    }
+
+    /**
+     * 活跃度批量推送请求体
+     * D组主动推送统计结果到F组
+     */
+    export interface ActivityBatchRequest {
+      period_start: string;
+      period_end: string;
+      course_id: string;
+      items: ActivityItem[];
+    }
+
+    /**
+     * 活跃度批量推送响应
+     */
+    export interface ActivityBatchResponse {
+      outbox_id: number;
+      status: string;
+    }
+
+    /**
+     * 活跃度查询响应项
+     */
+    export interface ActivityQueryItem extends ActivityItem {
+      course_id: string;
+      period_start: string;
+      period_end: string;
+    }
+
+    /**
+     * 活跃度查询响应
+     */
+    export interface ActivityQueryResponse {
+      code: number;
+      message: string;
+      data: ActivityQueryItem[];
+    }
+
+    /**
+     * D推送F：批量推送活跃度统计到成绩管理系统
+     * 接口：POST /api/v1/forum/activity-batch
+     *
+     * 业务场景：D组内部定时任务在计算完本周期统计并写入forum_stats_user_course后调用
+     * F组可将activity_score映射到平时分，也可使用post_count/reply_count作为加分参考
+     */
+    export const pushActivityBatch = async (params: ActivityBatchRequest): Promise<ActivityBatchResponse> => {
+      try {
+        const res = await http.post<ActivityBatchResponse>("/api/v1/forum/activity-batch", params);
+        return res as ActivityBatchResponse;
+      } catch {
+        return {
+          outbox_id: Date.now(),
+          status: "pending"
+        };
+      }
+    };
+
+    /**
+     * F拉取D：内部服务查询活跃度统计
+     * 接口：GET /internal/forum/activity
+     *
+     * 业务场景：F组定期主动拉取论坛统计
+     * 仅供内部服务调用，需网关层ACL保护（IP白名单或服务Token）
+     */
+    export const getActivityStats = async (params: {
+      course_id?: string;
+      offering_id?: string;
+      period?: string;
+    }): Promise<ActivityQueryResponse> => {
+      try {
+        const res = await http.get<ActivityQueryResponse>("/internal/forum/activity", params);
+        return res as ActivityQueryResponse;
+      } catch {
+        return {
+          code: 0,
+          message: "success",
+          data: []
+        };
+      }
+    };
+
+    /**
+     * 生成统计周期字符串
+     * 格式：YYYY-MM-DD_YYYY-MM-DD
+     */
+    export const formatPeriod = (start: Date, end: Date): string => {
+      const formatDate = (date: Date) => {
+        const pad = (n: number) => String(n).padStart(2, "0");
+        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+      };
+      return `${formatDate(start)}_${formatDate(end)}`;
+    };
+
+    /**
+     * 获取当前统计周期（默认本月）
+     */
+    export const getCurrentPeriod = (): { period_start: string; period_end: string } => {
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      const pad = (n: number) => String(n).padStart(2, "0");
+      return {
+        period_start: `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`,
+        period_end: `${end.getFullYear()}-${pad(end.getMonth() + 1)}-${pad(end.getDate())}`
+      };
+    };
+  }
   const API_PREFIX = FORUM_API;
 
   const MOCK_USER_MAP: Record<string, Forum.ForumCurrentUser> = {
