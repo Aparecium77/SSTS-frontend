@@ -1,16 +1,429 @@
 <template>
-  <ModuleScaffold
-    group-label="论坛交流组"
-    module-label="检索"
-    description="论坛交流组的同学在这里继续开发公告、帖子、课程版块等检索页面。"
-    view-path="src/views/stss/forum/search/index.vue"
-    api-path="src/api/modules/forum.ts"
-    type-path="src/api/interface/forum.ts"
-  />
+  <div class="forum-search-page">
+    <ForumPageShell
+      title="检索"
+      description="按关键词、课程、发布人和时间范围查询论坛帖子，支持全文检索与条件筛选的 mock 演示。"
+      :tags="['条件查询', '全文检索', '发布人筛选', '结果高亮']"
+      :stats="stats"
+      content-title="查询结果"
+      content-description="设置查询条件后点击查询按钮。真实接入时，关键词检索可走 /search/posts，普通筛选可走 /posts。"
+      :data-count="contentDataCount"
+      :empty-description="emptyDescription"
+    >
+      <template #filters>
+        <el-form :model="queryForm" class="filter-form" inline>
+          <el-form-item label="关键词">
+            <el-input
+              v-model="queryForm.keyword"
+              clearable
+              placeholder="标题或正文关键词，如 作业、接口、复习"
+              style="width: 280px"
+            />
+          </el-form-item>
+
+          <el-form-item label="课程">
+            <el-select v-model="queryForm.courseId" clearable placeholder="全部课程" style="width: 180px">
+              <el-option v-for="board in mockBoards" :key="board.id" :label="board.courseName" :value="board.courseId" />
+            </el-select>
+          </el-form-item>
+
+          <el-form-item label="发布人">
+            <el-input v-model="queryForm.authorName" clearable placeholder="输入发布人姓名" style="width: 180px" />
+          </el-form-item>
+
+          <el-form-item label="排序">
+            <el-select v-model="queryForm.sortBy" placeholder="排序方式" style="width: 170px">
+              <el-option label="相关度优先" value="relevance" />
+              <el-option label="发布时间优先" value="createdAt" />
+              <el-option label="热度优先" value="hotScore" />
+            </el-select>
+          </el-form-item>
+
+          <el-form-item label="时间范围">
+            <el-date-picker
+              v-model="queryForm.dateRange"
+              clearable
+              end-placeholder="结束日期"
+              range-separator="至"
+              start-placeholder="开始日期"
+              type="daterange"
+              value-format="YYYY-MM-DD"
+            />
+          </el-form-item>
+
+          <el-form-item>
+            <el-space>
+              <el-button type="primary" @click="handleSearch">查询</el-button>
+              <el-button @click="resetQuery">重置</el-button>
+            </el-space>
+          </el-form-item>
+        </el-form>
+
+        <el-alert
+          :closable="false"
+          show-icon
+          title="当前为本地 mock 查询。后续接入时，关键词全文检索可对应 /search/posts；仅按课程、发布人或时间筛选时，可对应 /posts 查询。"
+          type="info"
+        />
+      </template>
+
+      <el-alert
+        v-if="!searched"
+        :closable="false"
+        class="search-tip"
+        show-icon
+        title="请设置查询条件后点击“查询”。可以只按发布人、课程或时间范围查询。"
+        type="warning"
+      />
+
+      <div v-else class="result-list">
+        <el-card v-for="post in searchResults" :key="post.id" class="result-card" shadow="hover">
+          <div class="result-header">
+            <div>
+              <div class="result-title" v-html="highlightKeyword(post.title)" />
+              <div class="result-meta">
+                {{ post.courseName }} · {{ postModuleTextMap[post.module] }} · {{ post.authorName }} · {{ post.createdAt }}
+              </div>
+            </div>
+            <div class="result-tags">
+              <el-tag v-if="post.pinned" size="small" type="danger">置顶</el-tag>
+              <el-tag v-if="post.status === 'hot'" size="small" type="warning">热门</el-tag>
+              <el-tag size="small">{{ postModuleTextMap[post.module] }}</el-tag>
+            </div>
+          </div>
+
+          <p class="result-content" v-html="buildSnippet(post)" />
+
+          <div class="result-footer">
+            <div class="metric-list">
+              <span>浏览 {{ post.viewsCount }}</span>
+              <span>回复 {{ post.repliesCount }}</span>
+              <span>点赞 {{ post.likesCount }}</span>
+              <span>热度 {{ post.hotScore }}</span>
+              <span>匹配度 {{ getRelevanceDisplay(post) }}</span>
+            </div>
+            <el-button link type="primary" @click="openPreview(post)">查看摘要</el-button>
+          </div>
+        </el-card>
+      </div>
+    </ForumPageShell>
+
+    <el-drawer v-model="drawerVisible" size="520px" title="查询结果摘要">
+      <template v-if="currentPost">
+        <div class="preview-title">{{ currentPost.title }}</div>
+        <div class="preview-meta">
+          {{ currentPost.courseName }} · {{ postModuleTextMap[currentPost.module] }} · {{ currentPost.authorName }} ·
+          {{ currentPost.createdAt }}
+        </div>
+
+        <el-divider />
+
+        <el-descriptions :column="1" border>
+          <el-descriptions-item label="标题">
+            <span v-html="highlightKeyword(currentPost.title)" />
+          </el-descriptions-item>
+          <el-descriptions-item label="正文摘要">
+            <span v-html="buildSnippet(currentPost)" />
+          </el-descriptions-item>
+          <el-descriptions-item label="匹配度">
+            {{ getRelevanceDisplay(currentPost) }}
+          </el-descriptions-item>
+          <el-descriptions-item label="互动数据">
+            浏览 {{ currentPost.viewsCount }} / 回复 {{ currentPost.repliesCount }} / 点赞 {{ currentPost.likesCount }} / 热度
+            {{ currentPost.hotScore }}
+          </el-descriptions-item>
+        </el-descriptions>
+
+        <el-alert
+          class="preview-alert"
+          show-icon
+          title="当前为本地 mock 摘要。真实接入后，可展示后端返回的 snippet、author_id 和分页结果。"
+          type="info"
+        />
+      </template>
+    </el-drawer>
+  </div>
 </template>
 
-<script setup lang="ts" name="forumSearch">
-import ModuleScaffold from "@/views/stss/components/ModuleScaffold.vue";
+<script setup lang="ts">
+import { computed, reactive, ref } from "vue";
+import { ElMessage } from "element-plus";
+import ForumPageShell from "../components/ForumPageShell.vue";
+import { mockBoards, mockPosts, postModuleTextMap, type ForumPostMock } from "../mock";
 
-// 论坛交流组的同学在这里继续补充检索页面逻辑。
+type SortBy = "relevance" | "createdAt" | "hotScore";
+type DateRangeValue = [string, string] | null;
+
+interface SearchForm {
+  keyword: string;
+  courseId: string | null;
+  authorName: string;
+  sortBy: SortBy;
+  dateRange: DateRangeValue;
+}
+
+const createEmptyQuery = (): SearchForm => ({
+  keyword: "",
+  courseId: "",
+  authorName: "",
+  sortBy: "relevance",
+  dateRange: null
+});
+
+const queryForm = reactive<SearchForm>(createEmptyQuery());
+const activeQuery = reactive<SearchForm>(createEmptyQuery());
+
+const searched = ref(false);
+const drawerVisible = ref(false);
+const currentPost = ref<ForumPostMock | null>(null);
+
+const hasActiveKeyword = computed(() => activeQuery.keyword.trim().length > 0);
+
+const hasQueryCondition = (query: SearchForm) => {
+  return Boolean(query.keyword.trim() || query.courseId || query.authorName.trim() || query.dateRange);
+};
+
+const searchResults = computed(() => {
+  if (!searched.value) return [];
+
+  const keyword = activeQuery.keyword.trim().toLowerCase();
+  const authorName = activeQuery.authorName.trim().toLowerCase();
+
+  const result = mockPosts.filter(post => {
+    const matchKeyword = !keyword || post.title.toLowerCase().includes(keyword) || post.content.toLowerCase().includes(keyword);
+    const matchCourse = !activeQuery.courseId || post.courseId === activeQuery.courseId;
+    const matchAuthor = !authorName || post.authorName.toLowerCase().includes(authorName);
+    const matchDate = isInDateRange(post.createdAt);
+
+    return post.status !== "deleted" && matchKeyword && matchCourse && matchAuthor && matchDate;
+  });
+
+  return result.sort((a, b) => {
+    if (activeQuery.sortBy === "createdAt") return b.createdAt.localeCompare(a.createdAt);
+    if (activeQuery.sortBy === "hotScore") return b.hotScore - a.hotScore;
+
+    return getRelevanceScore(b) - getRelevanceScore(a);
+  });
+});
+
+const contentDataCount = computed(() => {
+  if (!searched.value) return 1;
+
+  return searchResults.value.length;
+});
+
+const emptyDescription = computed(() => {
+  if (!searched.value) return "请设置查询条件后点击查询。";
+
+  return "当前筛选条件下暂无查询结果。";
+});
+
+const stats = computed(() => [
+  {
+    label: "可查询帖子",
+    value: mockPosts.filter(item => item.status !== "deleted").length,
+    help: "当前 mock 数据范围"
+  },
+  {
+    label: "命中结果",
+    value: searchResults.value.length,
+    help: searched.value ? "按当前条件筛选后" : "尚未查询"
+  },
+  {
+    label: "涉及课程",
+    value: new Set(mockPosts.map(item => item.courseId)).size,
+    help: "可按课程缩小范围"
+  },
+  {
+    label: "最高热度",
+    value: searchResults.value.length ? Math.max(...searchResults.value.map(item => item.hotScore)).toFixed(1) : "0.0",
+    help: "结果集内最高热度分"
+  }
+]);
+
+const syncActiveQuery = () => {
+  activeQuery.keyword = queryForm.keyword;
+  activeQuery.courseId = queryForm.courseId;
+  activeQuery.authorName = queryForm.authorName;
+  activeQuery.sortBy = queryForm.sortBy;
+  activeQuery.dateRange = queryForm.dateRange ? [...queryForm.dateRange] : null;
+};
+
+const handleSearch = () => {
+  if (!hasQueryCondition(queryForm)) {
+    ElMessage.warning("请至少输入一个查询条件");
+    return;
+  }
+
+  syncActiveQuery();
+  searched.value = true;
+};
+
+const isInDateRange = (createdAt: string) => {
+  if (!activeQuery.dateRange) return true;
+
+  const date = createdAt.slice(0, 10);
+  const [startDate, endDate] = activeQuery.dateRange;
+
+  return date >= startDate && date <= endDate;
+};
+
+const getRelevanceScore = (post: ForumPostMock) => {
+  const keyword = activeQuery.keyword.trim().toLowerCase();
+
+  if (!keyword) return Math.min(100, Math.round(post.hotScore));
+
+  let score = 0;
+
+  if (post.title.toLowerCase().includes(keyword)) score += 70;
+  if (post.content.toLowerCase().includes(keyword)) score += 35;
+
+  score += Math.min(20, Math.round(post.hotScore * 0.15));
+
+  return Math.min(100, score);
+};
+
+const getRelevanceDisplay = (post: ForumPostMock) => {
+  if (!hasActiveKeyword.value) return "按筛选条件匹配";
+
+  return getRelevanceScore(post);
+};
+
+const escapeHtml = (value: string) => {
+  return value.replace(/[&<>"']/g, char => {
+    const map: Record<string, string> = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    };
+
+    return map[char];
+  });
+};
+
+const highlightKeyword = (value: string) => {
+  const escapedValue = escapeHtml(value);
+  const keyword = activeQuery.keyword.trim();
+
+  if (!keyword) return escapedValue;
+
+  const escapedKeyword = keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const keywordRegExp = new RegExp(`(${escapedKeyword})`, "gi");
+
+  return escapedValue.replace(keywordRegExp, '<span class="highlight-keyword">$1</span>');
+};
+
+const buildSnippet = (post: ForumPostMock) => {
+  const content = post.content;
+  const keyword = activeQuery.keyword.trim();
+
+  if (!keyword) return escapeHtml(content);
+
+  const lowerContent = content.toLowerCase();
+  const lowerKeyword = keyword.toLowerCase();
+  const index = lowerContent.indexOf(lowerKeyword);
+
+  if (index < 0) return highlightKeyword(content.slice(0, 120));
+
+  const start = Math.max(0, index - 30);
+  const end = Math.min(content.length, index + keyword.length + 60);
+  const prefix = start > 0 ? "..." : "";
+  const suffix = end < content.length ? "..." : "";
+
+  return `${prefix}${highlightKeyword(content.slice(start, end))}${suffix}`;
+};
+
+const resetQuery = () => {
+  Object.assign(queryForm, createEmptyQuery());
+  Object.assign(activeQuery, createEmptyQuery());
+  searched.value = false;
+  currentPost.value = null;
+  drawerVisible.value = false;
+};
+
+const openPreview = (post: ForumPostMock) => {
+  currentPost.value = post;
+  drawerVisible.value = true;
+};
 </script>
+
+<style scoped lang="scss">
+.forum-search-page,
+.filter-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.filter-form {
+  flex-flow: row wrap;
+}
+.search-tip {
+  margin-bottom: 16px;
+}
+.result-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.result-card {
+  border-radius: 12px;
+}
+.result-header {
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+.result-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+.result-meta {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+}
+.result-tags {
+  display: flex;
+  flex-shrink: 0;
+  gap: 6px;
+}
+.result-content {
+  margin: 14px 0;
+  line-height: 1.8;
+  color: var(--el-text-color-regular);
+}
+.result-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.metric-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+}
+.preview-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+.preview-meta {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+}
+.preview-alert {
+  margin-top: 16px;
+}
+:deep(.highlight-keyword) {
+  padding: 0 2px;
+  color: var(--el-color-danger);
+  background: var(--el-color-warning-light-8);
+  border-radius: 3px;
+}
+</style>
