@@ -43,8 +43,7 @@ const logout = () => {
     type: "warning"
   }).then(async () => {
     await logoutApi();
-    userStore.setToken("");
-    userStore.setUserInfo({ name: "", role: "" });
+    userStore.resetUserState();
     router.replace(LOGIN_URL);
     ElMessage.success("退出登录成功！");
   });

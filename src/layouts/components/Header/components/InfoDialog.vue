@@ -11,9 +11,7 @@
       <el-descriptions :column="1" border>
         <el-descriptions-item label="账号">{{ roleAccount }}</el-descriptions-item>
         <el-descriptions-item label="系统角色">{{ roleLabel }}</el-descriptions-item>
-        <el-descriptions-item label="说明">
-          当前模板阶段仅统一公共入口。后续可在这里接入头像、邮箱、联系方式等个人资料编辑能力。
-        </el-descriptions-item>
+        <el-descriptions-item label="说明"> 可通过个人中心维护头像、邮箱、联系方式和登录密码。 </el-descriptions-item>
       </el-descriptions>
     </div>
     <template #footer>
@@ -57,7 +55,7 @@ const openDialog = () => {
 
 const handleEdit = () => {
   dialogVisible.value = false;
-  router.push("/base-info/profile");
+  router.push("/profile");
 };
 
 defineExpose({ openDialog });

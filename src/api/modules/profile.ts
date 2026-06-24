@@ -1,89 +1,122 @@
 /**
- * 基础信息管理组的同学在这里封装个人中心相关接口。
- * 可继续补充获取个人信息、修改头像、修改联系方式、修改密码等请求方法。
- * 页面中不要直接写 axios，请统一从这个文件导出请求函数。
+ * 个人中心接口，对接 info_service /users、/files 和 auth_service /change-password。
  */
 import type { Profile } from "@/api/interface/profile";
+import type { BaseInfo } from "@/api/interface/baseInfo";
+import http from "@/api";
+import { useUserStore } from "@/stores/modules/user";
+import {
+  getBaseInfoFileDownloadUrl,
+  getBaseInfoUserDetailApi,
+  getBaseInfoUserIdByAuthIdApi,
+  getBaseInfoUserListApi,
+  parseBaseInfoRoleIds,
+  saveBaseInfoUserApi,
+  uploadBaseInfoFileApi
+} from "@/api/modules/baseInfo";
 
-const profileDetailMock: Profile.ProfileDetail = {
-  id: "P-1001",
-  name: "张晨",
-  avatar: "file-avatar-1001",
-  phone: "13800000001",
-  email: "zhangchen@stss.edu.cn",
-  department: "教务处",
-  title: "教务管理员",
-  roleName: "系统管理员",
-  signature: "让流程更清晰，让数据更可靠。",
-  lastLoginAt: "2026-05-28 08:30:00",
-  loginCount: 128,
-  twoFactorEnabled: true,
-  campus: "主校区 A 楼"
+type AuthIdentity = {
+  user_id?: string;
+  username?: string;
 };
 
-const activityListMock: Profile.ActivityItem[] = [
-  {
-    id: "A-1001",
-    title: "更新个人资料",
-    description: "修改了手机号和邮箱信息",
-    time: "2026-05-28 09:10:00",
-    status: "已完成"
-  },
-  {
-    id: "A-1002",
-    title: "切换安全设置",
-    description: "开启了双重验证",
-    time: "2026-05-27 18:20:00",
-    status: "已完成"
-  },
-  {
-    id: "A-1003",
-    title: "头像更新",
-    description: "上传了新的头像文件",
-    time: "2026-05-26 16:45:00",
-    status: "已完成"
+const toProfileDetail = (
+  user: Awaited<ReturnType<typeof getBaseInfoUserDetailApi>>,
+  avatar?: BaseInfo.UploadedFile
+): Profile.ProfileDetail => ({
+  id: user.id,
+  userId: user.id,
+  userNo: user.userNo,
+  username: user.username,
+  fullName: user.fullName || user.username,
+  gender: user.gender,
+  email: user.email,
+  phone: user.phone,
+  status: user.status,
+  avatarFileId: avatar?.id ?? user.avatarFileId,
+  avatarUrl: avatar?.accessUrl ?? getBaseInfoFileDownloadUrl(user.avatarFileId),
+  roleNames: user.roleNames,
+  roleName: user.roleNames[0] ?? "",
+  createdAt: user.createdAt,
+  updatedAt: user.updatedAt
+});
+
+const getCurrentAuthIdentity = async (): Promise<AuthIdentity> => {
+  try {
+    const res = await http.get("/auth/me", {}, { cancel: false, loading: false });
+    const body = ((res as any)?.data ?? res) as AuthIdentity;
+    return {
+      user_id: body.user_id ?? "",
+      username: body.username ?? ""
+    };
+  } catch {
+    return {};
   }
-];
+};
 
-let currentPassword = "123456";
+const resolveCurrentInfoUserId = async () => {
+  const userStore = useUserStore();
+  const identity = await getCurrentAuthIdentity();
+  const authUserId = userStore.userId || identity.user_id || "";
+  const username = userStore.userInfo.name || identity.username || "";
 
-const wait = <T>(value: T, timeout = 180) =>
-  new Promise<T>(resolve => {
-    window.setTimeout(() => resolve(value), timeout);
+  if (/^\d+$/.test(authUserId || "")) return authUserId;
+
+  const byAuthId = await getBaseInfoUserIdByAuthIdApi(authUserId);
+  if (byAuthId) return byAuthId;
+
+  const byUsername = await getBaseInfoUserListApi({ pageNum: 1, pageSize: 20, keyword: username });
+  return byUsername.list.find(item => item.username === username || item.userNo === username)?.id ?? "";
+};
+
+const enrichUserRoles = async (user: Awaited<ReturnType<typeof getBaseInfoUserDetailApi>>) => {
+  if (user.roleNames.length || !user.username) return user;
+  const res = await getBaseInfoUserListApi({ pageNum: 1, pageSize: 20, keyword: user.username });
+  const item = res.list.find(row => row.id === user.id || row.username === user.username || row.userNo === user.userNo);
+  return item ? { ...user, roleIds: user.roleIds || item.roleIds, roleNames: item.roleNames } : user;
+};
+
+export const getBaseInfoProfileDetailApi = async (userId?: string) => {
+  const id = userId || (await resolveCurrentInfoUserId());
+  if (!id) throw new Error("无法定位当前用户的基础信息记录");
+  const user = await enrichUserRoles(await getBaseInfoUserDetailApi(id));
+  return toProfileDetail(user);
+};
+
+export const saveBaseInfoProfileApi = async (params: Profile.UpdateProfileParams) => {
+  const current = await enrichUserRoles(await getBaseInfoUserDetailApi(params.id || (await resolveCurrentInfoUserId())));
+  const saved = await saveBaseInfoUserApi({
+    id: current.id,
+    userNo: current.userNo,
+    username: current.username,
+    roleIds: parseBaseInfoRoleIds(current.roleIds),
+    fullName: params.fullName,
+    gender: params.gender,
+    email: params.email,
+    phone: params.phone,
+    status: params.status,
+    avatarFileId: current.avatarFileId
   });
-
-export const getBaseInfoProfileDetailApi = () => {
-  return wait({ ...profileDetailMock });
+  const enrichedSaved = await enrichUserRoles(saved);
+  return toProfileDetail(
+    enrichedSaved,
+    params.avatarFileId && params.avatarUrl
+      ? {
+          id: params.avatarFileId,
+          fileName: "",
+          fileType: "",
+          fileSize: 0,
+          accessUrl: params.avatarUrl
+        }
+      : undefined
+  );
 };
 
-export const saveBaseInfoProfileApi = (params: Profile.UpdateProfileParams) => {
-  profileDetailMock.name = params.name ?? profileDetailMock.name;
-  profileDetailMock.avatar = params.avatar ?? profileDetailMock.avatar;
-  profileDetailMock.phone = params.phone ?? profileDetailMock.phone;
-  profileDetailMock.email = params.email ?? profileDetailMock.email;
-  profileDetailMock.department = params.department ?? profileDetailMock.department;
-  profileDetailMock.title = params.title ?? profileDetailMock.title;
-  profileDetailMock.signature = params.signature ?? profileDetailMock.signature;
+export const uploadBaseInfoProfileAvatarApi = async (file: File) => uploadBaseInfoFileApi(file);
 
-  return wait({ ...profileDetailMock });
-};
-
-export const updateBaseInfoProfileAvatarApi = (avatar: string) => {
-  profileDetailMock.avatar = avatar;
-  return wait({ avatar });
-};
-
-export const changeBaseInfoProfilePasswordApi = (params: Profile.ChangePasswordParams) => {
-  if (params.oldPassword !== currentPassword) {
-    return Promise.reject(new Error("原密码不正确"));
-  }
-  if (params.newPassword !== params.confirmPassword) {
-    return Promise.reject(new Error("两次输入的新密码不一致"));
-  }
-  currentPassword = params.newPassword;
-  return wait(true);
-};
-
-export const getBaseInfoProfileActivityListApi = () => {
-  return wait(activityListMock.map(item => ({ ...item })));
+export const changeBaseInfoProfilePasswordApi = async (params: Profile.ChangePasswordParams) => {
+  return http.post("/auth/change-password", {
+    old_password: params.oldPassword,
+    new_password: params.newPassword
+  });
 };

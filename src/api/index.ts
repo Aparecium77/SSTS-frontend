@@ -75,7 +75,7 @@ class RequestHttp {
         config.loading && tryHideFullScreenLoading();
         // 登录失效
         if (data.code == ResultEnum.OVERDUE) {
-          userStore.setToken("");
+          userStore.resetUserState();
           router.replace(LOGIN_URL);
           ElMessage.error(getResponseMessage(data));
           return Promise.reject(data);
@@ -91,12 +91,36 @@ class RequestHttp {
       async (error: AxiosError) => {
         const { response } = error;
         tryHideFullScreenLoading();
-        // 请求超时 && 网络错误单独判断，没有 response
         if (error.message.indexOf("timeout") !== -1) ElMessage.error("请求超时！请您稍后重试");
         if (error.message.indexOf("Network Error") !== -1) ElMessage.error("网络错误！请您稍后重试");
-        // 根据服务器响应的错误状态码，做不同的处理
         if (response) checkStatus(response.status);
-        // 服务器结果都没有返回(可能服务器错误可能客户端断网)，断网处理:可以跳转到断网页面
+
+        // 401 自动用 refresh_token 换新 access_token 后重试
+        if (response?.status === 401) {
+          const userStore = useUserStore();
+          const originalRequest = error.config as CustomAxiosRequestConfig & { _retry?: boolean };
+          if (userStore.refreshToken && !originalRequest._retry) {
+            originalRequest._retry = true;
+            try {
+              const refreshRes = await axios.post("/auth/refresh", { refresh_token: userStore.refreshToken });
+              const newToken = refreshRes.data?.access_token || refreshRes.data?.data?.access_token;
+              const newRefreshToken = refreshRes.data?.refresh_token || refreshRes.data?.data?.refresh_token;
+              if (newToken) {
+                userStore.setToken(newToken);
+                if (newRefreshToken) userStore.setRefreshToken(newRefreshToken);
+                originalRequest.headers.set("Authorization", `Bearer ${newToken}`);
+                return this.service(originalRequest);
+              }
+            } catch {
+              // refresh 也失败了，跳登录
+            }
+          }
+          userStore.resetUserState();
+          router.replace(LOGIN_URL);
+          ElMessage.error("登录已失效，请重新登录");
+          return Promise.reject(error);
+        }
+
         if (!window.navigator.onLine) router.replace("/500");
         return Promise.reject(error);
       }

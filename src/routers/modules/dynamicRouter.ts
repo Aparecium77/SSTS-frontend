@@ -23,8 +23,7 @@ export const initDynamicRouter = async () => {
         type: "warning",
         duration: 3000
       });
-      userStore.setToken("");
-      userStore.setUserInfo({ name: "", role: "" });
+      userStore.resetUserState();
       router.replace(LOGIN_URL);
       return Promise.reject("No permission");
     }
@@ -41,8 +40,7 @@ export const initDynamicRouter = async () => {
       }
     });
   } catch (error) {
-    userStore.setToken("");
-    userStore.setUserInfo({ name: "", role: "" });
+    userStore.resetUserState();
     router.replace(LOGIN_URL);
     return Promise.reject(error);
   }
