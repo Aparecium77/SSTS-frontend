@@ -3,9 +3,9 @@
     <el-card shadow="never" class="page-card">
       <div class="page-header">
         <div>
-          <p class="eyebrow">基础信息管理组</p>
+          <p class="eyebrow">基础信息管理</p>
           <h2>校历管理</h2>
-          <p class="description">维护学期校历：学年、学期、起止日期及说明。</p>
+          <p class="description">维护学期校历：学期代码、学期名称、起止日期和版本。</p>
         </div>
         <el-space>
           <el-button :icon="RefreshRight" @click="handleReset">重置</el-button>

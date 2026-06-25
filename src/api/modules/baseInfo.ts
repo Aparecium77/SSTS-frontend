@@ -66,12 +66,6 @@ const statusFromBackend = (status?: string): BaseInfo.UserStatus => {
   return "ACTIVE";
 };
 
-const roleIdsFromString = (roleIds: string) =>
-  roleIds
-    .split(",")
-    .map(item => Number(item.trim()))
-    .filter(Number.isFinite);
-
 export const BASE_INFO_ROLE_OPTIONS: BaseInfo.RoleOption[] = [
   { id: 1, label: "学生", code: "STUDENT" },
   { id: 2, label: "教师", code: "TEACHER" },
@@ -80,10 +74,23 @@ export const BASE_INFO_ROLE_OPTIONS: BaseInfo.RoleOption[] = [
   { id: 5, label: "服务账号", code: "SERVICE" }
 ];
 
+const validRoleIdSet = new Set(BASE_INFO_ROLE_OPTIONS.map(role => role.id));
+
+const normalizeRoleIds = (roleIds: Array<number | string>) =>
+  Array.from(
+    new Set(
+      roleIds.map(item => Number(String(item).trim())).filter(id => Number.isInteger(id) && id > 0 && validRoleIdSet.has(id))
+    )
+  );
+
+const roleIdsFromString = (roleIds: string) => normalizeRoleIds(roleIds.split(","));
+
 const roleIdsFromNames = (roleNames: string[]) =>
-  roleNames
-    .map(name => BASE_INFO_ROLE_OPTIONS.find(role => role.label === name || role.code === name)?.id)
-    .filter((id): id is number => typeof id === "number");
+  normalizeRoleIds(
+    roleNames
+      .map(name => name.trim())
+      .map(name => BASE_INFO_ROLE_OPTIONS.find(role => role.label === name || role.code === name)?.id ?? "")
+  );
 
 const convertUploadedFile = (item: any): BaseInfo.UploadedFile => ({
   id: String(item.id ?? ""),
@@ -121,28 +128,32 @@ const convertUserItem = (item: any): BaseInfo.UserItem => ({
   updatedAt: item.updated_at ?? ""
 });
 
-const userPayload = (form: BaseInfo.UserForm) =>
-  compact({
+const userPayload = (form: BaseInfo.UserForm) => {
+  const roleIds = normalizeRoleIds(form.roleIds);
+  return compact({
     user_no: form.userNo,
     username: form.username,
-    role_ids: form.roleIds.length ? form.roleIds : undefined,
+    role_ids: roleIds.length ? roleIds : undefined,
     full_name: form.fullName,
     gender: form.gender,
     phone: form.phone,
     email: form.email,
     status: statusToBackend(form.status)
   });
+};
 
-const userCreatePayload = (form: BaseInfo.UserForm) =>
-  compact({
+const userCreatePayload = (form: BaseInfo.UserForm) => {
+  const roleIds = normalizeRoleIds(form.roleIds);
+  return compact({
     user_no: form.userNo,
     username: form.username,
-    role_ids: form.roleIds.length ? form.roleIds : undefined,
+    role_ids: roleIds.length ? roleIds : undefined,
     full_name: form.fullName,
     gender: form.gender,
     phone: form.phone,
     email: form.email
   });
+};
 
 export const getBaseInfoUserListApi = async (query: BaseInfo.UserQuery) => {
   const res = await http.get(`${PORT1}/users/`, toPageQuery(query));
@@ -285,11 +296,12 @@ export const getBaseInfoTeacherDetailWithRolesApi = async (row: BaseInfo.Teacher
 };
 
 export const saveBaseInfoTeacherApi = async (form: BaseInfo.TeacherForm) => {
+  const roleIds = normalizeRoleIds(form.roleIds);
   const saved = await saveBaseInfoUserApi({
     id: form.id,
     userNo: form.teacherNo,
     username: form.username,
-    roleIds: form.roleIds?.length ? form.roleIds : [TEACHER_ROLE_ID],
+    roleIds: roleIds.length ? roleIds : [TEACHER_ROLE_ID],
     fullName: form.fullName,
     gender: form.gender,
     phone: form.phone,
@@ -596,3 +608,4 @@ export const getBaseInfoUserIdByAuthIdApi = async (authUserId: string) => {
 
 export const parseBaseInfoRoleIds = roleIdsFromString;
 export const parseBaseInfoRoleIdsFromNames = roleIdsFromNames;
+export const normalizeBaseInfoRoleIds = normalizeRoleIds;

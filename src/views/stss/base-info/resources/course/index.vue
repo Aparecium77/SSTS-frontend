@@ -3,9 +3,9 @@
     <el-card shadow="never" class="page-card">
       <div class="page-header">
         <div>
-          <p class="eyebrow">基础信息管理组</p>
+          <p class="eyebrow">基础信息管理</p>
           <h2>课程资源</h2>
-          <p class="description">维护课程基础数据：课程编号、课程名称、学分、学时、院系、类型与状态。</p>
+          <p class="description">维护课程基础数据：课程代码、课程名称、学分、容量、考核方式与状态。</p>
         </div>
         <el-space>
           <el-button :icon="RefreshRight" @click="handleReset">重置</el-button>

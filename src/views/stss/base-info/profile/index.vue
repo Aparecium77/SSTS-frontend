@@ -3,7 +3,7 @@
     <el-card shadow="never" class="page-card overview-card">
       <div class="overview-header">
         <div class="avatar-wrap">
-          <el-avatar :size="96" :src="avatarUrl || undefined">
+          <el-avatar :size="96" :src="avatarUrl || undefined" @error="handleAvatarError">
             {{ profileForm.fullName.slice(0, 1) || profileDetail.username.slice(0, 1) }}
           </el-avatar>
           <el-upload :show-file-list="false" :before-upload="handleAvatarUpload" accept="image/*">
@@ -28,7 +28,7 @@
         <div class="stat-card">
           <span class="stat-label">登录账号</span>
           <strong>{{ profileDetail.username || "-" }}</strong>
-          <small>Info 用户 ID：{{ profileDetail.id || "-" }}</small>
+          <small>用户 ID：{{ profileDetail.id || "-" }}</small>
         </div>
         <div class="stat-card">
           <span class="stat-label">联系方式</span>
@@ -50,7 +50,7 @@
             <div class="card-header">
               <div>
                 <h3>个人资料</h3>
-                <p>这些字段来自 Info Service 的用户档案表。</p>
+                <p>维护姓名、联系方式和账号状态。</p>
               </div>
               <el-button type="primary" :loading="savingProfile" @click="handleSaveProfile">保存资料</el-button>
             </div>
@@ -98,7 +98,12 @@
               <el-input v-model="securityForm.oldPassword" type="password" show-password placeholder="请输入原密码" />
             </el-form-item>
             <el-form-item label="新密码" prop="newPassword">
-              <el-input v-model="securityForm.newPassword" type="password" show-password placeholder="至少 8 位" />
+              <el-input
+                v-model="securityForm.newPassword"
+                type="password"
+                show-password
+                placeholder="管理员至少 10 位；普通用户至少 8 位"
+              />
             </el-form-item>
             <el-form-item label="确认密码" prop="confirmPassword">
               <el-input v-model="securityForm.confirmPassword" type="password" show-password placeholder="再次输入新密码" />
@@ -111,10 +116,6 @@
           <el-divider />
 
           <div class="security-panel">
-            <div class="security-item">
-              <span>头像文件</span>
-              <strong>{{ profileForm.avatarFileId || "未上传" }}</strong>
-            </div>
             <div class="security-item">
               <span>角色</span>
               <strong>{{ profileDetail.roleNames.join("、") || "-" }}</strong>
@@ -134,6 +135,7 @@
 import { computed, onMounted, reactive, ref } from "vue";
 import { EditPen } from "@element-plus/icons-vue";
 import { ElMessage, type FormInstance, type FormRules } from "element-plus";
+import { useUserStore } from "@/stores/modules/user";
 import {
   changeBaseInfoProfilePasswordApi,
   getBaseInfoProfileDetailApi,
@@ -141,11 +143,14 @@ import {
   uploadBaseInfoProfileAvatarApi
 } from "@/api/modules/profile";
 import type { Profile } from "@/api/interface/profile";
+import { removeLocalProfileAvatar, saveLocalProfileAvatar } from "@/utils/profileAvatar";
 
 const profileFormRef = ref<FormInstance>();
 const securityFormRef = ref<FormInstance>();
 const savingProfile = ref(false);
 const savingPassword = ref(false);
+const avatarLoadFailed = ref(false);
+const userStore = useUserStore();
 
 const emptyProfileDetail = (): Profile.ProfileDetail => ({
   id: "",
@@ -184,7 +189,7 @@ const securityForm = reactive<Profile.ChangePasswordParams>({
   confirmPassword: ""
 });
 
-const avatarUrl = computed(() => profileForm.avatarUrl || profileDetail.avatarUrl || "");
+const avatarUrl = computed(() => (avatarLoadFailed.value ? "" : profileForm.avatarUrl || profileDetail.avatarUrl || ""));
 
 const profileRules: FormRules<Profile.UpdateProfileParams> = {
   fullName: [{ required: true, message: "请输入姓名", trigger: "blur" }],
@@ -199,12 +204,27 @@ const profileRules: FormRules<Profile.UpdateProfileParams> = {
   status: [{ required: true, message: "请选择状态", trigger: "change" }]
 };
 
+const validateNewPassword = (_rule: unknown, value: string, callback: (error?: Error) => void) => {
+  const isAdmin = userStore.userInfo.role === "academic_admin";
+  if (!value) {
+    callback(new Error("请输入新密码"));
+    return;
+  }
+  if (isAdmin) {
+    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{10,}$/.test(value)) {
+      callback(new Error("管理员密码至少 10 位，并包含大小写字母、数字和特殊字符"));
+      return;
+    }
+  } else if (!/^(?=.*[A-Za-z])(?=.*\d).{8,}$/.test(value)) {
+    callback(new Error("密码至少 8 位，并包含字母和数字"));
+    return;
+  }
+  callback();
+};
+
 const securityRules: FormRules<Profile.ChangePasswordParams> = {
   oldPassword: [{ required: true, message: "请输入原密码", trigger: "blur" }],
-  newPassword: [
-    { required: true, message: "请输入新密码", trigger: "blur" },
-    { min: 8, message: "密码长度不能少于 8 位", trigger: "blur" }
-  ],
+  newPassword: [{ validator: validateNewPassword, trigger: "blur" }],
   confirmPassword: [
     { required: true, message: "请再次输入新密码", trigger: "blur" },
     {
@@ -222,6 +242,7 @@ const securityRules: FormRules<Profile.ChangePasswordParams> = {
 
 const patchProfileForm = (data: Profile.ProfileDetail) => {
   Object.assign(profileDetail, emptyProfileDetail(), data);
+  avatarLoadFailed.value = false;
   profileForm.id = data.id;
   profileForm.fullName = data.fullName;
   profileForm.gender = data.gender;
@@ -237,19 +258,41 @@ const loadProfile = async () => {
   patchProfileForm(detail);
 };
 
+const fileToDataUrl = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("头像本地预览生成失败"));
+    reader.readAsDataURL(file);
+  });
+
+const avatarIdentity = () => ({ userId: profileDetail.id || profileForm.id, username: profileDetail.username });
+
+const handleAvatarError = () => {
+  avatarLoadFailed.value = true;
+  profileForm.avatarUrl = "";
+  removeLocalProfileAvatar(avatarIdentity());
+  return false;
+};
+
 const handleAvatarUpload = async (file: File) => {
-  const isImage = /^(image\/png|image\/jpe?g|image\/gif|image\/webp)$/.test(file.type);
+  const isImage = /^(image\/png|image\/jpe?g)$/.test(file.type);
   if (!isImage) {
-    ElMessage.error("仅支持 PNG/JPG/GIF/WEBP 格式的图片");
+    ElMessage.error("仅支持 PNG/JPG/JPEG 格式的图片");
     return false;
   }
   try {
+    const localUrl = await fileToDataUrl(file);
+    avatarLoadFailed.value = false;
+    profileForm.avatarUrl = localUrl;
+    saveLocalProfileAvatar(avatarIdentity(), { fileId: profileForm.avatarFileId || `local-${Date.now()}`, url: localUrl });
+
     const res = await uploadBaseInfoProfileAvatarApi(file);
     profileForm.avatarFileId = res.id;
-    profileForm.avatarUrl = res.accessUrl;
-    ElMessage.success("头像上传成功，后端当前未开放头像 ID 写回用户档案");
+    saveLocalProfileAvatar(avatarIdentity(), { fileId: res.id, url: localUrl });
+    ElMessage.success("头像已保存为本地展示副本，文件已上传");
   } catch (err) {
-    ElMessage.error((err as Error)?.message || "头像上传失败");
+    ElMessage.warning((err as Error)?.message || "头像已本地预览，但服务器上传失败");
   }
   return false;
 };
@@ -265,6 +308,12 @@ const handleSaveProfile = async () => {
       avatarFileId: profileForm.avatarFileId || detail.avatarFileId,
       avatarUrl: profileForm.avatarUrl || detail.avatarUrl
     });
+    if (profileForm.avatarFileId && profileForm.avatarUrl) {
+      saveLocalProfileAvatar(
+        { userId: detail.id || profileForm.id, username: detail.username || profileDetail.username },
+        { fileId: profileForm.avatarFileId, url: profileForm.avatarUrl }
+      );
+    }
     ElMessage.success("个人资料保存成功");
   } catch (err) {
     ElMessage.error((err as Error)?.message || "保存失败");

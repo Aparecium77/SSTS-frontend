@@ -3,9 +3,9 @@
     <el-card shadow="never" class="page-card">
       <div class="page-header">
         <div>
-          <p class="eyebrow">基础信息管理组</p>
+          <p class="eyebrow">基础信息管理</p>
           <h2>培养方案管理</h2>
-          <p class="description">维护专业培养方案：编号、名称、专业、年级、版本、学分、发布状态与说明。</p>
+          <p class="description">维护培养方案：方案代码、专业代码、年级、版本和必修课程。</p>
         </div>
         <el-space>
           <el-button :icon="RefreshRight" @click="handleReset">重置</el-button>
@@ -18,9 +18,7 @@
           <el-input v-model="queryForm.majorCode" clearable placeholder="如 CS" @keyup.enter="handleSearch" />
         </el-form-item>
         <el-form-item label="年级">
-          <el-select v-model="queryForm.grade" clearable placeholder="请选择年级">
-            <el-option v-for="g in gradeOptions" :key="g" :label="g" :value="g" />
-          </el-select>
+          <el-input v-model="queryForm.grade" clearable placeholder="请输入年级" @keyup.enter="handleSearch" />
         </el-form-item>
         <el-form-item>
           <el-button type="primary" :icon="Search" @click="handleSearch">查询</el-button>
@@ -71,9 +69,7 @@
           <el-input v-model="formState.majorCode" placeholder="请输入专业编码" />
         </el-form-item>
         <el-form-item label="年级" prop="grade">
-          <el-select v-model="formState.grade" placeholder="请选择年级">
-            <el-option v-for="g in gradeOptions" :key="g" :label="g" :value="g" />
-          </el-select>
+          <el-input v-model="formState.grade" placeholder="请输入年级，如 2024" />
         </el-form-item>
         <el-form-item label="版本" prop="version">
           <el-input v-model="formState.version" placeholder="例如 1.0" />
@@ -121,8 +117,6 @@ import type { BaseInfo } from "@/api/interface/baseInfo";
 
 type DrawerMode = "create" | "edit" | "view";
 
-const gradeOptions = ["2023", "2024", "2025", "2026"];
-
 const queryForm = reactive<BaseInfo.TrainingPlanQuery>({
   pageNum: 1,
   pageSize: 10,
@@ -154,7 +148,7 @@ const formState = reactive<BaseInfo.TrainingPlanForm>(emptyForm());
 const formRules: FormRules<BaseInfo.TrainingPlanForm> = {
   planNo: [{ required: true, message: "请输入方案编码", trigger: "blur" }],
   majorCode: [{ required: true, message: "请输入专业编码", trigger: "blur" }],
-  grade: [{ required: true, message: "请选择年级", trigger: "change" }],
+  grade: [{ required: true, message: "请输入年级", trigger: "blur" }],
   version: [{ required: true, message: "请输入版本号", trigger: "blur" }],
   requiredCourseIds: [{ type: "array", required: true, min: 1, message: "请选择必修课程", trigger: "change" }]
 };

@@ -3,9 +3,9 @@
     <el-card shadow="never" class="page-card">
       <div class="page-header">
         <div>
-          <p class="eyebrow">基础信息管理组</p>
+          <p class="eyebrow">基础信息管理</p>
           <h2>教师资源</h2>
-          <p class="description">维护教师基础数据：工号、姓名、院系、职称、联系方式、头像与状态。</p>
+          <p class="description">维护教师基础数据：工号、姓名、角色、联系方式与状态。</p>
         </div>
         <el-space>
           <el-button :icon="RefreshRight" @click="handleReset">重置</el-button>
@@ -117,6 +117,7 @@ import {
   deleteBaseInfoTeacherApi,
   getBaseInfoTeacherDetailWithRolesApi,
   getBaseInfoTeacherListApi,
+  normalizeBaseInfoRoleIds,
   parseBaseInfoRoleIds,
   parseBaseInfoRoleIdsFromNames,
   saveBaseInfoTeacherApi
@@ -173,12 +174,14 @@ const formRules: FormRules<BaseInfo.TeacherForm> = {
 };
 
 const patchForm = (data: TeacherFormSource) => {
-  const roleIds = Array.isArray(data.roleIds)
-    ? data.roleIds
-    : parseBaseInfoRoleIds(data.roleIds ?? "").concat(parseBaseInfoRoleIdsFromNames(data.roleNames ?? []));
+  const roleIds = normalizeBaseInfoRoleIds(
+    Array.isArray(data.roleIds)
+      ? data.roleIds
+      : parseBaseInfoRoleIds(data.roleIds ?? "").concat(parseBaseInfoRoleIdsFromNames(data.roleNames ?? []))
+  );
   Object.assign(formState, emptyForm(), data, {
     teacherNo: data.teacherNo || data.userNo || "",
-    roleIds: Array.from(new Set(roleIds.length ? roleIds : [2]))
+    roleIds: roleIds.length ? roleIds : [2]
   });
 };
 

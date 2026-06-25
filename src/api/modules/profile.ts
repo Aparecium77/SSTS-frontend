@@ -6,7 +6,6 @@ import type { BaseInfo } from "@/api/interface/baseInfo";
 import http from "@/api";
 import { useUserStore } from "@/stores/modules/user";
 import {
-  getBaseInfoFileDownloadUrl,
   getBaseInfoUserDetailApi,
   getBaseInfoUserIdByAuthIdApi,
   getBaseInfoUserListApi,
@@ -14,15 +13,21 @@ import {
   saveBaseInfoUserApi,
   uploadBaseInfoFileApi
 } from "@/api/modules/baseInfo";
+import { getLocalProfileAvatar, saveLocalProfileAvatar } from "@/utils/profileAvatar";
 
 type AuthIdentity = {
   user_id?: string;
   username?: string;
 };
 
+type ProfileAvatarSource = Partial<BaseInfo.UploadedFile> & {
+  fileId?: string;
+  url?: string;
+};
+
 const toProfileDetail = (
   user: Awaited<ReturnType<typeof getBaseInfoUserDetailApi>>,
-  avatar?: BaseInfo.UploadedFile
+  avatar?: ProfileAvatarSource
 ): Profile.ProfileDetail => ({
   id: user.id,
   userId: user.id,
@@ -33,8 +38,8 @@ const toProfileDetail = (
   email: user.email,
   phone: user.phone,
   status: user.status,
-  avatarFileId: avatar?.id ?? user.avatarFileId,
-  avatarUrl: avatar?.accessUrl ?? getBaseInfoFileDownloadUrl(user.avatarFileId),
+  avatarFileId: avatar?.id ?? avatar?.fileId ?? user.avatarFileId,
+  avatarUrl: avatar?.accessUrl ?? avatar?.url ?? "",
   roleNames: user.roleNames,
   roleName: user.roleNames[0] ?? "",
   createdAt: user.createdAt,
@@ -80,7 +85,7 @@ export const getBaseInfoProfileDetailApi = async (userId?: string) => {
   const id = userId || (await resolveCurrentInfoUserId());
   if (!id) throw new Error("无法定位当前用户的基础信息记录");
   const user = await enrichUserRoles(await getBaseInfoUserDetailApi(id));
-  return toProfileDetail(user);
+  return toProfileDetail(user, getLocalProfileAvatar({ userId: user.id, username: user.username }));
 };
 
 export const saveBaseInfoProfileApi = async (params: Profile.UpdateProfileParams) => {
@@ -98,6 +103,12 @@ export const saveBaseInfoProfileApi = async (params: Profile.UpdateProfileParams
     avatarFileId: current.avatarFileId
   });
   const enrichedSaved = await enrichUserRoles(saved);
+  if (params.avatarFileId && params.avatarUrl) {
+    saveLocalProfileAvatar(
+      { userId: enrichedSaved.id, username: enrichedSaved.username },
+      { fileId: params.avatarFileId, url: params.avatarUrl }
+    );
+  }
   return toProfileDetail(
     enrichedSaved,
     params.avatarFileId && params.avatarUrl

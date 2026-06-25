@@ -3,9 +3,9 @@
     <el-card shadow="never" class="page-card">
       <div class="page-header">
         <div>
-          <p class="eyebrow">基础信息管理组</p>
+          <p class="eyebrow">基础信息管理</p>
           <h2>用户与档案</h2>
-          <p class="description">维护后端真实用户、角色与档案字段，支持查询、新增、编辑、删除和头像上传。</p>
+          <p class="description">维护用户、角色与档案信息，支持查询、新增、编辑、删除和头像上传。</p>
         </div>
         <el-space>
           <el-button :icon="RefreshRight" @click="handleReset">重置</el-button>
@@ -150,6 +150,7 @@ import {
   getBaseInfoFileDownloadUrl,
   getBaseInfoUserDetailWithRolesApi,
   getBaseInfoUserListApi,
+  normalizeBaseInfoRoleIds,
   parseBaseInfoRoleIds,
   parseBaseInfoRoleIdsFromNames,
   saveBaseInfoUserApi,
@@ -227,11 +228,13 @@ const formRules: FormRules<BaseInfo.UserForm> = {
 };
 
 const patchForm = (data: UserFormSource) => {
-  const roleIds = Array.isArray(data.roleIds)
-    ? data.roleIds
-    : parseBaseInfoRoleIds(data.roleIds ?? "").concat(parseBaseInfoRoleIdsFromNames(data.roleNames ?? []));
+  const roleIds = normalizeBaseInfoRoleIds(
+    Array.isArray(data.roleIds)
+      ? data.roleIds
+      : parseBaseInfoRoleIds(data.roleIds ?? "").concat(parseBaseInfoRoleIdsFromNames(data.roleNames ?? []))
+  );
   Object.assign(formState, emptyForm(), data, {
-    roleIds: Array.from(new Set(roleIds))
+    roleIds
   });
   previewUrl.value = data.avatarFileId ? getBaseInfoFileDownloadUrl(data.avatarFileId) : "";
 };
@@ -239,11 +242,19 @@ const patchForm = (data: UserFormSource) => {
 const previewUrl = ref<string>("");
 const previewDialogVisible = ref(false);
 
+const fileToDataUrl = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("头像本地预览生成失败"));
+    reader.readAsDataURL(file);
+  });
+
 const handleBeforeUpload = async (file: File) => {
   // 校验格式与大小
-  const isImage = /^(image\/png|image\/jpe?g|image\/gif|image\/webp)$/.test(file.type);
+  const isImage = /^(image\/png|image\/jpe?g)$/.test(file.type);
   if (!isImage) {
-    ElMessage.error("仅支持 PNG/JPG/GIF/WEBP 格式的图片");
+    ElMessage.error("仅支持 PNG/JPG/JPEG 格式的图片");
     return false;
   }
   const isLt2M = file.size / 1024 / 1024 < 2;
@@ -253,9 +264,9 @@ const handleBeforeUpload = async (file: File) => {
   }
 
   try {
+    previewUrl.value = await fileToDataUrl(file);
     const res = await uploadBaseInfoFileApi(file);
     formState.avatarFileId = res.id;
-    previewUrl.value = res.accessUrl;
   } catch (err) {
     ElMessage.error((err as any)?.message || "上传失败");
   }

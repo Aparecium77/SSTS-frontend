@@ -5,7 +5,7 @@
         <el-card shadow="never" class="page-card">
           <div class="page-header">
             <div>
-              <p class="eyebrow">基础信息管理组</p>
+              <p class="eyebrow">基础信息管理</p>
               <h2>基础信息字典</h2>
               <p class="description">维护系统级数据字典：部门、职称、考核方式、学期类型等。</p>
             </div>
@@ -66,15 +66,13 @@
         <el-card shadow="never" class="page-card">
           <div class="page-header">
             <div>
-              <p class="eyebrow">基础信息管理组</p>
+              <p class="eyebrow">基础信息管理</p>
               <h2>回收站</h2>
               <p class="description">查看已逻辑删除的用户，支持恢复或彻底删除。</p>
             </div>
             <el-space>
               <el-button :icon="RefreshRight" @click="loadRecycleTable">刷新</el-button>
-              <el-button :disabled="!selectedRecycleRows.length" type="danger" @click="handleBatchClearRecycle"
-                >批量彻底删除</el-button
-              >
+              <el-button :disabled="!hasRows" type="danger" @click="batchClear">批量彻底删除</el-button>
             </el-space>
           </div>
 
@@ -204,6 +202,7 @@ const recyclePageState = reactive({ pageNum: 1, pageSize: 10, total: 0 });
 const recycleLoading = ref(false);
 const recycleTableData = ref<BaseInfo.RecycleItem[]>([]);
 const selectedRecycleRows = ref<BaseInfo.RecycleItem[]>([]);
+const hasRows = computed(() => selectedRecycleRows.value.length > 0);
 
 const emptyForm = (): BaseInfo.PermissionForm => ({
   category: "",
@@ -374,7 +373,7 @@ const handleClearRecycle = async (row: BaseInfo.RecycleItem) => {
   }
 };
 
-const handleBatchClearRecycle = async () => {
+const batchClear = async () => {
   if (!selectedRecycleRows.value.length) return;
   try {
     await ElMessageBox.confirm(`确定彻底删除选中的 ${selectedRecycleRows.value.length} 个用户？`, "提示", { type: "warning" });

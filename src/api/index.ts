@@ -93,7 +93,7 @@ class RequestHttp {
         tryHideFullScreenLoading();
         if (error.message.indexOf("timeout") !== -1) ElMessage.error("请求超时！请您稍后重试");
         if (error.message.indexOf("Network Error") !== -1) ElMessage.error("网络错误！请您稍后重试");
-        if (response) checkStatus(response.status);
+        if (response) checkStatus(response.status, getResponseMessage(response.data));
 
         // 401 自动用 refresh_token 换新 access_token 后重试
         if (response?.status === 401) {
@@ -138,6 +138,9 @@ class RequestHttp {
   }
   put<T>(url: string, params?: object, _object = {}): Promise<ResultData<T>> {
     return this.service.put(url, params, _object);
+  }
+  patch<T>(url: string, params?: object, _object = {}): Promise<ResultData<T>> {
+    return this.service.patch(url, params, _object);
   }
   delete<T>(url: string, params?: any, _object = {}): Promise<ResultData<T>> {
     return this.service.delete(url, { params, ..._object });

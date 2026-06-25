@@ -3,9 +3,9 @@
     <el-card shadow="never" class="page-card">
       <div class="page-header">
         <div>
-          <p class="eyebrow">基础信息管理组</p>
+          <p class="eyebrow">基础信息管理</p>
           <h2>教室资源</h2>
-          <p class="description">维护教室基础数据：教室编号、楼栋、楼层、容量、教室类型与状态。</p>
+          <p class="description">维护教室基础数据：教室编号、楼栋、容量和教室类型。</p>
         </div>
         <el-space>
           <el-button :icon="RefreshRight" @click="handleReset">重置</el-button>
@@ -18,14 +18,10 @@
           <el-input v-model="queryForm.keyword" clearable placeholder="教室编号、楼栋、类型" @keyup.enter="handleSearch" />
         </el-form-item>
         <el-form-item label="楼栋">
-          <el-select v-model="queryForm.building" clearable placeholder="请选择楼栋">
-            <el-option v-for="b in buildingOptions" :key="b" :label="b" :value="b" />
-          </el-select>
+          <el-input v-model="queryForm.building" clearable placeholder="请输入楼栋" @keyup.enter="handleSearch" />
         </el-form-item>
         <el-form-item label="类型">
-          <el-select v-model="queryForm.classroomType" clearable placeholder="请选择类型">
-            <el-option v-for="t in roomTypeOptions" :key="t" :label="t" :value="t" />
-          </el-select>
+          <el-input v-model="queryForm.classroomType" clearable placeholder="请输入教室类型" @keyup.enter="handleSearch" />
         </el-form-item>
         <el-form-item>
           <el-button type="primary" :icon="Search" @click="handleSearch">查询</el-button>
@@ -68,17 +64,13 @@
           <el-input v-model="formState.classroomNo" placeholder="请输入教室编号" />
         </el-form-item>
         <el-form-item label="楼栋" prop="building">
-          <el-select v-model="formState.building" placeholder="请选择楼栋">
-            <el-option v-for="b in buildingOptions" :key="b" :label="b" :value="b" />
-          </el-select>
+          <el-input v-model="formState.building" placeholder="请输入楼栋，如 博学楼" />
         </el-form-item>
         <el-form-item label="容量" prop="capacity">
           <el-input-number v-model="formState.capacity" :min="1" />
         </el-form-item>
         <el-form-item label="教室类型" prop="roomType">
-          <el-select v-model="formState.roomType" placeholder="请选择教室类型">
-            <el-option v-for="t in roomTypeOptions" :key="t" :label="t" :value="t" />
-          </el-select>
+          <el-input v-model="formState.roomType" placeholder="请输入教室类型，如 standard / lab" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -104,9 +96,6 @@ import {
 import type { BaseInfo } from "@/api/interface/baseInfo";
 
 type DrawerMode = "create" | "edit" | "view";
-
-const buildingOptions = ["A1", "B2", "C1"];
-const roomTypeOptions = ["普通教室", "阶梯教室", "实验室", "机房"];
 
 const queryForm = reactive<BaseInfo.ClassroomQuery>({
   pageNum: 1,
@@ -136,9 +125,9 @@ const formState = reactive<BaseInfo.ClassroomForm>(emptyForm());
 
 const formRules: FormRules<BaseInfo.ClassroomForm> = {
   classroomNo: [{ required: true, message: "请输入教室编号", trigger: "blur" }],
-  building: [{ required: true, message: "请选择楼栋", trigger: "change" }],
+  building: [{ required: true, message: "请输入楼栋", trigger: "blur" }],
   capacity: [{ required: true, message: "请输入容量", trigger: "change" }],
-  roomType: [{ required: true, message: "请选择教室类型", trigger: "change" }]
+  roomType: [{ required: true, message: "请输入教室类型", trigger: "blur" }]
 };
 
 const patchForm = (data: Partial<BaseInfo.ClassroomForm>) => {

@@ -2,7 +2,7 @@
   <el-dialog v-model="dialogVisible" title="个人信息" width="560px" draggable>
     <div class="info-dialog">
       <div class="avatar-panel">
-        <img src="@/assets/images/avatar.gif" alt="avatar" class="avatar-img" />
+        <img :src="avatarSrc" alt="avatar" class="avatar-img" @error="handleAvatarError" />
         <div class="avatar-copy">
           <div class="name">{{ userStore.userInfo.name || "未命名用户" }}</div>
           <div class="role">{{ roleLabel }}</div>
@@ -25,14 +25,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useUserStore } from "@/stores/modules/user";
+import defaultAvatar from "@/assets/images/avatar.gif";
+import { getLocalProfileAvatar, PROFILE_AVATAR_CHANGED_EVENT, removeLocalProfileAvatar } from "@/utils/profileAvatar";
 
 const router = useRouter();
 const userStore = useUserStore();
 
 const dialogVisible = ref(false);
+const localAvatarUrl = ref("");
+const avatarLoadFailed = ref(false);
 
 const roleLabelMap: Record<string, string> = {
   student: "学生",
@@ -47,9 +51,28 @@ const accountMap: Record<string, string> = {
 };
 
 const roleLabel = computed(() => roleLabelMap[userStore.userInfo.role] ?? "未识别角色");
-const roleAccount = computed(() => accountMap[userStore.userInfo.role] ?? "-");
+const roleAccount = computed(() => userStore.userInfo.name || accountMap[userStore.userInfo.role] || "-");
+const avatarIdentity = computed(() => ({
+  userId: userStore.userId,
+  username: userStore.userInfo.name
+}));
+const avatarSrc = computed(() => (avatarLoadFailed.value ? defaultAvatar : localAvatarUrl.value || defaultAvatar));
+
+const refreshLocalAvatar = () => {
+  avatarLoadFailed.value = false;
+  localAvatarUrl.value = getLocalProfileAvatar(avatarIdentity.value)?.url || "";
+};
+
+const handleAvatarError = (event: Event) => {
+  if (!localAvatarUrl.value) return;
+  avatarLoadFailed.value = true;
+  localAvatarUrl.value = "";
+  removeLocalProfileAvatar(avatarIdentity.value);
+  (event.target as HTMLImageElement).src = defaultAvatar;
+};
 
 const openDialog = () => {
+  refreshLocalAvatar();
   dialogVisible.value = true;
 };
 
@@ -59,6 +82,15 @@ const handleEdit = () => {
 };
 
 defineExpose({ openDialog });
+
+onMounted(() => {
+  refreshLocalAvatar();
+  window.addEventListener(PROFILE_AVATAR_CHANGED_EVENT, refreshLocalAvatar);
+});
+
+onUnmounted(() => {
+  window.removeEventListener(PROFILE_AVATAR_CHANGED_EVENT, refreshLocalAvatar);
+});
 </script>
 
 <style scoped lang="scss">
