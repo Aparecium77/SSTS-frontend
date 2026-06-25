@@ -29,6 +29,8 @@ export interface GlobalState {
 /* UserState */
 export interface UserState {
   token: string;
+  refreshToken: string;
+  userId: string;
   userInfo: { name: string; role: string };
 }
 

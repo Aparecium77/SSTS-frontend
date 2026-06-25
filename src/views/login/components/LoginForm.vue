@@ -39,7 +39,6 @@ import { useRouter } from "vue-router";
 import type { ElForm } from "element-plus";
 import { ElNotification } from "element-plus";
 import { CircleClose, Lock, User, UserFilled } from "@element-plus/icons-vue";
-import md5 from "md5";
 import { HOME_URL } from "@/config";
 import type { Login } from "@/api/interface";
 import { loginApi } from "@/api/modules/login";
@@ -76,9 +75,14 @@ const login = (formEl: FormInstance | undefined) => {
 
     loading.value = true;
     try {
-      const { data } = await loginApi({ ...loginForm, password: md5(loginForm.password) });
-      userStore.setToken(data.access_token);
-      userStore.setUserInfo(data.user_info);
+      // Gateway 直接接收原密码，不需要 md5
+      const res = await loginApi({ ...loginForm });
+      // loginApi 已设置 userStore.token 和 userStore.userInfo
+      const body = res.data || res;
+      if (!userStore.token) {
+        userStore.setToken(body.access_token);
+        userStore.setUserInfo({ name: body.username || body.user_info?.name, role: body.role || body.user_info?.role });
+      }
 
       await initDynamicRouter();
 
@@ -88,7 +92,7 @@ const login = (formEl: FormInstance | undefined) => {
       router.push(HOME_URL);
       ElNotification({
         title: "登录成功",
-        message: `欢迎进入 STSS，当前身份：${data.user_info.name}`,
+        message: `欢迎进入 STSS，当前身份：${body.username || body.user_info?.name}`,
         type: "success",
         duration: 3000
       });

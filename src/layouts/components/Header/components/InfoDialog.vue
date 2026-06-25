@@ -2,7 +2,7 @@
   <el-dialog v-model="dialogVisible" title="个人信息" width="560px" draggable>
     <div class="info-dialog">
       <div class="avatar-panel">
-        <img src="@/assets/images/avatar.gif" alt="avatar" class="avatar-img" />
+        <img :src="avatarSrc" alt="avatar" class="avatar-img" @error="handleAvatarError" />
         <div class="avatar-copy">
           <div class="name">{{ userStore.userInfo.name || "未命名用户" }}</div>
           <div class="role">{{ roleLabel }}</div>
@@ -11,13 +11,12 @@
       <el-descriptions :column="1" border>
         <el-descriptions-item label="账号">{{ roleAccount }}</el-descriptions-item>
         <el-descriptions-item label="系统角色">{{ roleLabel }}</el-descriptions-item>
-        <el-descriptions-item label="说明">
-          当前模板阶段仅统一公共入口。后续可在这里接入头像、邮箱、联系方式等个人资料编辑能力。
-        </el-descriptions-item>
+        <el-descriptions-item label="说明"> 可通过个人中心维护头像、邮箱、联系方式和登录密码。 </el-descriptions-item>
       </el-descriptions>
     </div>
     <template #footer>
       <span class="dialog-footer">
+        <el-button type="primary" plain @click="handleEdit">编辑</el-button>
         <el-button @click="dialogVisible = false">取消</el-button>
         <el-button type="primary" @click="dialogVisible = false">确认</el-button>
       </span>
@@ -26,12 +25,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
+import { useRouter } from "vue-router";
 import { useUserStore } from "@/stores/modules/user";
+import defaultAvatar from "@/assets/images/avatar.gif";
+import { getLocalProfileAvatar, PROFILE_AVATAR_CHANGED_EVENT, removeLocalProfileAvatar } from "@/utils/profileAvatar";
 
+const router = useRouter();
 const userStore = useUserStore();
 
 const dialogVisible = ref(false);
+const localAvatarUrl = ref("");
+const avatarLoadFailed = ref(false);
 
 const roleLabelMap: Record<string, string> = {
   student: "学生",
@@ -46,13 +51,46 @@ const accountMap: Record<string, string> = {
 };
 
 const roleLabel = computed(() => roleLabelMap[userStore.userInfo.role] ?? "未识别角色");
-const roleAccount = computed(() => accountMap[userStore.userInfo.role] ?? "-");
+const roleAccount = computed(() => userStore.userInfo.name || accountMap[userStore.userInfo.role] || "-");
+const avatarIdentity = computed(() => ({
+  userId: userStore.userId,
+  username: userStore.userInfo.name
+}));
+const avatarSrc = computed(() => (avatarLoadFailed.value ? defaultAvatar : localAvatarUrl.value || defaultAvatar));
+
+const refreshLocalAvatar = () => {
+  avatarLoadFailed.value = false;
+  localAvatarUrl.value = getLocalProfileAvatar(avatarIdentity.value)?.url || "";
+};
+
+const handleAvatarError = (event: Event) => {
+  if (!localAvatarUrl.value) return;
+  avatarLoadFailed.value = true;
+  localAvatarUrl.value = "";
+  removeLocalProfileAvatar(avatarIdentity.value);
+  (event.target as HTMLImageElement).src = defaultAvatar;
+};
 
 const openDialog = () => {
+  refreshLocalAvatar();
   dialogVisible.value = true;
 };
 
+const handleEdit = () => {
+  dialogVisible.value = false;
+  router.push("/profile");
+};
+
 defineExpose({ openDialog });
+
+onMounted(() => {
+  refreshLocalAvatar();
+  window.addEventListener(PROFILE_AVATAR_CHANGED_EVENT, refreshLocalAvatar);
+});
+
+onUnmounted(() => {
+  window.removeEventListener(PROFILE_AVATAR_CHANGED_EVENT, refreshLocalAvatar);
+});
 </script>
 
 <style scoped lang="scss">

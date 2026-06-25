@@ -1,20 +1,51 @@
+import type { UserGender, UserStatus } from "@/api/interface/baseInfo";
+
 /**
- * 基础信息管理组的同学在这里补充个人中心相关类型。
- * 建议把个人资料、头像、联系方式、安全设置等类型定义在这里。
+ * 个人中心类型。Info Service 当前只持久化用户档案中的姓名、性别、
+ * 邮箱、手机和状态；头像上传可返回文件访问地址，但后端用户更新接口
+ * 暂未开放 avatar_file_id 写入。
  */
 export namespace Profile {
-  export interface PersonalInfo {
+  export interface ProfileDetail {
     id: string;
-    name: string;
-    avatar: string;
-    phone?: string;
-    email?: string;
+    userId: string;
+    userNo: string;
+    username: string;
+    fullName: string;
+    gender: UserGender;
+    email: string;
+    phone: string;
+    status: UserStatus;
+    avatarFileId: string;
+    avatarUrl: string;
+    roleNames: string[];
+    roleName: string;
+    createdAt: string;
+    updatedAt: string;
   }
 
   export interface UpdateProfileParams {
-    name?: string;
-    avatar?: string;
-    phone?: string;
-    email?: string;
+    id?: string;
+    fullName: string;
+    gender: UserGender;
+    email: string;
+    phone: string;
+    status: UserStatus;
+    avatarFileId?: string;
+    avatarUrl?: string;
+  }
+
+  export interface ChangePasswordParams {
+    oldPassword: string;
+    newPassword: string;
+    confirmPassword: string;
+  }
+
+  export interface ActivityItem {
+    id: string;
+    title: string;
+    description: string;
+    status: string;
+    time: string;
   }
 }
