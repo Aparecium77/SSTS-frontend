@@ -54,6 +54,7 @@ export namespace BaseInfo {
     userNo: string;
     username: string;
     roleIds: number[];
+    syncRoleIds?: boolean;
     fullName: string;
     gender: UserGender;
     phone: string;
@@ -102,6 +103,7 @@ export namespace BaseInfo {
     email: string;
     status: UserStatus;
     roleIds: number[];
+    syncRoleIds?: boolean;
   }
   export type TeacherDetail = TeacherItem;
 

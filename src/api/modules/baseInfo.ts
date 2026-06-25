@@ -130,10 +130,11 @@ const convertUserItem = (item: any): BaseInfo.UserItem => ({
 
 const userPayload = (form: BaseInfo.UserForm) => {
   const roleIds = normalizeRoleIds(form.roleIds);
+  const shouldSyncRoleIds = form.syncRoleIds !== false;
   return compact({
     user_no: form.userNo,
     username: form.username,
-    role_ids: roleIds.length ? roleIds : undefined,
+    role_ids: shouldSyncRoleIds && roleIds.length ? roleIds : undefined,
     full_name: form.fullName,
     gender: form.gender,
     phone: form.phone,
@@ -307,6 +308,7 @@ export const saveBaseInfoTeacherApi = async (form: BaseInfo.TeacherForm) => {
     phone: form.phone,
     email: form.email,
     status: form.status,
+    syncRoleIds: form.syncRoleIds,
     avatarFileId: ""
   });
   return { ...saved, teacherNo: saved.userNo };

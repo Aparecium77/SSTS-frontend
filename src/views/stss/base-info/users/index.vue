@@ -188,6 +188,7 @@ const tableData = ref<BaseInfo.UserItem[]>([]);
 const drawerVisible = ref(false);
 const drawerMode = ref<DrawerMode>("create");
 const formRef = ref<FormInstance>();
+const originalRoleIds = ref<number[]>([]);
 
 const emptyForm = (): BaseInfo.UserForm => ({
   userNo: "",
@@ -227,6 +228,12 @@ const formRules: FormRules<BaseInfo.UserForm> = {
   avatarFileId: []
 };
 
+const isSameRoleIds = (left: number[], right: number[]) => {
+  const normalizedLeft = normalizeBaseInfoRoleIds(left).sort((a, b) => a - b);
+  const normalizedRight = normalizeBaseInfoRoleIds(right).sort((a, b) => a - b);
+  return normalizedLeft.length === normalizedRight.length && normalizedLeft.every((id, index) => id === normalizedRight[index]);
+};
+
 const patchForm = (data: UserFormSource) => {
   const roleIds = normalizeBaseInfoRoleIds(
     Array.isArray(data.roleIds)
@@ -236,6 +243,7 @@ const patchForm = (data: UserFormSource) => {
   Object.assign(formState, emptyForm(), data, {
     roleIds
   });
+  originalRoleIds.value = [...roleIds];
   previewUrl.value = data.avatarFileId ? getBaseInfoFileDownloadUrl(data.avatarFileId) : "";
 };
 
@@ -369,7 +377,9 @@ const handleSubmit = async () => {
     const valid = await formRef.value?.validate().catch(() => false);
     if (!valid) return;
     saving.value = true;
-    await saveBaseInfoUserApi({ ...formState });
+    const roleIds = normalizeBaseInfoRoleIds(formState.roleIds);
+    const syncRoleIds = drawerMode.value === "create" || !isSameRoleIds(roleIds, originalRoleIds.value);
+    await saveBaseInfoUserApi({ ...formState, roleIds, syncRoleIds });
     ElMessage.success(drawerMode.value === "create" ? "新增成功" : "保存成功");
     drawerVisible.value = false;
     await loadTable();

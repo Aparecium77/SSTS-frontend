@@ -144,6 +144,7 @@ const tableData = ref<BaseInfo.TeacherItem[]>([]);
 const drawerVisible = ref(false);
 const drawerMode = ref<DrawerMode>("create");
 const formRef = ref<FormInstance>();
+const originalRoleIds = ref<number[]>([]);
 
 const emptyForm = (): BaseInfo.TeacherForm => ({
   teacherNo: "",
@@ -173,6 +174,12 @@ const formRules: FormRules<BaseInfo.TeacherForm> = {
   status: [{ required: true, message: "请选择状态", trigger: "change" }]
 };
 
+const isSameRoleIds = (left: number[], right: number[]) => {
+  const normalizedLeft = normalizeBaseInfoRoleIds(left).sort((a, b) => a - b);
+  const normalizedRight = normalizeBaseInfoRoleIds(right).sort((a, b) => a - b);
+  return normalizedLeft.length === normalizedRight.length && normalizedLeft.every((id, index) => id === normalizedRight[index]);
+};
+
 const patchForm = (data: TeacherFormSource) => {
   const roleIds = normalizeBaseInfoRoleIds(
     Array.isArray(data.roleIds)
@@ -183,6 +190,7 @@ const patchForm = (data: TeacherFormSource) => {
     teacherNo: data.teacherNo || data.userNo || "",
     roleIds: roleIds.length ? roleIds : [2]
   });
+  originalRoleIds.value = [...formState.roleIds];
 };
 
 const loadTable = async () => {
@@ -264,7 +272,9 @@ const handleSubmit = async () => {
     const valid = await formRef.value?.validate().catch(() => false);
     if (!valid) return;
     saving.value = true;
-    await saveBaseInfoTeacherApi({ ...formState });
+    const roleIds = normalizeBaseInfoRoleIds(formState.roleIds);
+    const syncRoleIds = drawerMode.value === "create" || !isSameRoleIds(roleIds, originalRoleIds.value);
+    await saveBaseInfoTeacherApi({ ...formState, roleIds, syncRoleIds });
     ElMessage.success(drawerMode.value === "create" ? "新增成功" : "保存成功");
     drawerVisible.value = false;
     await loadTable();
