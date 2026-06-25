@@ -6,6 +6,7 @@ import type { BaseInfo } from "@/api/interface/baseInfo";
 import http from "@/api";
 import { useUserStore } from "@/stores/modules/user";
 import {
+  enrichBaseInfoUserFromCurrentAuthApi,
   getBaseInfoUserDetailApi,
   getBaseInfoUserIdByAuthIdApi,
   getBaseInfoUserListApi,
@@ -75,10 +76,15 @@ const resolveCurrentInfoUserId = async () => {
 };
 
 const enrichUserRoles = async (user: Awaited<ReturnType<typeof getBaseInfoUserDetailApi>>) => {
-  if (user.roleNames.length || !user.username) return user;
+  const currentAuthUser = await enrichBaseInfoUserFromCurrentAuthApi(user);
+  if (currentAuthUser.roleNames.length || !currentAuthUser.username) return currentAuthUser;
   const res = await getBaseInfoUserListApi({ pageNum: 1, pageSize: 20, keyword: user.username });
-  const item = res.list.find(row => row.id === user.id || row.username === user.username || row.userNo === user.userNo);
-  return item ? { ...user, roleIds: user.roleIds || item.roleIds, roleNames: item.roleNames } : user;
+  const item = res.list.find(
+    row => row.id === currentAuthUser.id || row.username === currentAuthUser.username || row.userNo === currentAuthUser.userNo
+  );
+  return item
+    ? { ...currentAuthUser, roleIds: currentAuthUser.roleIds || item.roleIds, roleNames: item.roleNames }
+    : currentAuthUser;
 };
 
 export const getBaseInfoProfileDetailApi = async (userId?: string) => {
@@ -100,6 +106,7 @@ export const saveBaseInfoProfileApi = async (params: Profile.UpdateProfileParams
     email: params.email,
     phone: params.phone,
     status: params.status,
+    syncRoleIds: false,
     avatarFileId: current.avatarFileId
   });
   const enrichedSaved = await enrichUserRoles(saved);

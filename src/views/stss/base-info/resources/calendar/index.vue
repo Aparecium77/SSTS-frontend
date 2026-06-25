@@ -129,6 +129,7 @@ const drawerMode = ref<DrawerMode>("create");
 const formRef = ref<FormInstance>();
 
 const emptyForm = (): BaseInfo.CalendarForm => ({
+  id: undefined,
   termCode: "",
   termName: "",
   startDate: "",

@@ -74,6 +74,8 @@ export const BASE_INFO_ROLE_OPTIONS: BaseInfo.RoleOption[] = [
   { id: 5, label: "服务账号", code: "SERVICE" }
 ];
 
+export const BASE_INFO_EDITABLE_ROLE_OPTIONS = BASE_INFO_ROLE_OPTIONS.filter(role => [1, 2, 3].includes(role.id));
+
 const validRoleIdSet = new Set(BASE_INFO_ROLE_OPTIONS.map(role => role.id));
 
 const normalizeRoleIds = (roleIds: Array<number | string>) =>
@@ -91,6 +93,45 @@ const roleIdsFromNames = (roleNames: string[]) =>
       .map(name => name.trim())
       .map(name => BASE_INFO_ROLE_OPTIONS.find(role => role.label === name || role.code === name)?.id ?? "")
   );
+
+type CurrentAuthIdentity = {
+  user_id?: string;
+  username?: string;
+  role?: string;
+};
+
+const roleIdsFromAuthRole = (role?: string) => {
+  if (!role) return [];
+  return BASE_INFO_ROLE_OPTIONS.filter(option => option.code === role || option.label === role).map(option => option.id);
+};
+
+const getCurrentAuthIdentity = async (): Promise<CurrentAuthIdentity> => {
+  try {
+    const res = await http.get("/auth/me", {}, { cancel: false, loading: false });
+    const body = unwrap<any>(res as any);
+    return {
+      user_id: body.user_id ?? "",
+      username: body.username ?? "",
+      role: body.role ?? ""
+    };
+  } catch {
+    return {};
+  }
+};
+
+export const enrichBaseInfoUserFromCurrentAuthApi = async (user: BaseInfo.UserItem) => {
+  if (user.roleIds || user.roleNames.length || !user.username) return user;
+  const identity = await getCurrentAuthIdentity();
+  const sameUser = identity.username === user.username || (!!identity.user_id && identity.user_id === user.id);
+  if (!sameUser) return user;
+  const roleIds = roleIdsFromAuthRole(identity.role);
+  if (!roleIds.length) return user;
+  return {
+    ...user,
+    roleIds: roleIds.join(","),
+    roleNames: roleIds.map(id => BASE_INFO_ROLE_OPTIONS.find(role => role.id === id)?.label ?? "").filter(Boolean)
+  };
+};
 
 const convertUploadedFile = (item: any): BaseInfo.UploadedFile => ({
   id: String(item.id ?? ""),
@@ -168,7 +209,7 @@ export const getBaseInfoUserDetailApi = async (id: string) => {
 };
 
 export const getBaseInfoUserDetailWithRolesApi = async (row: BaseInfo.UserItem) => {
-  const detail = await getBaseInfoUserDetailApi(row.id);
+  const detail = await enrichBaseInfoUserFromCurrentAuthApi(await getBaseInfoUserDetailApi(row.id));
   return {
     ...detail,
     roleNames: detail.roleNames.length ? detail.roleNames : row.roleNames,
@@ -288,7 +329,7 @@ export const getBaseInfoTeacherDetailApi = async (id: string) => {
 };
 
 export const getBaseInfoTeacherDetailWithRolesApi = async (row: BaseInfo.TeacherItem) => {
-  const detail = await getBaseInfoTeacherDetailApi(row.id);
+  const detail = await enrichBaseInfoUserFromCurrentAuthApi(await getBaseInfoTeacherDetailApi(row.id));
   return {
     ...detail,
     roleNames: detail.roleNames.length ? detail.roleNames : row.roleNames,

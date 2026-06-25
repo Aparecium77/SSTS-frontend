@@ -115,6 +115,7 @@ const drawerMode = ref<DrawerMode>("create");
 const formRef = ref<FormInstance>();
 
 const emptyForm = (): BaseInfo.ClassroomForm => ({
+  id: undefined,
   classroomNo: "",
   building: "",
   capacity: 1,

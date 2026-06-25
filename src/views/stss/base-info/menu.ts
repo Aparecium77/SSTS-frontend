@@ -37,7 +37,13 @@ export const baseInfoMenu = () =>
         "培养方案",
         "Collection"
       ),
-      createMenu("/base-info/permissions", "baseInfoPermissions", "/stss/base-info/permissions/index", "权限与回收站", "Tickets")
+      createMenu(
+        "/base-info/permissions",
+        "baseInfoPermissions",
+        "/stss/base-info/permissions/index",
+        "字典与回收站",
+        "Collection"
+      )
     ],
     "DataBoard"
   );

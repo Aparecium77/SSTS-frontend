@@ -5,11 +5,13 @@
         <div>
           <p class="eyebrow">基础信息管理</p>
           <h2>课程资源</h2>
-          <p class="description">维护课程基础数据：课程代码、课程名称、学分、容量、考核方式与状态。</p>
+          <p class="description">
+            维护课程基础数据：课程代码、课程名称、学分、容量、考核方式与状态；归档课程不再展示但课程编号仍保留占用。
+          </p>
         </div>
         <el-space>
           <el-button :icon="RefreshRight" @click="handleReset">重置</el-button>
-          <el-button :disabled="!selectedRows.length" type="danger" @click="handleBatchRemove">批量删除</el-button>
+          <el-button :disabled="!selectedRows.length" type="danger" @click="handleBatchRemove">批量归档</el-button>
           <el-button @click="exportCsv">导出</el-button>
           <el-button type="primary" :icon="Plus" @click="handleCreate">新增课程</el-button>
         </el-space>
@@ -42,7 +44,7 @@
             <el-space wrap>
               <el-button link type="primary" :icon="View" @click="handleView(scope.row)">详情</el-button>
               <el-button link type="primary" :icon="EditPen" @click="handleEdit(scope.row)">编辑</el-button>
-              <el-button link type="danger" :icon="Delete" @click="handleRemove(scope.row)">删除</el-button>
+              <el-button link type="danger" :icon="Delete" @click="handleRemove(scope.row)">归档</el-button>
             </el-space>
           </template>
         </el-table-column>
@@ -126,6 +128,7 @@ const drawerMode = ref<DrawerMode>("create");
 const formRef = ref<FormInstance>();
 
 const emptyForm = (): BaseInfo.CourseForm => ({
+  id: undefined,
   courseNo: "",
   courseName: "",
   credits: 0,
@@ -191,21 +194,25 @@ const handleSelectionChange = (rows: BaseInfo.CourseItem[]) => {
 const handleBatchRemove = async () => {
   if (!selectedRows.value.length) return;
   try {
-    await ElMessageBox.confirm(`确定删除选中的 ${selectedRows.value.length} 个课程？`, "提示", { type: "warning" });
+    await ElMessageBox.confirm(`确定归档选中的 ${selectedRows.value.length} 个课程？归档后课程编号仍会保留占用。`, "提示", {
+      type: "warning"
+    });
+    let failedCount = 0;
     for (const r of selectedRows.value) {
       try {
         // eslint-disable-next-line no-await-in-loop
         await deleteBaseInfoCourseApi(r.id);
       } catch (e) {
-        // continue
+        failedCount += 1;
       }
     }
-    ElMessage.success("批量删除完成");
+    if (failedCount) ElMessage.warning(`批量归档完成，${failedCount} 个课程归档失败`);
+    else ElMessage.success("批量归档完成");
     selectedRows.value = [];
     await loadTable();
   } catch (err) {
     if ((err as any)?.code === "cancel") return;
-    ElMessage.error((err as any)?.message || "批量删除失败");
+    ElMessage.error((err as any)?.message || "批量归档失败");
   }
 };
 
@@ -273,13 +280,15 @@ const handleView = async (row: BaseInfo.CourseItem) => {
 
 const handleRemove = async (row: BaseInfo.CourseItem) => {
   try {
-    await ElMessageBox.confirm(`确定删除 ${row.courseName} 吗？`, "提示", { type: "warning" });
+    await ElMessageBox.confirm(`确定归档 ${row.courseName} 吗？归档后课程编号 ${row.courseNo} 仍会保留占用。`, "提示", {
+      type: "warning"
+    });
     await deleteBaseInfoCourseApi(row.id);
-    ElMessage.success("删除成功");
+    ElMessage.success("归档成功");
     await loadTable();
   } catch (err) {
     if ((err as any)?.code === "cancel") return;
-    ElMessage.error((err as any)?.message || "删除失败");
+    ElMessage.error((err as any)?.message || "归档失败");
   }
 };
 

@@ -5,7 +5,7 @@
         <div>
           <p class="eyebrow">基础信息管理</p>
           <h2>用户与档案</h2>
-          <p class="description">维护用户、角色与档案信息，支持查询、新增、编辑、删除和头像上传。</p>
+          <p class="description">维护用户、固定系统角色与档案信息，支持查询、新增、编辑、删除和头像上传。</p>
         </div>
         <el-space>
           <el-button :icon="RefreshRight" @click="handleReset">重置</el-button>
@@ -56,7 +56,7 @@
             <el-space wrap>
               <el-button link type="primary" :icon="View" @click="handleView(scope.row)">详情</el-button>
               <el-button link type="primary" :icon="EditPen" @click="handleEdit(scope.row)">编辑</el-button>
-              <el-button link type="danger" :icon="Delete" @click="handleRemove(scope.row)">删除</el-button>
+              <el-button link type="danger" :icon="Delete" @click="handleRemove(scope.row)">移入回收站</el-button>
             </el-space>
           </template>
         </el-table-column>
@@ -92,7 +92,7 @@
           <el-input v-model="formState.fullName" placeholder="请输入姓名" />
         </el-form-item>
         <el-form-item label="角色" prop="roleIds">
-          <el-select v-model="formState.roleIds" multiple collapse-tags collapse-tags-tooltip placeholder="请选择角色">
+          <el-select v-model="formRoleId" :disabled="isRoleLocked" placeholder="请选择角色">
             <el-option v-for="item in roleOptions" :key="item.id" :label="item.label" :value="item.id" />
           </el-select>
         </el-form-item>
@@ -141,12 +141,13 @@
 </template>
 
 <script setup lang="ts" name="baseInfoUsers">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { Delete, EditPen, Plus, RefreshRight, Search, View } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from "element-plus";
 import {
   deleteBaseInfoUserApi,
   BASE_INFO_ROLE_OPTIONS,
+  BASE_INFO_EDITABLE_ROLE_OPTIONS,
   getBaseInfoFileDownloadUrl,
   getBaseInfoUserDetailWithRolesApi,
   getBaseInfoUserListApi,
@@ -167,7 +168,6 @@ const genderOptions = [
   { label: "男", value: "男" },
   { label: "女", value: "女" }
 ];
-const roleOptions = BASE_INFO_ROLE_OPTIONS;
 
 const queryForm = reactive<BaseInfo.UserQuery>({
   pageNum: 1,
@@ -191,6 +191,7 @@ const formRef = ref<FormInstance>();
 const originalRoleIds = ref<number[]>([]);
 
 const emptyForm = (): BaseInfo.UserForm => ({
+  id: undefined,
   userNo: "",
   username: "",
   roleIds: [],
@@ -204,6 +205,29 @@ const emptyForm = (): BaseInfo.UserForm => ({
 
 const formState = reactive<BaseInfo.UserForm>(emptyForm());
 
+const currentRoleOption = computed(() => BASE_INFO_ROLE_OPTIONS.find(role => role.id === formState.roleIds[0]));
+const roleOptions = computed(() => {
+  const options = [...BASE_INFO_EDITABLE_ROLE_OPTIONS];
+  if (currentRoleOption.value && !options.some(role => role.id === currentRoleOption.value?.id)) {
+    options.push(currentRoleOption.value);
+  }
+  return options;
+});
+
+const formRoleId = computed<number | "">({
+  get: () => formState.roleIds[0] ?? "",
+  set: value => {
+    formState.roleIds = value === "" ? [] : [value];
+  }
+});
+
+const isRoleLocked = computed(
+  () =>
+    drawerMode.value !== "create" &&
+    Boolean(formRoleId.value) &&
+    !BASE_INFO_EDITABLE_ROLE_OPTIONS.some(role => role.id === formRoleId.value)
+);
+
 const formRules: FormRules<BaseInfo.UserForm> = {
   userNo: [{ required: true, message: "请输入用户编号", trigger: "blur" }],
   username: [
@@ -214,7 +238,7 @@ const formRules: FormRules<BaseInfo.UserForm> = {
     { required: true, message: "请输入姓名", trigger: "blur" },
     { min: 2, max: 20, message: "姓名长度为 2 到 20 个字符", trigger: "blur" }
   ],
-  roleIds: [{ type: "array", required: true, min: 1, message: "请选择角色", trigger: "change" }],
+  roleIds: [],
   gender: [{ required: true, message: "请选择性别", trigger: "change" }],
   phone: [
     { required: true, message: "请输入手机号", trigger: "blur" },
@@ -241,9 +265,9 @@ const patchForm = (data: UserFormSource) => {
       : parseBaseInfoRoleIds(data.roleIds ?? "").concat(parseBaseInfoRoleIdsFromNames(data.roleNames ?? []))
   );
   Object.assign(formState, emptyForm(), data, {
-    roleIds
+    roleIds: roleIds.length ? [roleIds[0]] : []
   });
-  originalRoleIds.value = [...roleIds];
+  originalRoleIds.value = [...formState.roleIds];
   previewUrl.value = data.avatarFileId ? getBaseInfoFileDownloadUrl(data.avatarFileId) : "";
 };
 
@@ -362,13 +386,13 @@ const handleView = async (row: BaseInfo.UserItem) => {
 
 const handleRemove = async (row: BaseInfo.UserItem) => {
   try {
-    await ElMessageBox.confirm(`确定删除 ${row.fullName} 吗？`, "提示", { type: "warning" });
+    await ElMessageBox.confirm(`确定将 ${row.fullName} 移入回收站吗？`, "提示", { type: "warning" });
     await deleteBaseInfoUserApi(row.id);
-    ElMessage.success("删除成功");
+    ElMessage.success("已移入回收站");
     await loadTable();
   } catch (err) {
     if ((err as any)?.code === "cancel") return;
-    ElMessage.error((err as any)?.message || "删除失败");
+    ElMessage.error((err as any)?.message || "移入回收站失败");
   }
 };
 
@@ -376,9 +400,13 @@ const handleSubmit = async () => {
   try {
     const valid = await formRef.value?.validate().catch(() => false);
     if (!valid) return;
+    if (!formState.roleIds.length) {
+      ElMessage.warning("请选择角色");
+      return;
+    }
     saving.value = true;
     const roleIds = normalizeBaseInfoRoleIds(formState.roleIds);
-    const syncRoleIds = drawerMode.value === "create" || !isSameRoleIds(roleIds, originalRoleIds.value);
+    const syncRoleIds = !isRoleLocked.value && (drawerMode.value === "create" || !isSameRoleIds(roleIds, originalRoleIds.value));
     await saveBaseInfoUserApi({ ...formState, roleIds, syncRoleIds });
     ElMessage.success(drawerMode.value === "create" ? "新增成功" : "保存成功");
     drawerVisible.value = false;

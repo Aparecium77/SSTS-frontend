@@ -1,5 +1,5 @@
 <template>
-  <div class="base-info-permissions">
+  <div class="base-info-dictionary">
     <el-tabs v-model="activeTab">
       <el-tab-pane label="基础信息字典" name="dictionary">
         <el-card shadow="never" class="page-card">
@@ -205,6 +205,7 @@ const selectedRecycleRows = ref<BaseInfo.RecycleItem[]>([]);
 const hasRows = computed(() => selectedRecycleRows.value.length > 0);
 
 const emptyForm = (): BaseInfo.PermissionForm => ({
+  id: undefined,
   category: "",
   itemCode: "",
   itemName: "",
@@ -394,7 +395,7 @@ onMounted(() => {
 </script>
 
 <style scoped lang="scss">
-.base-info-permissions {
+.base-info-dictionary {
   padding: 20px;
 }
 .page-card {
