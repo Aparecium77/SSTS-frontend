@@ -260,6 +260,10 @@ const openDrawer = (mode: DrawerMode, data?: Partial<BaseInfo.CourseForm>) => {
 
 const handleCreate = () => openDrawer("create");
 
+const closeDrawer = () => {
+  drawerVisible.value = false;
+};
+
 const handleEdit = async (row: BaseInfo.CourseItem) => {
   try {
     const detail = await getBaseInfoCourseDetailApi(row.id);

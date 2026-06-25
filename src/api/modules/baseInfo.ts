@@ -1,7 +1,7 @@
 /**
  * 基础信息管理 API。请求统一经 Gateway 转发到 info_service。
  */
-import type { BaseInfo } from "@/api/interface/baseInfo";
+import type { BaseInfo, UserStatus } from "@/api/interface/baseInfo";
 import http from "@/api";
 import { PORT1 } from "@/api/config/servicePort";
 
@@ -60,8 +60,8 @@ const getDownloadUrl = (accessUrl: string) => {
   return accessUrl.startsWith("/api/v1/info") ? accessUrl : accessUrl.replace("/api/v1/files", `${PORT1}/files`);
 };
 
-const statusToBackend = (status: BaseInfo.UserStatus) => (status === "INACTIVE" ? "DISABLED" : status);
-const statusFromBackend = (status?: string): BaseInfo.UserStatus => {
+const statusToBackend = (status: UserStatus) => (status === "INACTIVE" ? "DISABLED" : status);
+const statusFromBackend = (status?: string): UserStatus => {
   if (status === "DISABLED" || status === "INACTIVE") return "DISABLED";
   return "ACTIVE";
 };
@@ -246,6 +246,7 @@ const convertCourseItem = (item: any): BaseInfo.CourseItem => ({
   capacity: item.capacity ?? 0,
   assessmentMethod: item.assessment_method ?? "",
   isActive: item.is_active ?? true,
+  isDeleted: Boolean(item.is_deleted),
   createdAt: item.created_at ?? "",
   updatedAt: item.updated_at ?? ""
 });
@@ -269,11 +270,17 @@ const courseCreatePayload = (form: BaseInfo.CourseForm) =>
     assessment_method: form.assessmentMethod
   });
 
+const normalizeCourseIds = (courseIds: Array<number | string>) =>
+  Array.from(new Set(courseIds.map(item => Number(String(item).trim())).filter(id => Number.isInteger(id) && id > 0)));
+
 export const getBaseInfoCourseListApi = async (query: BaseInfo.CourseQuery) => {
   const res = await http.get(`${PORT1}/courses/`, toPageQuery(query));
   const { list, total } = extractList<any>(res as any);
   return { list: list.map(convertCourseItem), total };
 };
+
+export const getBaseInfoCourseOptionListApi = async () =>
+  fetchAllPages(page => getBaseInfoCourseListApi({ pageNum: page, pageSize: 100, keyword: "" }), 100);
 
 export const getBaseInfoCourseDetailApi = async (id: string) => {
   const res = await http.get(`${PORT1}/courses/${id}`);
@@ -433,7 +440,7 @@ const trainingPlanPayload = (form: BaseInfo.TrainingPlanForm) =>
     major_code: form.majorCode,
     grade: form.grade,
     version: form.version,
-    required_course_ids: form.requiredCourseIds.map(Number).filter(Number.isFinite)
+    required_course_ids: normalizeCourseIds(form.requiredCourseIds)
   });
 
 export const getBaseInfoTrainingPlanListApi = async (query: BaseInfo.TrainingPlanQuery) => {

@@ -86,9 +86,17 @@
             <el-option
               v-for="course in courseOptions"
               :key="course.id"
-              :label="`${course.courseNo} ${course.courseName}`"
+              :disabled="course.isDeleted"
+              :label="formatCourseOption(course)"
               :value="course.id"
-            />
+            >
+              <span>{{ course.courseNo }} {{ course.courseName }}</span>
+              <el-tag v-if="!course.isActive" class="course-option-tag" size="small" type="warning">停用</el-tag>
+              <el-tag v-if="course.isDeleted" class="course-option-tag" size="small" type="danger">已归档</el-tag>
+            </el-option>
+            <template #empty>
+              <div class="select-empty">暂无可选课程，请先在课程资源中新增课程</div>
+            </template>
           </el-select>
         </el-form-item>
       </el-form>
@@ -108,7 +116,7 @@ import { Delete, EditPen, Plus, RefreshRight, Search, View } from "@element-plus
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from "element-plus";
 import {
   deleteBaseInfoTrainingPlanApi,
-  getBaseInfoCourseListApi,
+  getBaseInfoCourseOptionListApi,
   getBaseInfoTrainingPlanDetailApi,
   getBaseInfoTrainingPlanListApi,
   saveBaseInfoTrainingPlanApi
@@ -154,6 +162,11 @@ const formRules: FormRules<BaseInfo.TrainingPlanForm> = {
   requiredCourseIds: [{ type: "array", required: true, min: 1, message: "请选择必修课程", trigger: "change" }]
 };
 
+const normalizeCourseIds = (courseIds: Array<number | string>) =>
+  Array.from(new Set(courseIds.map(item => Number(String(item).trim())).filter(id => Number.isInteger(id) && id > 0))).map(
+    String
+  );
+
 const patchForm = (data: Partial<BaseInfo.TrainingPlanForm>) => {
   Object.assign(formState, emptyForm(), data);
 };
@@ -165,10 +178,40 @@ const formatRequiredCourses = (row: BaseInfo.TrainingPlanItem) => {
   return row.requiredCourseIds.join("、") || "-";
 };
 
-const loadCourseOptions = async () => {
+const formatCourseOption = (course: BaseInfo.CourseItem) => {
+  const statusText = course.isDeleted ? "已归档" : course.isActive ? "" : "停用";
+  return [course.courseNo, course.courseName, statusText].filter(Boolean).join(" ");
+};
+
+const appendMissingSelectedCourses = (courses: BaseInfo.CourseItem[], data?: Partial<BaseInfo.TrainingPlanForm>) => {
+  const existingIds = new Set(courses.map(course => course.id));
+  const requiredCourseIds = data?.requiredCourseIds ?? [];
+  const requiredCourses = ((data as BaseInfo.TrainingPlanItem | undefined)?.requiredCourses ?? []) as BaseInfo.CourseBrief[];
+  const requiredCourseMap = new Map(requiredCourses.map(course => [course.id, course]));
+  const missingCourses: BaseInfo.CourseItem[] = requiredCourseIds
+    .filter(id => !existingIds.has(id))
+    .map(id => {
+      const course = requiredCourseMap.get(id);
+      return {
+        id,
+        courseNo: course?.courseNo ?? id,
+        courseName: course?.courseName ?? "已归档课程",
+        credits: 0,
+        capacity: 0,
+        assessmentMethod: "",
+        isActive: false,
+        isDeleted: true,
+        createdAt: "",
+        updatedAt: ""
+      };
+    });
+  return courses.concat(missingCourses);
+};
+
+const loadCourseOptions = async (data?: Partial<BaseInfo.TrainingPlanForm>) => {
   try {
-    const res = await getBaseInfoCourseListApi({ pageNum: 1, pageSize: 100, keyword: "", isActive: true });
-    courseOptions.value = res.list;
+    const list = await getBaseInfoCourseOptionListApi();
+    courseOptions.value = appendMissingSelectedCourses(list, data);
   } catch (err) {
     ElMessage.error((err as any)?.message || "获取课程选项失败");
   }
@@ -213,8 +256,9 @@ const handlePageChange = (page?: number, size?: number) => {
   loadTable();
 };
 
-const openDrawer = (mode: DrawerMode, data?: Partial<BaseInfo.TrainingPlanForm>) => {
+const openDrawer = async (mode: DrawerMode, data?: Partial<BaseInfo.TrainingPlanForm>) => {
   drawerMode.value = mode;
+  await loadCourseOptions(data);
   drawerVisible.value = true;
   if (!data) {
     patchForm({});
@@ -223,7 +267,9 @@ const openDrawer = (mode: DrawerMode, data?: Partial<BaseInfo.TrainingPlanForm>)
   patchForm({ ...data });
 };
 
-const handleCreate = () => openDrawer("create");
+const handleCreate = () => {
+  openDrawer("create");
+};
 
 const handleEdit = async (row: BaseInfo.TrainingPlanItem) => {
   try {
@@ -261,6 +307,14 @@ const closeDrawer = () => {
 
 const handleSubmit = async () => {
   try {
+    formState.requiredCourseIds = normalizeCourseIds(formState.requiredCourseIds);
+    const archivedSelected = courseOptions.value.filter(
+      course => course.isDeleted && formState.requiredCourseIds.includes(course.id)
+    );
+    if (archivedSelected.length) {
+      ElMessage.error(`请先移除已归档课程：${archivedSelected.map(formatCourseOption).join("、")}`);
+      return;
+    }
     const valid = await formRef.value?.validate().catch(() => false);
     if (!valid) return;
     saving.value = true;
@@ -320,6 +374,14 @@ h2 {
   display: flex;
   justify-content: flex-end;
   padding-top: 16px;
+}
+.select-empty {
+  padding: 8px 12px;
+  font-size: 13px;
+  color: #909399;
+}
+.course-option-tag {
+  margin-left: 8px;
 }
 
 @media (width <= 992px) {

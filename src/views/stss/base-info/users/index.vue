@@ -353,7 +353,7 @@ const handlePageChange = (page?: number, size?: number) => {
   loadTable();
 };
 
-const openDrawer = (mode: DrawerMode, data?: Partial<BaseInfo.UserForm>) => {
+const openDrawer = (mode: DrawerMode, data?: UserFormSource) => {
   drawerMode.value = mode;
   drawerVisible.value = true;
   previewDialogVisible.value = false;

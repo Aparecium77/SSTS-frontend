@@ -75,6 +75,7 @@ export namespace BaseInfo {
     capacity: number;
     assessmentMethod: string;
     isActive: boolean;
+    isDeleted: boolean;
     createdAt: string;
     updatedAt: string;
   }

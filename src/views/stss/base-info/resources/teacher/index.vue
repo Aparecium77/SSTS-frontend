@@ -110,7 +110,7 @@
 </template>
 
 <script setup lang="ts" name="baseInfoTeacher">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { Delete, EditPen, Plus, RefreshRight, Search, View } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from "element-plus";
 import {
@@ -123,7 +123,9 @@ import {
 import type { BaseInfo } from "@/api/interface/baseInfo";
 
 type DrawerMode = "create" | "edit" | "view";
-type TeacherFormSource = Partial<Omit<BaseInfo.TeacherForm, "roleIds"> & Omit<BaseInfo.TeacherItem, "roleIds">>;
+type TeacherFormSource = Partial<
+  Omit<BaseInfo.TeacherForm, "roleIds"> & Omit<BaseInfo.TeacherItem, "roleIds"> & { roleIds?: number[] | string }
+>;
 
 const queryForm = reactive<BaseInfo.TeacherQuery>({
   pageNum: 1,
@@ -155,6 +157,12 @@ const emptyForm = (): BaseInfo.TeacherForm => ({
 });
 
 const formState = reactive<BaseInfo.TeacherForm>(emptyForm());
+
+const drawerTitle = computed(() => {
+  if (drawerMode.value === "create") return "新增教师";
+  if (drawerMode.value === "edit") return "编辑教师";
+  return "教师详情";
+});
 
 const formRules: FormRules<BaseInfo.TeacherForm> = {
   teacherNo: [{ required: true, message: "请输入用户编号", trigger: "blur" }],
@@ -217,7 +225,7 @@ const handlePageChange = (page?: number, size?: number) => {
   loadTable();
 };
 
-const openDrawer = (mode: DrawerMode, data?: Partial<BaseInfo.TeacherForm>) => {
+const openDrawer = (mode: DrawerMode, data?: TeacherFormSource) => {
   drawerMode.value = mode;
   drawerVisible.value = true;
   if (!data) {
@@ -228,6 +236,10 @@ const openDrawer = (mode: DrawerMode, data?: Partial<BaseInfo.TeacherForm>) => {
 };
 
 const handleCreate = () => openDrawer("create");
+
+const closeDrawer = () => {
+  drawerVisible.value = false;
+};
 
 const handleEdit = async (row: BaseInfo.TeacherItem) => {
   try {
