@@ -48,7 +48,7 @@ function postActionSilent<T>(action: string, data: Record<string, unknown>): Pro
 /* ────── 考试列表 ────── */
 
 export function listMyExamRecords(params: ListMyExamRecordsReq): Promise<PageResult<ExamRecordItem>> {
-  return postAction("list_my_exam_records", params as unknown as Record<string, unknown>);
+  return postActionSilent("list_my_exam_records", params as unknown as Record<string, unknown>);
 }
 
 /* ────── 开始考试 ────── */

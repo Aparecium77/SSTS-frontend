@@ -238,9 +238,11 @@ export const resolveStudentLogin = (login: string) =>
 export const getMyGrades = (params: { semester?: string } = {}) =>
   scoreHttp.get<Score.StudentGradeList>("/students/me/grades", params);
 
-export const getMyCredits = () => scoreHttp.get<Score.CreditProgress>("/students/me/credits");
+export const getMyCredits = () =>
+  scoreHttp.get<Score.CreditProgress>("/students/me/credits", {}, { loading: false, silentError: true });
 
-export const getMyStatistics = () => scoreHttp.get<Score.StudentStatistics>("/students/me/statistics");
+export const getMyStatistics = () =>
+  scoreHttp.get<Score.StudentStatistics>("/students/me/statistics", {}, { loading: false, silentError: true });
 
 export const getStudentGrades = (studentId: string, params: { semester?: string } = {}) =>
   scoreHttp.get<Score.StudentGradeList>(`/students/${encodePath(studentId)}/grades`, params);

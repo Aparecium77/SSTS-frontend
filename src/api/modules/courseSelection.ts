@@ -77,7 +77,11 @@ export const swapEnrollmentApi = (params: CourseSelection.SwapReq) =>
 export const getMyEnrollmentsApi = (semester: string, status?: string) =>
   http.get<CourseSelection.EnrollmentList>(`${P}/enrollments/me`, { semester, status });
 export const getQueuePositionApi = (offeringId: string) =>
-  http.get<CourseSelection.QueuePosition>(`${P}/enrollments/me/queue-position`, { offering_id: offeringId });
+  http.get<CourseSelection.QueuePosition>(
+    `${P}/enrollments/me/queue-position`,
+    { offering_id: offeringId },
+    { loading: false, cancel: false, silentError: true }
+  );
 export const getMyTimetableApi = (semester: string) =>
   http.get<CourseSelection.Timetable>(`${P}/enrollments/me/timetable`, { semester });
 

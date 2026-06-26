@@ -168,10 +168,7 @@ const formRules: FormRules<BaseInfo.TeacherForm> = {
   teacherNo: [{ required: true, message: "请输入用户编号", trigger: "blur" }],
   username: [{ required: true, message: "请输入登录账号", trigger: "blur" }],
   fullName: [{ required: true, message: "请输入姓名", trigger: "blur" }],
-  phone: [
-    { required: true, message: "请输入手机号", trigger: "blur" },
-    { pattern: /^1[3-9]\d{9}$/, message: "请输入正确的手机号", trigger: "blur" }
-  ],
+  phone: [{ required: true, message: "请输入手机号", trigger: "blur" }],
   email: [
     { required: true, message: "请输入邮箱", trigger: "blur" },
     { type: "email", message: "请输入正确的邮箱地址", trigger: "blur" }

@@ -9,8 +9,9 @@ import {
   BASE_INFO_ROLE_OPTIONS,
   enrichBaseInfoUserFromCurrentAuthApi,
   getBaseInfoUserDetailApi,
+  getBaseInfoUserDetailQuietApi,
   getBaseInfoUserIdByAuthIdApi,
-  getBaseInfoUserListApi,
+  getBaseInfoUserListQuietApi,
   parseBaseInfoRoleIds,
   saveBaseInfoUserApi,
   uploadBaseInfoFileApi
@@ -101,14 +102,16 @@ const resolveCurrentInfoUserId = async () => {
   const byAuthId = await getBaseInfoUserIdByAuthIdApi(authUserId).catch(() => "");
   if (byAuthId) return byAuthId;
 
-  const byUsername = await getBaseInfoUserListApi({ pageNum: 1, pageSize: 20, keyword: username }).catch(() => ({ list: [] }));
+  const byUsername = await getBaseInfoUserListQuietApi({ pageNum: 1, pageSize: 20, keyword: username }).catch(() => ({
+    list: []
+  }));
   return byUsername.list.find(item => item.username === username || item.userNo === username)?.id ?? "";
 };
 
 const enrichUserRoles = async (user: Awaited<ReturnType<typeof getBaseInfoUserDetailApi>>) => {
   const currentAuthUser = await enrichBaseInfoUserFromCurrentAuthApi(user);
   if (currentAuthUser.roleNames.length || !currentAuthUser.username) return currentAuthUser;
-  const res = await getBaseInfoUserListApi({ pageNum: 1, pageSize: 20, keyword: user.username });
+  const res = await getBaseInfoUserListQuietApi({ pageNum: 1, pageSize: 20, keyword: user.username });
   const item = res.list.find(
     row => row.id === currentAuthUser.id || row.username === currentAuthUser.username || row.userNo === currentAuthUser.userNo
   );
@@ -123,7 +126,7 @@ export const getBaseInfoProfileDetailApi = async (userId?: string) => {
   const id = userId || (await resolveCurrentInfoUserId());
   if (!id) return toAuthProfileDetail(identity, avatar);
   try {
-    const user = await enrichUserRoles(await getBaseInfoUserDetailApi(id));
+    const user = await enrichUserRoles(await getBaseInfoUserDetailQuietApi(id));
     return toProfileDetail(user, getLocalProfileAvatar({ userId: user.id, username: user.username }) || avatar);
   } catch {
     return toAuthProfileDetail(identity, avatar);

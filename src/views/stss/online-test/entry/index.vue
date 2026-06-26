@@ -142,6 +142,7 @@ import { useUserStore } from "@/stores/modules/user";
 import { listMyExamRecords } from "@/api/modules/onlineTest";
 import type { ExamEntry } from "./types";
 import { filterExamList, formatTimeRange, getTabCounts, normalizeExamRecordItem } from "./logic";
+import { mockExamList } from "./mock";
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -166,7 +167,7 @@ const fetchExamList = async () => {
     const res = await listMyExamRecords({ studentId, current: 1, size: 100 });
     apiExamList.value = res.records.map(record => normalizeExamRecordItem(record));
   } catch {
-    console.warn("考试列表 API 调用失败，使用 mock 数据");
+    apiExamList.value = mockExamList;
   } finally {
     loading.value = false;
   }

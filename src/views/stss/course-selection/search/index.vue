@@ -199,6 +199,14 @@ async function onEnroll(row: CourseSelection.OfferingBrief) {
     const res = USE_MOCK ? null : await enrollApi({ offering_id: row.offering_id, stage: "add_drop" }, { queueAsSuccess: true });
     if (res?.code === 30201) {
       const queue = res.data as CourseSelection.QueuePosition | undefined;
+      sessionStorage.setItem(
+        "course-selection-pending-queue",
+        JSON.stringify({
+          offering_id: row.offering_id,
+          stage: "add_drop",
+          queue: queue ?? { position: 0, retry_after_ms: 1000 }
+        })
+      );
       const position = queue?.position ? `当前第 ${queue.position} 位，` : "";
       ElMessage.warning(`已进入排队，${position}请到「选课/退课」页继续查看状态`);
       return;
@@ -207,6 +215,14 @@ async function onEnroll(row: CourseSelection.OfferingBrief) {
   } catch (e: any) {
     if (e?.code === 30201) {
       const queue = e.data as CourseSelection.QueuePosition | undefined;
+      sessionStorage.setItem(
+        "course-selection-pending-queue",
+        JSON.stringify({
+          offering_id: row.offering_id,
+          stage: "add_drop",
+          queue: queue ?? { position: 0, retry_after_ms: 1000 }
+        })
+      );
       const position = queue?.position ? `当前第 ${queue.position} 位，` : "";
       ElMessage.warning(`已进入排队，${position}请到「选课/退课」页继续查看状态`);
       return;

@@ -42,6 +42,7 @@
                     color="#e6a23c"
                   />
                   <div class="queue-status">已轮询 {{ retryCount }} 次 · {{ retryAfterMs }}ms 后再次查询</div>
+                  <el-alert v-if="queueHint" :closable="false" :title="queueHint" show-icon type="info" />
                   <el-button type="danger" plain size="small" @click="cancelWaiting"> 取消排队 </el-button>
                 </div>
               </template>
@@ -57,7 +58,7 @@
 </template>
 
 <script setup lang="ts" name="courseEnrollment">
-import { computed, onUnmounted, reactive, ref } from "vue";
+import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
 import { ElMessage } from "element-plus";
 import CsPage from "../components/CsPage.vue";
 import { generateUUID } from "@/utils";
@@ -66,6 +67,7 @@ import { dropEnrollmentApi, enrollApi, getQueuePositionApi, swapEnrollmentApi } 
 
 const USE_MOCK = false;
 const MAX_WAIT_RETRIES = 30; // 最多轮询 30 次
+const PENDING_QUEUE_KEY = "course-selection-pending-queue";
 
 // 排队进度（假设 50 位为初始最大值，纯 UI 展示用）
 const queuePercent = computed(() => Math.max(0, Math.min(100, 100 - (queuePos.value / 50) * 100)));
@@ -80,6 +82,7 @@ const waiting = ref(false);
 const queuePos = ref(0);
 const retryAfterMs = ref(1000);
 const retryCount = ref(0);
+const queueHint = ref("");
 let pollTimer: ReturnType<typeof setTimeout> | null = null;
 let idempotencyKey = "";
 
@@ -99,9 +102,60 @@ const CODE_MAP: Record<number, Outcome> = {
   30205: { icon: "info", title: "选课窗口未开放" }
 };
 
-function isEnrollResult(data: CourseSelection.EnrollResult | CourseSelection.QueuePosition): data is CourseSelection.EnrollResult {
+function isEnrollResult(
+  data: CourseSelection.EnrollResult | CourseSelection.QueuePosition
+): data is CourseSelection.EnrollResult {
   return "enrollment_id" in data;
 }
+
+const savePendingQueue = (queue: CourseSelection.QueuePosition) => {
+  sessionStorage.setItem(
+    PENDING_QUEUE_KEY,
+    JSON.stringify({
+      offering_id: form.offering_id,
+      stage: form.stage,
+      idempotency_key: idempotencyKey,
+      queue
+    })
+  );
+};
+
+const clearPendingQueue = () => sessionStorage.removeItem(PENDING_QUEUE_KEY);
+
+const enterQueue = (queue: CourseSelection.QueuePosition) => {
+  queuePos.value = queue.position;
+  retryAfterMs.value = queue.retry_after_ms;
+  retryCount.value = 0;
+  waiting.value = true;
+  queueHint.value = "";
+  outcome.value = {
+    icon: "warning",
+    title: "已进入排队（Waiting Room）",
+    sub: `当前排队位置 ${queuePos.value}`
+  };
+  savePendingQueue(queue);
+  pollQueue();
+};
+
+const restorePendingQueue = () => {
+  const raw = sessionStorage.getItem(PENDING_QUEUE_KEY);
+  if (!raw) return;
+  try {
+    const cached = JSON.parse(raw) as {
+      offering_id?: string;
+      stage?: CourseSelection.Stage;
+      idempotency_key?: string;
+      queue?: CourseSelection.QueuePosition;
+    };
+    if (!cached.offering_id || !cached.queue) return;
+    form.offering_id = cached.offering_id;
+    form.stage = cached.stage ?? "add_drop";
+    idempotencyKey = cached.idempotency_key || generateUUID();
+    enterQueue(cached.queue);
+  } catch {
+    clearPendingQueue();
+  }
+};
 
 async function onEnroll() {
   loading.value = true;
@@ -120,33 +174,16 @@ async function onEnroll() {
     const req = { ...form, idempotency_key: idempotencyKey };
     const { data } = await enrollApi(req);
     if (!isEnrollResult(data)) {
-      queuePos.value = data.position;
-      retryAfterMs.value = data.retry_after_ms;
-      retryCount.value = 0;
-      waiting.value = true;
-      outcome.value = {
-        icon: "warning",
-        title: "已进入排队（Waiting Room）",
-        sub: `当前排队位置 ${queuePos.value}`
-      };
-      pollQueue();
+      enterQueue(data);
       return;
     }
+    clearPendingQueue();
     outcome.value = { icon: "success", title: "选课成功", sub: data.enrollment_id };
   } catch (e: any) {
     if (e?.code === 30201) {
       // 进入 Waiting Room — 开始轮询
       const queue = e?.data as CourseSelection.QueuePosition | undefined;
-      queuePos.value = queue?.position ?? 0;
-      retryAfterMs.value = queue?.retry_after_ms ?? 500;
-      retryCount.value = 0;
-      waiting.value = true;
-      outcome.value = {
-        icon: "warning",
-        title: "已进入排队（Waiting Room）",
-        sub: `当前排队位置 ${queuePos.value}`
-      };
-      pollQueue();
+      enterQueue(queue ?? { position: 0, retry_after_ms: 500 });
     } else {
       outcome.value = CODE_MAP[e?.code] ?? { icon: "error", title: "选课失败", sub: e?.msg };
     }
@@ -159,8 +196,8 @@ async function pollQueue() {
   if (pollTimer) clearTimeout(pollTimer);
   if (!waiting.value) return;
   if (retryCount.value >= MAX_WAIT_RETRIES) {
-    waiting.value = false;
-    outcome.value = { icon: "error", title: "排队超时", sub: "已达最大轮询次数，请稍后重试" };
+    queueHint.value = "暂未排到，请稍后刷新或重新提交。";
+    pollTimer = null;
     return;
   }
 
@@ -168,6 +205,7 @@ async function pollQueue() {
     const { data } = await getQueuePositionApi(form.offering_id);
     queuePos.value = data.position;
     retryAfterMs.value = data.retry_after_ms;
+    savePendingQueue(data);
 
     if (data.position <= 0) {
       // 排到了，重发选课请求
@@ -179,10 +217,12 @@ async function pollQueue() {
         sub: `当前排队位置 ${data.position}`
       };
       retryCount.value++;
+      queueHint.value = "";
       pollTimer = setTimeout(pollQueue, data.retry_after_ms);
     }
   } catch {
     retryCount.value++;
+    queueHint.value = "暂时无法获取最新排队位置，稍后自动重试。";
     pollTimer = setTimeout(pollQueue, retryAfterMs.value);
   }
 }
@@ -193,11 +233,13 @@ async function retryEnroll() {
     if (!isEnrollResult(data)) {
       queuePos.value = data.position;
       retryAfterMs.value = data.retry_after_ms;
+      savePendingQueue(data);
       retryCount.value++;
       pollTimer = setTimeout(pollQueue, retryAfterMs.value);
       return;
     }
     waiting.value = false;
+    clearPendingQueue();
     outcome.value = { icon: "success", title: "选课成功", sub: data.enrollment_id };
   } catch (e: any) {
     if (e?.code === 30201) {
@@ -205,9 +247,11 @@ async function retryEnroll() {
       const queue = e?.data as CourseSelection.QueuePosition | undefined;
       if (queue) retryAfterMs.value = queue.retry_after_ms;
       retryCount.value++;
+      queueHint.value = "";
       pollTimer = setTimeout(pollQueue, retryAfterMs.value);
     } else {
       waiting.value = false;
+      clearPendingQueue();
       outcome.value = CODE_MAP[e?.code] ?? { icon: "error", title: "选课失败", sub: e?.msg };
     }
   }
@@ -219,6 +263,8 @@ function cancelWaiting() {
     clearTimeout(pollTimer);
     pollTimer = null;
   }
+  clearPendingQueue();
+  queueHint.value = "";
   outcome.value = { icon: "info", title: "已取消排队" };
 }
 
@@ -230,6 +276,7 @@ async function onDrop() {
   loading.value = true;
   try {
     if (!USE_MOCK) await dropEnrollmentApi(dropId.value.trim());
+    clearPendingQueue();
     outcome.value = { icon: "success", title: "退课成功（幂等）" };
   } finally {
     loading.value = false;
@@ -249,6 +296,8 @@ async function onSwap() {
 onUnmounted(() => {
   if (pollTimer) clearTimeout(pollTimer);
 });
+
+onMounted(restorePendingQueue);
 </script>
 
 <style scoped lang="scss">

@@ -556,7 +556,7 @@ const loadModerationList = async () => {
       normalizeApiModeration(item as Forum.ModerationItem & Record<string, any>)
     );
     pagination.total = res.data?.pagination?.total ?? moderationItems.value.length;
-    setApiMessage("已连接内容审核接口。", "success");
+    setApiMessage("", "success");
   } catch (error) {
     console.error("加载审核列表失败：", error);
     moderationItems.value = [];
@@ -595,7 +595,7 @@ const loadAdminStats = async () => {
   const failedCount = results.filter(result => result.status === "rejected").length;
 
   if (failedCount === 0) {
-    setApiMessage("已连接审核与统计接口。", "success");
+    setApiMessage("", "success");
   } else if (failedCount < results.length) {
     setApiMessage("部分统计接口暂不可用，已展示可用统计数据；审核功能不受影响。", "warning");
   } else {
@@ -671,7 +671,7 @@ const submitHandle = async () => {
     await reloadAll();
   } catch (error) {
     console.error("审核处理失败：", error);
-    ElMessage.error("处理失败，请检查审核接口或管理员权限");
+    ElMessage.error("处理失败，请稍后重试或确认当前账号权限");
   } finally {
     submitting.value = false;
   }

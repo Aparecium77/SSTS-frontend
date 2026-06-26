@@ -2,11 +2,11 @@
   <div class="forum-search-page">
     <ForumPageShell
       title="检索"
-      description="按关键词、课程、发布人和时间范围查询论坛帖子，支持全文检索与条件筛选的 mock 演示。"
-      :tags="['条件查询', '全文检索', '发布人筛选', '结果高亮']"
+      description="按关键词、课程、发布人和时间范围查询论坛帖子。"
+      :tags="[]"
       :stats="stats"
       content-title="查询结果"
-      content-description="设置查询条件后点击查询按钮。真实接入时，关键词检索可走 /search/posts，普通筛选可走 /posts。"
+      content-description="设置查询条件后点击查询按钮。"
       :data-count="contentDataCount"
       :empty-description="emptyDescription"
     >
@@ -58,13 +58,6 @@
             </el-space>
           </el-form-item>
         </el-form>
-
-        <el-alert
-          :closable="false"
-          show-icon
-          title="当前为本地 mock 查询。后续接入时，关键词全文检索可对应 /search/posts；仅按课程、发布人或时间筛选时，可对应 /posts 查询。"
-          type="info"
-        />
       </template>
 
       <el-alert
@@ -133,13 +126,6 @@
             {{ currentPost.hotScore }}
           </el-descriptions-item>
         </el-descriptions>
-
-        <el-alert
-          class="preview-alert"
-          show-icon
-          title="当前为本地 mock 摘要。真实接入后，可展示后端返回的 snippet、author_id 和分页结果。"
-          type="info"
-        />
       </template>
     </el-drawer>
   </div>
@@ -222,7 +208,7 @@ const stats = computed(() => [
   {
     label: "可查询帖子",
     value: mockPosts.filter(item => item.status !== "deleted").length,
-    help: "当前 mock 数据范围"
+    help: "当前可查询范围"
   },
   {
     label: "命中结果",

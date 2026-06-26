@@ -14,7 +14,7 @@
     <section class="metric-grid">
       <div class="metric-tile">
         <span>已修学分</span>
-        <strong>{{ credits?.earned_credits ?? "-" }}</strong>
+        <strong>{{ earnedCredits }}</strong>
       </div>
       <div class="metric-tile">
         <span>总要求学分</span>
@@ -22,7 +22,7 @@
       </div>
       <div class="metric-tile">
         <span>剩余学分</span>
-        <strong>{{ credits?.remaining_credits ?? "-" }}</strong>
+        <strong>{{ credits?.remaining_credits ?? "未同步" }}</strong>
       </div>
       <div class="metric-tile">
         <span>累计 GPA</span>
@@ -55,6 +55,14 @@
         <el-progress :percentage="creditPercent" :stroke-width="16" />
       </template>
       <el-empty v-else v-loading="loading" description="暂无学分数据" />
+      <el-alert
+        v-if="!loading && !credits"
+        class="credit-tip"
+        type="info"
+        :closable="false"
+        show-icon
+        title="培养方案或学生档案尚未同步，当前仅展示成绩统计中已返回的学分与 GPA。"
+      />
 
       <el-table
         v-if="credits?.categories?.length"
@@ -84,6 +92,8 @@ const { ensureStudentAccess } = useStudentOnlyPage();
 const loading = ref(false);
 const credits = ref<Score.CreditProgress | null>(null);
 const statistics = ref<Score.StudentStatistics | null>(null);
+
+const earnedCredits = computed(() => credits.value?.earned_credits ?? statistics.value?.earned_credits ?? "-");
 
 const creditPercent = computed(() => {
   if (!credits.value?.total_required_credits) return 0;
@@ -147,6 +157,9 @@ onMounted(loadCreditData);
 }
 .credit-surface {
   padding: 18px;
+  margin-top: 12px;
+}
+.credit-tip {
   margin-top: 12px;
 }
 .progress-head {

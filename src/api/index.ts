@@ -14,6 +14,7 @@ export interface CustomAxiosRequestConfig extends InternalAxiosRequestConfig {
   cancel?: boolean;
   skipCodeCheck?: boolean;
   authRedirect?: boolean;
+  silentError?: boolean;
 }
 
 const config = {
@@ -82,12 +83,12 @@ class RequestHttp {
             userStore.resetUserState();
             router.replace(LOGIN_URL);
           }
-          ElMessage.error(getResponseMessage(data));
+          if (!config.silentError) ElMessage.error(getResponseMessage(data));
           return Promise.reject(data);
         }
         // 全局错误信息拦截（防止下载文件的时候返回数据流，没有 code 直接报错）
         if (!config.skipCodeCheck && data.code !== undefined && !successCodes.has(data.code)) {
-          ElMessage.error(getResponseMessage(data));
+          if (!config.silentError) ElMessage.error(getResponseMessage(data));
           return Promise.reject(data);
         }
         // 成功请求（在页面上除非特殊情况，否则不用处理失败逻辑）
@@ -95,9 +96,11 @@ class RequestHttp {
       },
       async (error: AxiosError) => {
         const { response } = error;
+        const requestConfig = error.config as CustomAxiosRequestConfig | undefined;
+        const silentError = Boolean(requestConfig?.silentError);
         tryHideFullScreenLoading();
-        if (error.message.indexOf("timeout") !== -1) ElMessage.error("请求超时！请您稍后重试");
-        if (error.message.indexOf("Network Error") !== -1) ElMessage.error("网络错误！请您稍后重试");
+        if (!silentError && error.message.indexOf("timeout") !== -1) ElMessage.error("请求超时！请您稍后重试");
+        if (!silentError && error.message.indexOf("Network Error") !== -1) ElMessage.error("网络错误！请您稍后重试");
 
         // 401 自动用 refresh_token 换新 access_token 后重试
         if (response?.status === 401) {
@@ -130,14 +133,14 @@ class RequestHttp {
           if (shouldRedirectToLogin(originalRequest)) {
             userStore.resetUserState();
             router.replace(LOGIN_URL);
-            ElMessage.error("登录已失效，请重新登录");
-          } else {
+            if (!originalRequest.silentError) ElMessage.error("登录已失效，请重新登录");
+          } else if (!originalRequest.silentError) {
             ElMessage.error(getResponseMessage(response.data));
           }
           return Promise.reject(error);
         }
 
-        if (response) checkStatus(response.status, getResponseMessage(response.data));
+        if (response && !silentError) checkStatus(response.status, getResponseMessage(response.data));
 
         if (!window.navigator.onLine) router.replace("/500");
         return Promise.reject(error);

@@ -204,8 +204,31 @@ export const getBaseInfoUserListApi = async (query: BaseInfo.UserQuery) => {
   return { list: list.map(convertUserItem), total };
 };
 
+export const getBaseInfoUserListQuietApi = async (query: BaseInfo.UserQuery) => {
+  const res = await http.get(`${PORT1}/users/`, toPageQuery(query), {
+    loading: false,
+    authRedirect: false,
+    silentError: true
+  });
+  const { list, total } = extractList<any>(res as any);
+  return { list: list.map(convertUserItem), total };
+};
+
 export const getBaseInfoUserDetailApi = async (id: string) => {
   const res = await http.get(`${PORT1}/users/${id}`);
+  return convertUserItem(unwrap<any>(res as any));
+};
+
+export const getBaseInfoUserDetailQuietApi = async (id: string) => {
+  const res = await http.get(
+    `${PORT1}/users/${id}`,
+    {},
+    {
+      loading: false,
+      authRedirect: false,
+      silentError: true
+    }
+  );
   return convertUserItem(unwrap<any>(res as any));
 };
 
@@ -653,7 +676,7 @@ export const deleteBaseInfoCalendarApi = async (id: string) => {
 export const getBaseInfoUserIdByAuthIdApi = async (authUserId: string) => {
   if (!authUserId) return "";
   if (/^\d+$/.test(authUserId)) return authUserId;
-  const res = await getBaseInfoUserListApi({ pageNum: 1, pageSize: 20, keyword: authUserId });
+  const res = await getBaseInfoUserListQuietApi({ pageNum: 1, pageSize: 20, keyword: authUserId });
   return res.list.find(item => item.username === authUserId || item.userNo === authUserId)?.id ?? "";
 };
 

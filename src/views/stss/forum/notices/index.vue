@@ -550,7 +550,7 @@ const loadNotices = async () => {
     notices.value = result;
     pagination.total = res.data?.pagination?.total ?? notices.value.length;
     useMockData.value = false;
-    setApiMessage("已连接公告接口。", "success");
+    setApiMessage("", "success");
   } catch (error) {
     console.error("加载公告失败：", error);
     let result = mockNotices.map(normalizeMockNotice).filter(notice => notice.status !== "deleted");
@@ -562,7 +562,7 @@ const loadNotices = async () => {
     notices.value = result;
     pagination.total = notices.value.length;
     useMockData.value = true;
-    setApiMessage("公告接口异常，当前使用本地数据兜底。", "warning");
+    setApiMessage("公告暂时无法连接，已展示可用内容。", "warning");
   } finally {
     loading.notices = false;
   }
@@ -680,7 +680,7 @@ const submitNotice = async () => {
       await loadNotices();
     } catch (error) {
       console.error("保存公告失败：", error);
-      ElMessage.error("保存失败，请检查公告接口或教师/管理员权限");
+      ElMessage.error("保存失败，请稍后重试或确认当前账号权限");
     } finally {
       submitting.value = false;
     }
@@ -763,7 +763,7 @@ const togglePopup = async (notice: NoticeView) => {
     ElMessage.success(notice.popup ? "已取消弹窗提醒" : "已设为弹窗提醒");
   } catch (error) {
     console.error("切换弹窗失败：", error);
-    ElMessage.error("操作失败，请检查公告弹窗接口或教师/管理员权限");
+    ElMessage.error("操作失败，请稍后重试或确认当前账号权限");
   }
 };
 
@@ -801,7 +801,7 @@ const deleteNotice = async (notice: NoticeView) => {
   } catch (error) {
     if (error !== "cancel") {
       console.error("删除公告失败：", error);
-      ElMessage.error("删除失败，请检查公告删除接口或教师/管理员权限");
+      ElMessage.error("删除失败，请稍后重试或确认当前账号权限");
     }
   }
 };

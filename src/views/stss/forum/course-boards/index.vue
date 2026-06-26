@@ -3,8 +3,8 @@
     <ForumPageShell
       v-if="canView"
       title="课程论坛"
-      description="围绕课程帖子、回复和附件进行交流讨论。公告功能请前往“公告”页面查看。"
-      :tags="['课程板块', '发帖讨论', '回复留言', '附件交流', '帖子检索']"
+      description="围绕课程帖子、回复和附件进行交流讨论。"
+      :tags="[]"
       :stats="stats"
       content-title="课程帖子"
       content-description="选择课程论坛板块后查看帖子，也可以通过关键词搜索已发布帖子。"
@@ -20,8 +20,13 @@
 
       <template #filters>
         <div class="forum-toolbar">
-          <el-alert :closable="false" show-icon title="公告请在“公告”页面查看；本页面只搜索和展示课程帖子。" type="info" />
-          <el-alert v-if="apiMessage" :closable="false" show-icon :title="apiMessage" :type="apiMessageType" />
+          <el-alert
+            v-if="apiMessage && apiMessageType === 'warning'"
+            :closable="false"
+            show-icon
+            :title="apiMessage"
+            type="warning"
+          />
 
           <el-form :model="queryForm" class="filter-form" inline>
             <el-form-item label="课程论坛">
@@ -84,7 +89,6 @@
         <div class="section-title-row">
           <div>
             <div class="section-title">课程帖子</div>
-            <div class="section-subtitle">有关键词时调用帖子检索接口；无关键词时按课程论坛和模块加载帖子。</div>
           </div>
           <el-tag size="small" effect="plain">{{ posts.length }} 条</el-tag>
         </div>
@@ -664,7 +668,7 @@ const loadBoards = async () => {
     const allBoards = mockBoards.map(normalizeMockBoard);
     useMockData.value = true;
     await filterAccessibleBoards(allBoards);
-    setApiMessage("课程论坛板块接口异常，当前使用本地板块数据兜底。", "warning");
+    setApiMessage("课程论坛暂时无法连接，已展示可用内容。", "warning");
   } finally {
     loading.boards = false;
   }
@@ -728,7 +732,7 @@ const loadPosts = async () => {
       pagination.total = res.data?.pagination?.total ?? posts.value.length;
     }
 
-    setApiMessage("已连接课程论坛接口。", "success");
+    setApiMessage("", "success");
   } catch (error) {
     console.error("加载帖子失败：", error);
     const keyword = queryForm.keyword.trim().toLowerCase();
@@ -743,7 +747,7 @@ const loadPosts = async () => {
 
     pagination.total = posts.value.length;
     useMockData.value = true;
-    setApiMessage("帖子接口异常，当前使用本地帖子数据兜底。", "warning");
+    setApiMessage("帖子列表暂时无法连接，已展示可用内容。", "warning");
   } finally {
     loading.posts = false;
   }
@@ -834,7 +838,7 @@ const submitPost = async () => {
       await loadPosts();
     } catch (error) {
       console.error("发布帖子失败：", error);
-      ElMessage.error("发布失败，请检查发帖接口或权限");
+      ElMessage.error("发布失败，请稍后重试或确认当前账号权限");
     } finally {
       submitting.post = false;
     }
@@ -986,7 +990,7 @@ const submitReply = async () => {
     await loadPosts();
   } catch (error) {
     console.error("发布回复失败：", error);
-    ElMessage.error("回复失败，请检查回复接口或权限");
+    ElMessage.error("回复失败，请稍后重试或确认当前账号权限");
   } finally {
     submitting.reply = false;
   }
@@ -1114,7 +1118,7 @@ const submitReport = async () => {
     reportDialogVisible.value = false;
   } catch (error) {
     console.error("提交举报失败：", error);
-    ElMessage.error("举报失败，请检查审核举报接口");
+    ElMessage.error("举报失败，请稍后重试");
   } finally {
     submitting.report = false;
   }

@@ -21,13 +21,12 @@
       <template #filters>
         <div class="my-posts-toolbar">
           <el-alert
+            v-if="apiMessage && apiMessageType === 'warning'"
             :closable="false"
             show-icon
-            :title="`当前论坛用户：${currentUser.name}（ID: ${currentUser.id}，角色: ${currentUser.backend_role}）`"
-            type="info"
+            :title="apiMessage"
+            type="warning"
           />
-
-          <el-alert v-if="apiMessage" :closable="false" show-icon :title="apiMessage" :type="apiMessageType" />
 
           <el-form :model="queryForm" class="filter-form" inline>
             <el-form-item label="课程论坛">
@@ -653,7 +652,7 @@ const loadMyPosts = async () => {
     posts.value = (res.data?.items ?? []).map(item => normalizePost(item as Forum.PostItem & Record<string, any>));
     pagination.total = res.data?.pagination?.total ?? posts.value.length;
     useMockData.value = false;
-    setApiMessage("已连接我的帖子接口。", "success");
+    setApiMessage("", "success");
   } catch (error) {
     console.error("加载我的帖子失败：", error);
 
@@ -679,7 +678,7 @@ const loadMyPosts = async () => {
 
     pagination.total = posts.value.length;
     useMockData.value = true;
-    setApiMessage("我的帖子接口异常，当前使用本地数据兜底。", "warning");
+    setApiMessage("我的帖子暂时无法连接，已展示可用内容。", "warning");
   } finally {
     loading.posts = false;
   }
@@ -827,7 +826,7 @@ const submitEditPost = async () => {
       await loadMyPosts();
     } catch (error) {
       console.error("更新帖子失败：", error);
-      ElMessage.error("更新失败，请检查帖子编辑接口或权限");
+      ElMessage.error("更新失败，请稍后重试或确认当前账号权限");
     } finally {
       submitting.post = false;
     }
@@ -936,7 +935,7 @@ const submitReply = async () => {
     await loadMyPosts();
   } catch (error) {
     console.error("发布回复失败：", error);
-    ElMessage.error("回复失败，请检查回复接口或权限");
+    ElMessage.error("回复失败，请稍后重试或确认当前账号权限");
   } finally {
     submitting.reply = false;
   }
