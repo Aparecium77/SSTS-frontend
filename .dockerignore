@@ -1,0 +1,60 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Git
+.git/
+.gitattributes
+.gitignore
+
+# IDE / Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment (local overrides — keep .env.production for build)
+.env.local
+.env.*.local
+
+# Lint / format configs (not needed at build time)
+.eslintrc.cjs
+.eslintignore
+.prettierrc.cjs
+.prettierignore
+.stylelintrc.cjs
+.stylelintignore
+commitlint.config.cjs
+lint-staged.config.cjs
+
+# Git hooks
+.husky/
+
+# CI / CD
+.github/
+
+# Docs
+CHANGELOG.md
+LICENSE
+README.md
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose.yml
+nginx.conf
+
+# Misc
+*.md
+setup-frontend-env.ps1
+
+# Lock files for other package managers (pnpm is the one used)
+package-lock.json
+yarn.lock
