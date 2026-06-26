@@ -1,29 +1,27 @@
 <template>
   <div class="board">
-    <article v-for="record in records" :key="record.id" class="board__item" @click="$emit('select', record)">
+    <button v-for="record in records" :key="record.entry.id" type="button" class="board__item" @click="$emit('select', record)">
       <div class="board__meta">
-        <span>{{ record.timeSlot.weekLabel }}</span>
-        <el-tag size="small" :type="record.status === 'adjusting' ? 'warning' : 'success'">
-          {{ record.status === "adjusting" ? "调课中" : "正常" }}
-        </el-tag>
+        <span>{{ record.entry.semester }}</span>
+        <el-tag size="small" effect="plain">ID {{ record.entry.id }}</el-tag>
       </div>
-      <h4>{{ record.courseName }}</h4>
-      <p>{{ record.teacherName }}</p>
-      <p>{{ `${record.className} / ${record.classroomName}` }}</p>
-      <strong>{{ `周${record.timeSlot.dayOfWeek} ${record.timeSlot.sectionStart}-${record.timeSlot.sectionEnd} 节` }}</strong>
-    </article>
+      <h4>{{ record.course }}</h4>
+      <p>{{ record.teachers }}</p>
+      <p>{{ record.classroom }}</p>
+      <strong>{{ record.timeText }}</strong>
+    </button>
   </div>
 </template>
 
 <script setup lang="ts" name="manualScheduleBoard">
-import type { Schedule } from "@/api/interface/schedule";
+import type { QueryEntryView } from "../../query/types";
 
 defineProps<{
-  records: Schedule.ScheduleRecord[];
+  records: QueryEntryView[];
 }>();
 
 defineEmits<{
-  (event: "select", record: Schedule.ScheduleRecord): void;
+  (event: "select", record: QueryEntryView): void;
 }>();
 </script>
 
@@ -37,11 +35,13 @@ defineEmits<{
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-height: 160px;
   padding: 16px;
+  text-align: left;
   cursor: pointer;
-  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+  background: #ffffff;
   border: 1px solid #dbeafe;
-  border-radius: 16px;
+  border-radius: 8px;
 }
 .board__meta {
   display: flex;

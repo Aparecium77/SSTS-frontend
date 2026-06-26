@@ -2,79 +2,60 @@
   <SchedulePageShell
     v-model="detailVisible"
     title="课表查询"
-    description="面向教师、学生、班级和教室提供统一的课表检索、周视图核对与排课详情浏览入口。"
-    :tags="['查询维度切换', '周视图', '详情弹窗']"
+    description="按学期查询排课结果，支持教师、课程和开课班过滤，并提供列表与周视图。"
+    :tags="['真实课表条目', '周视图', '详情弹窗']"
     :stats="stats"
     content-title="课表结果"
-    content-description="支持维度切换、筛选查询、结果表格和周课表视图。"
-    :data-count="filteredRecords.length"
+    content-description="数据来自 /api/v1/schedule/entries；教师个人课表可使用教师 ID 与周次筛选。"
+    :data-count="entryViews.length"
     empty-description="当前筛选条件下没有课表记录。"
     dialog-title="课表详情"
   >
     <template #actions>
       <el-space wrap>
         <el-button @click="resetFilters">重置条件</el-button>
-        <el-button type="primary" @click="exportCurrentView">导出课表</el-button>
+        <el-button type="primary" :loading="loading" @click="loadEntries">查询</el-button>
       </el-space>
     </template>
 
     <template #filters>
       <el-form :inline="true" :model="filters" class="filter-form">
-        <el-form-item label="学期">
-          <el-select v-model="filters.semesterId" placeholder="选择学期" style="width: 240px">
-            <el-option v-for="item in semesterOptions" :key="item.value" :label="item.label" :value="item.value" />
-          </el-select>
+        <el-form-item label="学期" required>
+          <el-input v-model="filters.semester" placeholder="例如 2026-FALL" clearable style="width: 220px" />
         </el-form-item>
-        <el-form-item label="查询维度">
-          <el-segmented v-model="filters.dimension" :options="dimensionSegments" />
+        <el-form-item label="教师 ID">
+          <el-input v-model="filters.teacher_id" clearable placeholder="例如 T001" style="width: 180px" />
         </el-form-item>
-        <el-form-item label="查询对象">
-          <el-select v-model="filters.targetId" placeholder="选择对象" clearable filterable style="width: 280px">
-            <el-option v-for="item in currentTargets" :key="item.id" :label="item.label" :value="item.id">
-              <div class="target-option">
-                <span>{{ item.label }}</span>
-                <small>{{ item.subtitle }}</small>
-              </div>
-            </el-option>
-          </el-select>
+        <el-form-item label="课程 ID">
+          <el-input v-model="filters.course_id" clearable placeholder="课程 ID" style="width: 180px" />
+        </el-form-item>
+        <el-form-item label="开课班 ID">
+          <el-input v-model="filters.offering_id" clearable placeholder="开课班 ID" style="width: 180px" />
         </el-form-item>
         <el-form-item label="周次">
-          <el-select v-model="filters.weekLabel" placeholder="选择周次" style="width: 160px">
-            <el-option v-for="item in weekOptions" :key="item" :label="item" :value="item" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="状态">
-          <el-select v-model="filters.status" placeholder="全部状态" clearable style="width: 160px">
-            <el-option label="草稿" value="draft" />
-            <el-option label="已发布" value="published" />
-            <el-option label="调课中" value="adjusting" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="关键词">
-          <el-input v-model="filters.keyword" placeholder="课程 / 教师 / 教室" clearable style="width: 220px" />
+          <el-input-number v-model="filters.week" :min="1" :max="16" controls-position="right" />
         </el-form-item>
       </el-form>
       <div class="view-switch">
         <el-radio-group v-model="viewMode">
           <el-radio-button label="table">列表视图</el-radio-button>
-          <el-radio-button label="week">周课表</el-radio-button>
+          <el-radio-button label="week">周视图</el-radio-button>
         </el-radio-group>
       </div>
     </template>
 
-    <el-table v-if="viewMode === 'table'" v-loading="loading" :data="filteredRecords" border>
-      <el-table-column prop="courseName" label="课程" min-width="160" />
-      <el-table-column prop="teacherName" label="教师" min-width="120" />
-      <el-table-column prop="className" label="班级" min-width="180" />
-      <el-table-column prop="classroomName" label="教室" min-width="160" />
-      <el-table-column prop="weekText" label="周次" min-width="100" />
-      <el-table-column label="节次" min-width="140">
-        <template #default="{ row }">
-          {{ `周${row.timeSlot.dayOfWeek} ${row.timeSlot.sectionStart}-${row.timeSlot.sectionEnd}节` }}
-        </template>
+    <el-table v-if="viewMode === 'table'" v-loading="loading" :data="entryViews" border>
+      <el-table-column prop="course" label="课程" min-width="170" />
+      <el-table-column label="课程 ID" min-width="120">
+        <template #default="{ row }">{{ row.entry.course_id }}</template>
       </el-table-column>
-      <el-table-column prop="status" label="状态" min-width="110" />
-      <el-table-column label="操作" width="110" fixed="right">
+      <el-table-column prop="teachers" label="教师" min-width="150" />
+      <el-table-column label="开课班" min-width="140">
+        <template #default="{ row }">{{ row.entry.offering_id }}</template>
+      </el-table-column>
+      <el-table-column prop="classroom" label="教室" min-width="160" />
+      <el-table-column prop="timeText" label="时间" min-width="240" />
+      <el-table-column label="操作" width="100" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="openDetail(row)">详情</el-button>
         </template>
@@ -83,165 +64,145 @@
     <WeeklyScheduleBoard v-else :cells="calendarCells" :loading="loading" @select="openDetail" />
 
     <template #detail>
-      <div v-if="currentRecordDetail" class="detail-panel">
+      <div v-if="currentEntry" class="detail-panel">
         <el-descriptions :column="2" border>
-          <el-descriptions-item label="课程">{{ currentRecordDetail.courseName }}</el-descriptions-item>
-          <el-descriptions-item label="课程编号">{{ currentRecordDetail.courseCode }}</el-descriptions-item>
-          <el-descriptions-item label="教师">{{ currentRecordDetail.teacherName }}</el-descriptions-item>
-          <el-descriptions-item label="教师编号">{{ currentRecordDetail.teacherCode }}</el-descriptions-item>
-          <el-descriptions-item label="班级">{{ currentRecordDetail.className }}</el-descriptions-item>
-          <el-descriptions-item label="班级编号">{{ currentRecordDetail.classCode }}</el-descriptions-item>
-          <el-descriptions-item label="教室">{{ currentRecordDetail.classroomName }}</el-descriptions-item>
-          <el-descriptions-item label="教室编号">{{ currentRecordDetail.classroomCode }}</el-descriptions-item>
-          <el-descriptions-item label="日期">{{ currentRecordDetail.date }}</el-descriptions-item>
-          <el-descriptions-item label="周次">{{ currentRecordDetail.weekText }}</el-descriptions-item>
-          <el-descriptions-item label="节次">
-            {{
-              `周${currentRecordDetail.timeSlot.dayOfWeek} ${currentRecordDetail.timeSlot.sectionStart}-${currentRecordDetail.timeSlot.sectionEnd}节`
-            }}
+          <el-descriptions-item label="条目 ID">{{ currentEntry.entry.id }}</el-descriptions-item>
+          <el-descriptions-item label="学期">{{ currentEntry.entry.semester }}</el-descriptions-item>
+          <el-descriptions-item label="课程">{{ currentEntry.course }}</el-descriptions-item>
+          <el-descriptions-item label="课程 ID">{{ currentEntry.entry.course_id }}</el-descriptions-item>
+          <el-descriptions-item label="课程编号">{{ currentEntry.entry.course_code || "-" }}</el-descriptions-item>
+          <el-descriptions-item label="开课班 ID">{{ currentEntry.entry.offering_id }}</el-descriptions-item>
+          <el-descriptions-item label="教师 IDs">{{ currentEntry.teachers }}</el-descriptions-item>
+          <el-descriptions-item label="教室">{{ currentEntry.classroom }}</el-descriptions-item>
+          <el-descriptions-item label="教室 ID">{{ currentEntry.entry.classroom_id }}</el-descriptions-item>
+          <el-descriptions-item label="星期">{{ getDayLabel(currentEntry.entry.day_of_week) }}</el-descriptions-item>
+          <el-descriptions-item label="节次">{{
+            formatSections(currentEntry.entry.slot_start, currentEntry.entry.slot_end)
+          }}</el-descriptions-item>
+          <el-descriptions-item label="周次">
+            {{ formatWeeks(currentEntry.entry.week_start, currentEntry.entry.week_end, currentEntry.entry.week_parity) }}
           </el-descriptions-item>
-          <el-descriptions-item label="状态">{{ currentRecordDetail.status }}</el-descriptions-item>
         </el-descriptions>
-        <el-alert :title="currentRecordDetail.remark ?? '暂无备注'" type="info" :closable="false" />
       </div>
     </template>
   </SchedulePageShell>
 </template>
 
 <script setup lang="ts" name="scheduleQuery">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, reactive, ref } from "vue";
 import { ElMessage } from "element-plus";
 import type { Schedule } from "@/api/interface/schedule";
+import { getClassrooms, getScheduleEntries } from "@/api/modules/schedule";
 import SchedulePageShell from "../components/SchedulePageShell.vue";
 import WeeklyScheduleBoard from "./components/WeeklyScheduleBoard.vue";
+import type { QueryEntryView } from "./types";
 import {
-  getQueryCalendarCells,
-  getQueryDimensionOptions,
-  getQueryRecordDetail,
-  getQueryRecords,
-  getQuerySemesterOptions,
-  getQueryTargetsByDimension,
-  type QueryPageFilters
-} from "./service";
+  activeInWeek,
+  dayOptions,
+  formatCourse,
+  formatEntryTime,
+  formatSections,
+  formatTeachers,
+  formatWeeks,
+  getDayLabel
+} from "../utils";
 
-const detailVisible = ref(false);
 const loading = ref(false);
-const semesterOptions = ref<Schedule.OptionItem[]>([]);
-const dimensionOptions = ref<Schedule.OptionItem[]>([]);
-const currentTargets = ref<
-  {
-    id: string;
-    dimension: Schedule.ScheduleDimension;
-    label: string;
-    subtitle: string;
-  }[]
->([]);
-const filteredRecords = ref<Schedule.ScheduleRecord[]>([]);
-const calendarCells = ref<
-  {
-    dayOfWeek: number;
-    dayLabel: string;
-    records: Schedule.ScheduleRecord[];
-  }[]
->([]);
-const currentRecordDetail = ref<Schedule.ScheduleDetail | null>(null);
+const detailVisible = ref(false);
 const viewMode = ref<"table" | "week">("table");
-const filters = ref<QueryPageFilters>({
-  semesterId: "2025-fall",
-  dimension: "teacher",
-  targetId: "",
-  weekLabel: "第 12 周",
-  status: "" as "" | Schedule.RecordStatus,
-  keyword: ""
+const entries = ref<Schedule.ScheduleEntry[]>([]);
+const classrooms = ref<Schedule.Classroom[]>([]);
+const currentEntry = ref<QueryEntryView | null>(null);
+
+const filters = reactive<{
+  semester: string;
+  teacher_id: string;
+  course_id: string;
+  offering_id: string;
+  week: number | undefined;
+}>({
+  semester: "2026-FALL",
+  teacher_id: "",
+  course_id: "",
+  offering_id: "",
+  week: undefined
 });
 
-const weekOptions = ["第 10 周", "第 11 周", "第 12 周", "第 13 周", "第 14 周"];
+const classroomMap = computed(() => new Map(classrooms.value.map(item => [item.id, item])));
 
-const dimensionSegments = computed(() => dimensionOptions.value.map(item => ({ label: item.label, value: item.value })));
-
-const loadTargets = async () => {
-  currentTargets.value = await getQueryTargetsByDimension(filters.value.dimension);
+const toView = (entry: Schedule.ScheduleEntry): QueryEntryView => {
+  const classroom = classroomMap.value.get(entry.classroom_id);
+  return {
+    entry,
+    course: formatCourse(entry),
+    teachers: formatTeachers(entry.teacher_ids),
+    classroom: classroom ? `${classroom.name}（${classroom.code}）` : `教室 ID ${entry.classroom_id}`,
+    timeText: formatEntryTime(entry)
+  };
 };
 
-const loadRecords = async () => {
+const entryViews = computed(() => entries.value.filter(entry => activeInWeek(entry, filters.week)).map(toView));
+
+const calendarCells = computed(() =>
+  dayOptions.map(day => ({
+    dayOfWeek: day.value,
+    dayLabel: day.label,
+    records: entryViews.value.filter(item => item.entry.day_of_week === day.value)
+  }))
+);
+
+const stats = computed(() => [
+  { label: "课表记录", value: entryViews.value.length, help: "当前筛选命中的条目" },
+  { label: "教师数", value: new Set(entryViews.value.flatMap(item => item.entry.teacher_ids)).size, help: "涉及教师 ID 数量" },
+  { label: "教室数", value: new Set(entryViews.value.map(item => item.entry.classroom_id)).size, help: "涉及教室数量" },
+  { label: "课程数", value: new Set(entryViews.value.map(item => item.entry.course_id)).size, help: "涉及课程数量" }
+]);
+
+const loadClassroomLookup = async () => {
+  const { data } = await getClassrooms({ limit: 1000 });
+  classrooms.value = data;
+};
+
+const loadEntries = async () => {
+  if (!filters.semester.trim()) {
+    ElMessage.warning("请输入学期");
+    return;
+  }
   loading.value = true;
   try {
-    filteredRecords.value = await getQueryRecords(filters.value);
-    calendarCells.value = await getQueryCalendarCells(filteredRecords.value);
+    const { data } = await getScheduleEntries({
+      semester: filters.semester.trim(),
+      teacher_id: filters.teacher_id.trim() || undefined,
+      course_id: filters.course_id.trim() || undefined,
+      offering_id: filters.offering_id.trim() || undefined
+    });
+    entries.value = data;
   } finally {
     loading.value = false;
   }
 };
 
-const stats = computed(() => [
-  { label: "课表记录", value: filteredRecords.value.length, help: "当前视图命中的记录数" },
-  { label: "教师数", value: new Set(filteredRecords.value.map(item => item.teacherName)).size, help: "涉及授课教师" },
-  { label: "教室数", value: new Set(filteredRecords.value.map(item => item.classroomName)).size, help: "涉及排课教室" },
-  { label: "待调整", value: filteredRecords.value.filter(item => item.status === "adjusting").length, help: "存在调课中的课次" }
-]);
-
-const loadDetail = async (id: string) => {
-  currentRecordDetail.value = await getQueryRecordDetail(id);
-};
-
 const resetFilters = async () => {
-  filters.value = {
-    semesterId: semesterOptions.value[0]?.value ?? "2025-fall",
-    dimension: "teacher",
-    targetId: "",
-    weekLabel: "第 12 周",
-    status: "",
-    keyword: ""
-  };
-  await loadTargets();
-  await loadRecords();
+  filters.semester = "2026-FALL";
+  filters.teacher_id = "";
+  filters.course_id = "";
+  filters.offering_id = "";
+  filters.week = undefined;
+  await loadEntries();
 };
 
-const exportCurrentView = () => {
-  ElMessage.success(`已按 ${viewMode.value === "table" ? "列表视图" : "周课表视图"} 生成导出任务。`);
-};
-
-const openDetail = async (record: Schedule.ScheduleRecord) => {
-  await loadDetail(record.id);
+const openDetail = (record: QueryEntryView) => {
+  currentEntry.value = record;
   detailVisible.value = true;
 };
 
-watch(
-  () => filters.value.dimension,
-  async () => {
-    filters.value.targetId = "";
-    await loadTargets();
-    await loadRecords();
-  }
-);
-
-watch(
-  () => [filters.value.semesterId, filters.value.targetId, filters.value.weekLabel, filters.value.status, filters.value.keyword],
-  async () => {
-    await loadRecords();
-  }
-);
-
-onMounted(async () => {
-  semesterOptions.value = await getQuerySemesterOptions();
-  dimensionOptions.value = await getQueryDimensionOptions();
-  await loadTargets();
-  await loadRecords();
-});
+void loadClassroomLookup().finally(loadEntries);
 </script>
 
 <style scoped lang="scss">
 .filter-form {
   display: flex;
   flex-wrap: wrap;
-}
-.target-option {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.target-option small {
-  color: #64748b;
 }
 .view-switch {
   margin-top: 8px;

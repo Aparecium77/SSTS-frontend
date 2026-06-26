@@ -2,532 +2,406 @@
   <div class="schedule-page-view">
     <SchedulePageShell
       v-model="detailVisible"
-      title="排课规则"
-      description="集中配置时间约束、教师冲突、教室容量和连排策略，为排课执行和调课审批建立统一规则口径。"
-      :tags="['规则分类', '优先级', '启停状态']"
+      title="教师排课偏好"
+      description="教师维护自己的学期排课偏好；管理员也按当前身份提交，不代管任意教师。"
+      :tags="['自助维护', '按学期筛选', '偏好/避让']"
       :stats="stats"
-      content-title="规则列表"
-      content-description="统一展示规则优先级、影响范围和启停状态。"
-      :data-count="ruleRecords.length"
-      empty-description="当前筛选条件下没有规则记录。"
-      dialog-title="规则详情"
+      content-title="偏好列表"
+      content-description="数据来自 /api/v1/schedule/teacher-preferences。偏好会被自动排课算法读取。"
+      :data-count="preferences.length"
+      empty-description="当前学期没有教师排课偏好。"
+      dialog-title="偏好详情"
     >
       <template #actions>
-        <div class="header-actions">
-          <el-button :loading="loading">刷新数据</el-button>
-          <el-button type="primary" @click="openCreate">新增规则</el-button>
-        </div>
+        <el-space wrap>
+          <el-button @click="loadPreferences">刷新</el-button>
+          <el-button type="primary" @click="openCreate">新增偏好</el-button>
+        </el-space>
       </template>
 
       <template #filters>
         <el-form :inline="true" :model="filters" class="filter-form">
-          <el-form-item label="规则分类">
-            <el-segmented v-model="filters.category" :options="categorySegments" />
-          </el-form-item>
-          <el-form-item label="启停状态">
-            <el-select v-model="filters.status" placeholder="全部状态" clearable style="width: 160px" @change="loadRules">
-              <el-option label="启用" value="enabled" />
-              <el-option label="停用" value="disabled" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="优先级">
-            <el-select v-model="filters.priority" placeholder="全部优先级" clearable style="width: 160px" @change="loadRules">
-              <el-option label="P1" :value="1" />
-              <el-option label="P2" :value="2" />
-              <el-option label="P3" :value="3" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="关键词">
+          <el-form-item label="学期">
             <el-input
-              v-model="filters.keyword"
-              placeholder="规则名称 / 编号 / 作用范围"
+              v-model="filters.semester"
+              placeholder="例如 2026-FALL"
               clearable
-              style="width: 260px"
-              @change="loadRules"
+              style="width: 220px"
+              @change="loadPreferences"
             />
+          </el-form-item>
+          <el-form-item label="关键字">
+            <el-input v-model="filters.keyword" clearable placeholder="课程 / 校区 / 楼栋 / 教室" style="width: 260px" />
+          </el-form-item>
+          <el-form-item label="类型">
+            <el-select v-model="filters.negative" clearable placeholder="全部" style="width: 140px">
+              <el-option label="偏好" value="positive" />
+              <el-option label="避让" value="negative" />
+            </el-select>
+          </el-form-item>
+          <el-form-item>
+            <el-button @click="resetFilters">重置</el-button>
           </el-form-item>
         </el-form>
       </template>
 
-      <div class="overview-grid">
-        <article v-for="item in categoryCards" :key="item.value" class="overview-card">
-          <div class="overview-card__header">
-            <strong>{{ item.label }}</strong>
-            <el-tag size="small" effect="plain">{{ item.count }} 条</el-tag>
-          </div>
-          <p>{{ item.description }}</p>
-        </article>
-      </div>
-
-      <el-table v-loading="loading" :data="ruleRecords" border>
-        <el-table-column label="规则分类" min-width="120">
+      <el-table v-loading="loading" :data="preferences" border>
+        <el-table-column prop="semester" label="学期" min-width="140" />
+        <el-table-column prop="course_id" label="课程 ID" min-width="130">
+          <template #default="{ row }">{{ row.course_id || "通用偏好" }}</template>
+        </el-table-column>
+        <el-table-column label="时间偏好" min-width="210">
           <template #default="{ row }">
-            <el-tag size="small" :type="getRuleCategoryTagType(row.category)" effect="light">
-              {{ getRuleCategoryLabel(row.category) }}
+            {{ formatPreferenceTime(row) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="地点偏好" min-width="220">
+          <template #default="{ row }">
+            {{ formatPreferenceLocation(row) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="性质" min-width="100">
+          <template #default="{ row }">
+            <el-tag :type="row.is_negative ? 'danger' : 'success'" effect="light">
+              {{ row.is_negative ? "避让" : "偏好" }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="name" label="规则名称" min-width="200" />
-        <el-table-column prop="code" label="规则编号" min-width="120" />
-        <el-table-column label="优先级" min-width="90">
-          <template #default="{ row }">
-            <span class="priority-badge" :class="`priority-badge--p${row.priority}`">P{{ row.priority }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="scope" label="作用范围" min-width="150" />
-        <el-table-column label="规则说明" min-width="240" show-overflow-tooltip>
-          <template #default="{ row }">
-            {{ row.description }}
-          </template>
-        </el-table-column>
-        <el-table-column label="状态" min-width="110">
-          <template #default="{ row }">
-            <el-switch
-              :model-value="row.status === 'enabled'"
-              inline-prompt
-              active-text="启用"
-              inactive-text="停用"
-              @change="toggleStatus(row)"
-            />
-          </template>
-        </el-table-column>
-        <el-table-column prop="updatedAt" label="更新时间" min-width="160" />
-        <el-table-column label="操作" width="160" fixed="right">
+        <el-table-column prop="updated_at" label="更新时间" min-width="180" />
+        <el-table-column label="操作" width="170" fixed="right">
           <template #default="{ row }">
             <el-space>
               <el-button link type="primary" @click="openDetail(row)">详情</el-button>
               <el-button link @click="openEdit(row)">编辑</el-button>
+              <el-button link type="danger" @click="removePreference(row)">删除</el-button>
             </el-space>
           </template>
         </el-table-column>
       </el-table>
 
       <template #detail>
-        <div v-if="currentRecord" class="detail-stack">
+        <div v-if="currentPreference" class="detail-stack">
           <el-descriptions :column="2" border>
-            <el-descriptions-item label="规则名称">{{ currentRecord.name }}</el-descriptions-item>
-            <el-descriptions-item label="规则编号">{{ currentRecord.code }}</el-descriptions-item>
-            <el-descriptions-item label="规则分类">{{ getRuleCategoryLabel(currentRecord.category) }}</el-descriptions-item>
-            <el-descriptions-item label="优先级">P{{ currentRecord.priority }}</el-descriptions-item>
-            <el-descriptions-item label="作用范围">{{ currentRecord.scope }}</el-descriptions-item>
-            <el-descriptions-item label="状态">{{ currentRecord.status === "enabled" ? "启用" : "停用" }}</el-descriptions-item>
+            <el-descriptions-item label="教师 ID">{{ currentPreference.teacher_id }}</el-descriptions-item>
+            <el-descriptions-item label="学期">{{ currentPreference.semester }}</el-descriptions-item>
+            <el-descriptions-item label="课程 ID">{{ currentPreference.course_id || "通用偏好" }}</el-descriptions-item>
+            <el-descriptions-item label="性质">{{ currentPreference.is_negative ? "避让" : "偏好" }}</el-descriptions-item>
+            <el-descriptions-item label="校区">{{ currentPreference.campus || "-" }}</el-descriptions-item>
+            <el-descriptions-item label="楼栋">{{ currentPreference.building || "-" }}</el-descriptions-item>
+            <el-descriptions-item label="教室编号">{{ currentPreference.classroom_code || "-" }}</el-descriptions-item>
+            <el-descriptions-item label="教室类型">{{ getRoomTypeLabel(currentPreference.room_type) }}</el-descriptions-item>
+            <el-descriptions-item label="星期">{{ getDayLabel(currentPreference.day_of_week) }}</el-descriptions-item>
+            <el-descriptions-item label="节次">{{
+              formatSections(currentPreference.slot_start, currentPreference.slot_end)
+            }}</el-descriptions-item>
+            <el-descriptions-item label="周次">{{
+              formatWeeks(currentPreference.week_start, currentPreference.week_end, currentPreference.week_parity)
+            }}</el-descriptions-item>
+            <el-descriptions-item label="创建时间">{{ currentPreference.created_at }}</el-descriptions-item>
           </el-descriptions>
-          <el-alert :title="currentRecord.description" type="info" :closable="false" />
-          <div class="detail-panel">
-            <h4>规则条件</h4>
-            <el-timeline>
-              <el-timeline-item v-for="(condition, index) in currentRecord.conditions" :key="`${currentRecord.id}-${index}`">
-                {{ formatCondition(condition) }}
-              </el-timeline-item>
-            </el-timeline>
-          </div>
-          <div class="detail-panel">
-            <h4>生效说明</h4>
-            <el-space wrap>
-              <el-tag v-for="summary in currentRecord.effectSummary" :key="summary" effect="plain">
-                {{ summary }}
-              </el-tag>
-            </el-space>
-          </div>
         </div>
       </template>
     </SchedulePageShell>
 
-    <el-drawer v-model="formVisible" :title="formMode === 'create' ? '新增规则' : '编辑规则'" size="620px">
-      <el-form ref="formRef" :model="formModel" :rules="formRules" label-width="96px" class="rule-form">
-        <el-form-item label="规则分类" prop="category">
-          <el-radio-group v-model="formModel.category">
-            <el-radio-button v-for="item in categoryOptionItems" :key="item.value" :label="item.value">
-              {{ item.label }}
-            </el-radio-button>
+    <el-drawer v-model="formVisible" :title="formMode === 'create' ? '新增教师偏好' : '编辑教师偏好'" size="660px">
+      <el-form ref="formRef" :model="formModel" :rules="formRules" label-width="104px" class="preference-form">
+        <el-form-item label="学期" prop="semester">
+          <el-input v-model="formModel.semester" placeholder="例如 2026-FALL" maxlength="16" />
+        </el-form-item>
+        <el-form-item label="课程 ID">
+          <el-input v-model="formModel.course_id" clearable placeholder="留空表示本学期所有课程" maxlength="32" />
+        </el-form-item>
+        <el-form-item label="偏好性质">
+          <el-radio-group v-model="formModel.is_negative">
+            <el-radio-button :label="false">希望这样排</el-radio-button>
+            <el-radio-button :label="true">不希望这样排</el-radio-button>
           </el-radio-group>
         </el-form-item>
-        <el-form-item label="规则名称" prop="name">
-          <el-input v-model="formModel.name" maxlength="40" show-word-limit placeholder="例如：教师同一时段不可重复授课" />
+        <el-form-item label="校区">
+          <el-input v-model="formModel.campus" clearable maxlength="32" />
         </el-form-item>
-        <el-form-item label="规则编号" prop="code">
-          <el-input v-model="formModel.code" placeholder="例如：TEACHER-002" />
+        <el-form-item label="楼栋">
+          <el-input v-model="formModel.building" clearable maxlength="64" />
         </el-form-item>
-        <el-form-item label="优先级" prop="priority">
-          <el-select v-model="formModel.priority" style="width: 160px">
-            <el-option label="P1 - 硬约束" :value="1" />
-            <el-option label="P2 - 重要约束" :value="2" />
-            <el-option label="P3 - 优化约束" :value="3" />
+        <el-form-item label="教室编号">
+          <el-input v-model="formModel.classroom_code" clearable maxlength="32" />
+        </el-form-item>
+        <el-form-item label="教室类型">
+          <el-select v-model="formModel.room_type" clearable placeholder="不限" style="width: 100%">
+            <el-option v-for="item in roomTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </el-form-item>
-        <el-form-item label="作用范围" prop="scope">
-          <el-select v-model="formModel.scope" filterable allow-create default-first-option placeholder="选择或输入作用范围">
-            <el-option v-for="item in scopeOptionItems" :key="item.value" :label="item.label" :value="item.value" />
+        <el-form-item label="星期">
+          <el-select v-model="formModel.day_of_week" clearable placeholder="不限" style="width: 100%">
+            <el-option v-for="item in dayOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </el-form-item>
-        <el-form-item label="启停状态" prop="status">
-          <el-radio-group v-model="formModel.status">
-            <el-radio label="enabled">启用</el-radio>
-            <el-radio label="disabled">停用</el-radio>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item label="规则说明" prop="description">
-          <el-input v-model="formModel.description" type="textarea" :rows="3" maxlength="120" show-word-limit />
-        </el-form-item>
-        <el-form-item label="规则条件">
-          <div class="condition-list">
-            <div v-for="(condition, index) in formModel.conditions" :key="`condition-${index}`" class="condition-row">
-              <el-input v-model="condition.field" placeholder="字段" />
-              <el-input v-model="condition.operator" placeholder="运算符" />
-              <el-input
-                v-model="conditionValueText[index]"
-                placeholder="值，数组请用 / 分隔"
-                @input="updateConditionValue(index)"
-              />
-              <el-button link type="danger" @click="removeCondition(index)">删除</el-button>
-            </div>
-            <el-button plain @click="addCondition">新增条件</el-button>
+        <el-form-item label="节次">
+          <div class="inline-fields">
+            <el-select v-model="formModel.slot_start" clearable placeholder="开始" style="width: 120px">
+              <el-option v-for="item in sectionOptions" :key="item" :label="`${item}节`" :value="item" />
+            </el-select>
+            <span>至</span>
+            <el-select v-model="formModel.slot_end" clearable placeholder="结束" style="width: 120px">
+              <el-option v-for="item in sectionOptions" :key="item" :label="`${item}节`" :value="item" />
+            </el-select>
           </div>
         </el-form-item>
+        <el-form-item label="周次">
+          <div class="inline-fields">
+            <el-input-number v-model="formModel.week_start" :min="1" :max="16" controls-position="right" />
+            <span>至</span>
+            <el-input-number v-model="formModel.week_end" :min="1" :max="16" controls-position="right" />
+          </div>
+        </el-form-item>
+        <el-form-item label="单双周">
+          <el-select v-model="formModel.week_parity" clearable placeholder="不限" style="width: 100%">
+            <el-option v-for="item in weekParityOptions" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+        </el-form-item>
       </el-form>
-
       <template #footer>
         <div class="drawer-footer">
           <el-button @click="formVisible = false">取消</el-button>
-          <el-button type="primary" @click="submitForm">保存规则</el-button>
+          <el-button type="primary" :loading="saving" @click="submitForm">保存</el-button>
         </div>
       </template>
     </el-drawer>
   </div>
 </template>
 
-<script setup lang="ts" name="scheduleRules">
-import { computed, onMounted, reactive, ref, watch } from "vue";
-import { ElMessage } from "element-plus";
+<script setup lang="ts" name="scheduleTeacherPreferences">
+import { computed, reactive, ref } from "vue";
+import { ElMessage, ElMessageBox } from "element-plus";
 import type { FormInstance, FormRules } from "element-plus";
 import type { Schedule } from "@/api/interface/schedule";
-import SchedulePageShell from "../components/SchedulePageShell.vue";
-import type { RulePageFilters } from "./service";
 import {
-  fetchRuleBootstraps,
-  fetchRuleDetailById,
-  fetchRuleDetails,
-  getRuleCategoryLabel,
-  getRuleCategorySegments,
-  getRuleCategoryTagType,
-  getRuleScopeOptions,
-  saveRule,
-  updateRuleStatus
-} from "./service";
+  createTeacherPreference,
+  deleteTeacherPreference,
+  getTeacherPreferences,
+  updateTeacherPreference
+} from "@/api/modules/schedule";
+import SchedulePageShell from "../components/SchedulePageShell.vue";
+import {
+  dayOptions,
+  formatSections,
+  formatWeeks,
+  getDayLabel,
+  getRoomTypeLabel,
+  roomTypeOptions,
+  sectionOptions,
+  weekParityOptions
+} from "../utils";
 
-type RuleFormMode = "create" | "edit";
+type PreferenceForm = Schedule.TeacherPreferenceCreate;
 
 const loading = ref(false);
+const saving = ref(false);
 const detailVisible = ref(false);
 const formVisible = ref(false);
-const formMode = ref<RuleFormMode>("create");
-const currentRecord = ref<Schedule.RuleDetail | null>(null);
+const formMode = ref<"create" | "edit">("create");
 const formRef = ref<FormInstance>();
-const ruleRecords = ref<Schedule.RuleDetail[]>([]);
-const categoryCards = ref<Array<Schedule.OptionItem & { count: number }>>([]);
-const categoryOptionItems = ref<Schedule.OptionItem[]>([]);
-const scopeOptionItems = ref<Schedule.OptionItem[]>(getRuleScopeOptions());
+const preferencesRaw = ref<Schedule.TeacherPreference[]>([]);
+const currentPreference = ref<Schedule.TeacherPreference | null>(null);
+const editingId = ref<number | null>(null);
 
-const filters = reactive<RulePageFilters>({
-  category: "time",
-  status: "",
-  priority: undefined,
-  keyword: ""
+const filters = reactive({
+  semester: "2026-FALL",
+  keyword: "",
+  negative: "" as "" | "positive" | "negative"
 });
 
-const createEmptyForm = (): Schedule.RuleForm => ({
-  category: "time",
-  name: "",
-  code: "",
-  priority: 2,
-  scope: "",
-  status: "enabled",
-  description: "",
-  conditions: [{ field: "", operator: "", value: "" }]
+const createEmptyForm = (): PreferenceForm => ({
+  semester: filters.semester || "2026-FALL",
+  course_id: null,
+  campus: null,
+  building: null,
+  classroom_code: null,
+  room_type: null,
+  day_of_week: null,
+  slot_start: null,
+  slot_end: null,
+  week_start: 1,
+  week_end: 16,
+  week_parity: "ALL",
+  is_negative: false
 });
 
-const formModel = reactive<Schedule.RuleForm>(createEmptyForm());
-const editingId = ref("");
-const conditionValueText = ref<string[]>([""]);
-const categorySegments = computed(() => getRuleCategorySegments());
+const formModel = reactive<PreferenceForm>(createEmptyForm());
 
-const formRules: FormRules<Schedule.RuleForm> = {
-  category: [{ required: true, message: "请选择规则分类", trigger: "change" }],
-  name: [{ required: true, message: "请输入规则名称", trigger: "blur" }],
-  code: [{ required: true, message: "请输入规则编号", trigger: "blur" }],
-  priority: [{ required: true, message: "请选择优先级", trigger: "change" }],
-  scope: [{ required: true, message: "请输入作用范围", trigger: "change" }],
-  status: [{ required: true, message: "请选择状态", trigger: "change" }],
-  description: [{ required: true, message: "请输入规则说明", trigger: "blur" }]
+const formRules: FormRules<PreferenceForm> = {
+  semester: [{ required: true, message: "请输入学期", trigger: "blur" }]
 };
+
+const preferences = computed(() => {
+  const keyword = filters.keyword.trim().toLowerCase();
+  return preferencesRaw.value.filter(item => {
+    const matchKeyword =
+      !keyword ||
+      [item.course_id, item.campus, item.building, item.classroom_code, item.room_type]
+        .filter(Boolean)
+        .some(value => String(value).toLowerCase().includes(keyword));
+    const matchNegative =
+      !filters.negative ||
+      (filters.negative === "positive" && !item.is_negative) ||
+      (filters.negative === "negative" && item.is_negative);
+    return matchKeyword && matchNegative;
+  });
+});
 
 const stats = computed(() => [
-  { label: "规则总数", value: ruleRecords.value.length, help: "统一沉淀排课约束规则" },
-  { label: "启用规则", value: ruleRecords.value.filter(item => item.status === "enabled").length, help: "当前参与排课计算" },
-  { label: "P1 规则", value: ruleRecords.value.filter(item => item.priority === 1).length, help: "硬约束或必须满足" },
-  { label: "当前列表", value: ruleRecords.value.length, help: "符合筛选条件的规则" }
+  { label: "偏好总数", value: preferences.value.length, help: "当前筛选结果" },
+  { label: "希望这样排", value: preferences.value.filter(item => !item.is_negative).length, help: "正向偏好数量" },
+  { label: "不希望这样排", value: preferences.value.filter(item => item.is_negative).length, help: "避让约束数量" },
+  { label: "指定课程", value: preferences.value.filter(item => item.course_id).length, help: "绑定具体课程 ID" }
 ]);
 
-watch(
-  () => filters.category,
-  () => {
-    loadRules();
-  }
-);
+const normalizePayload = (payload: PreferenceForm): PreferenceForm => ({
+  ...payload,
+  course_id: payload.course_id || null,
+  campus: payload.campus || null,
+  building: payload.building || null,
+  classroom_code: payload.classroom_code || null,
+  room_type: payload.room_type || null,
+  day_of_week: payload.day_of_week || null,
+  slot_start: payload.slot_start || null,
+  slot_end: payload.slot_end || null,
+  week_start: payload.week_start || null,
+  week_end: payload.week_end || null,
+  week_parity: payload.week_parity || null
+});
 
-watch(
-  () => formModel.conditions,
-  conditions => {
-    conditionValueText.value = conditions.map(condition => serializeConditionValue(condition.value));
-  },
-  { deep: true, immediate: true }
-);
-
-const serializeConditionValue = (value: Schedule.RuleCondition["value"]) => {
-  return Array.isArray(value) ? value.join(" / ") : String(value ?? "");
+const formatPreferenceTime = (item: Schedule.TeacherPreference) => {
+  const day = getDayLabel(item.day_of_week);
+  const sections = formatSections(item.slot_start, item.slot_end);
+  const weeks = formatWeeks(item.week_start, item.week_end, item.week_parity);
+  return [day, sections, weeks].filter(value => value !== "-").join(" / ") || "-";
 };
 
-const parseConditionValue = (value: string): Schedule.RuleCondition["value"] => {
-  if (value.includes("/")) {
-    return value
-      .split("/")
-      .map(item => item.trim())
-      .filter(Boolean);
-  }
-  if (value === "true") return true;
-  if (value === "false") return false;
-  if (value !== "" && !Number.isNaN(Number(value))) return Number(value);
-  return value.trim();
+const formatPreferenceLocation = (item: Schedule.TeacherPreference) => {
+  return (
+    [item.campus, item.building, item.classroom_code, getRoomTypeLabel(item.room_type)]
+      .filter(value => value && value !== "-")
+      .join(" / ") || "-"
+  );
 };
 
-const formatCondition = (condition: Schedule.RuleCondition) => {
-  const value = Array.isArray(condition.value) ? condition.value.join(" / ") : String(condition.value);
-  return `${condition.field} ${condition.operator} ${value}`;
-};
-
-const resetFormModel = () => {
-  Object.assign(formModel, createEmptyForm());
-  editingId.value = "";
-  conditionValueText.value = formModel.conditions.map(condition => serializeConditionValue(condition.value));
-};
-
-const loadRules = async () => {
+const loadPreferences = async () => {
   loading.value = true;
   try {
-    ruleRecords.value = await fetchRuleDetails(filters);
-    categoryCards.value = await Promise.all(
-      (await fetchRuleBootstraps()).categoryOptions.map(async item => ({
-        ...item,
-        count: (await fetchRuleDetails({ ...filters, category: item.value as Schedule.RuleCategory, keyword: "" })).length
-      }))
-    );
+    const { data } = await getTeacherPreferences({ semester: filters.semester || undefined, limit: 1000 });
+    preferencesRaw.value = data;
   } finally {
     loading.value = false;
   }
 };
 
-const loadBootstraps = async () => {
-  const bootstrap = await fetchRuleBootstraps();
-  categoryOptionItems.value = bootstrap.categoryOptions;
-  scopeOptionItems.value = bootstrap.scopeOptions;
+const resetFilters = async () => {
+  filters.semester = "2026-FALL";
+  filters.keyword = "";
+  filters.negative = "";
+  await loadPreferences();
 };
 
-const openDetail = async (record: Schedule.RuleDetail) => {
-  currentRecord.value = await fetchRuleDetailById(record.id);
-  detailVisible.value = true;
+const resetForm = () => {
+  Object.assign(formModel, createEmptyForm());
+  editingId.value = null;
 };
 
 const openCreate = () => {
   formMode.value = "create";
-  resetFormModel();
+  resetForm();
   formVisible.value = true;
 };
 
-const openEdit = (record: Schedule.RuleDetail) => {
+const openEdit = (record: Schedule.TeacherPreference) => {
   formMode.value = "edit";
   editingId.value = record.id;
   Object.assign(formModel, {
-    id: record.id,
-    category: record.category,
-    name: record.name,
-    code: record.code,
-    priority: record.priority,
-    scope: record.scope,
-    status: record.status,
-    description: record.description,
-    conditions: record.conditions.map(condition => ({ ...condition }))
+    semester: record.semester,
+    course_id: record.course_id,
+    campus: record.campus,
+    building: record.building,
+    classroom_code: record.classroom_code,
+    room_type: record.room_type,
+    day_of_week: record.day_of_week,
+    slot_start: record.slot_start,
+    slot_end: record.slot_end,
+    week_start: record.week_start,
+    week_end: record.week_end,
+    week_parity: record.week_parity,
+    is_negative: record.is_negative
   });
-  conditionValueText.value = formModel.conditions.map(condition => serializeConditionValue(condition.value));
   formVisible.value = true;
 };
 
-const toggleStatus = async (record: Schedule.RuleDetail) => {
-  const nextStatus: Schedule.RuleStatus = record.status === "enabled" ? "disabled" : "enabled";
-  await updateRuleStatus(record.id, nextStatus);
-  await loadRules();
-  if (currentRecord.value?.id === record.id) {
-    currentRecord.value = await fetchRuleDetailById(record.id);
-  }
-  ElMessage.success(`${record.name}已${nextStatus === "enabled" ? "启用" : "停用"}`);
+const openDetail = (record: Schedule.TeacherPreference) => {
+  currentPreference.value = record;
+  detailVisible.value = true;
 };
 
-const addCondition = () => {
-  formModel.conditions.push({ field: "", operator: "", value: "" });
-  conditionValueText.value.push("");
-};
-
-const removeCondition = (index: number) => {
-  if (formModel.conditions.length === 1) {
-    ElMessage.warning("至少保留一条规则条件");
-    return;
-  }
-  formModel.conditions.splice(index, 1);
-  conditionValueText.value.splice(index, 1);
-};
-
-const updateConditionValue = (index: number) => {
-  formModel.conditions[index].value = parseConditionValue(conditionValueText.value[index] ?? "");
+const removePreference = async (record: Schedule.TeacherPreference) => {
+  await ElMessageBox.confirm("确认删除这条教师排课偏好？", "删除偏好", { type: "warning" });
+  await deleteTeacherPreference(record.id);
+  ElMessage.success("偏好已删除");
+  await loadPreferences();
 };
 
 const submitForm = async () => {
   const valid = await formRef.value?.validate().catch(() => false);
   if (!valid) return;
-
-  const normalizedConditions = formModel.conditions
-    .map((condition, index) => ({
-      field: condition.field.trim(),
-      operator: condition.operator.trim(),
-      value: parseConditionValue(conditionValueText.value[index] ?? "")
-    }))
-    .filter(condition => condition.field && condition.operator && String(condition.value).trim() !== "");
-
-  if (normalizedConditions.length === 0) {
-    ElMessage.warning("请至少填写一条完整规则条件");
+  if (formModel.slot_start && formModel.slot_end && formModel.slot_start > formModel.slot_end) {
+    ElMessage.error("节次开始不能晚于结束");
+    return;
+  }
+  if (formModel.week_start && formModel.week_end && formModel.week_start > formModel.week_end) {
+    ElMessage.error("周次开始不能晚于结束");
     return;
   }
 
-  await saveRule(
-    {
-      ...formModel,
-      name: formModel.name.trim(),
-      code: formModel.code.trim(),
-      scope: formModel.scope.trim(),
-      description: formModel.description.trim(),
-      conditions: normalizedConditions
-    },
-    editingId.value || undefined
-  );
-
-  await loadRules();
-  if (editingId.value) {
-    currentRecord.value = await fetchRuleDetailById(editingId.value);
+  saving.value = true;
+  try {
+    const payload = normalizePayload({ ...formModel });
+    if (formMode.value === "edit" && editingId.value) {
+      await updateTeacherPreference(editingId.value, payload);
+      ElMessage.success("偏好已更新");
+    } else {
+      await createTeacherPreference(payload);
+      ElMessage.success("偏好已新增");
+    }
+    filters.semester = formModel.semester;
+    formVisible.value = false;
+    await loadPreferences();
+  } finally {
+    saving.value = false;
   }
-  formVisible.value = false;
-  ElMessage.success(formMode.value === "create" ? "规则已新增" : "规则已更新");
 };
 
-onMounted(async () => {
-  await loadBootstraps();
-  await loadRules();
-});
+loadPreferences();
 </script>
 
 <style scoped lang="scss">
 .schedule-page-view,
-.header-actions,
-.filter-form {
-  display: flex;
-  flex-wrap: wrap;
-}
-.header-actions {
-  gap: 12px;
-}
-.overview-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 18px;
-}
-.overview-card {
-  padding: 14px 16px;
-  background: linear-gradient(180deg, #fafefd 0%, #f2f8f7 100%);
-  border: 1px solid #d7ebe7;
-  border-radius: 12px;
-}
-.overview-card__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
-}
-.overview-card p {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.6;
-  color: #64748b;
-}
-.priority-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 38px;
-  padding: 3px 10px;
-  font-size: 12px;
-  font-weight: 700;
-  border-radius: 999px;
-}
-.priority-badge--p1 {
-  color: #b42318;
-  background: #fef3f2;
-}
-.priority-badge--p2 {
-  color: #b54708;
-  background: #fffaeb;
-}
-.priority-badge--p3 {
-  color: #175cd3;
-  background: #eff8ff;
-}
 .detail-stack {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
-.detail-panel h4 {
-  margin: 0 0 12px;
-  font-size: 15px;
-  color: #1f2937;
+.filter-form {
+  display: flex;
+  flex-wrap: wrap;
 }
-.rule-form {
+.preference-form {
   padding-right: 12px;
 }
-.condition-list {
+.inline-fields {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
-  width: 100%;
-}
-.condition-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1.2fr auto;
+  flex-wrap: wrap;
   gap: 10px;
   align-items: center;
 }
 .drawer-footer {
   display: flex;
   justify-content: flex-end;
-}
-
-@media (width <= 1200px) {
-  .overview-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (width <= 768px) {
-  .overview-grid,
-  .condition-row {
-    grid-template-columns: 1fr;
-  }
 }
 </style>
