@@ -39,7 +39,6 @@ import { useRouter } from "vue-router";
 import type { ElForm } from "element-plus";
 import { ElNotification } from "element-plus";
 import { CircleClose, Lock, User, UserFilled } from "@element-plus/icons-vue";
-import md5 from "md5";
 import { HOME_URL } from "@/config";
 import type { Login } from "@/api/interface";
 import { loginApi } from "@/api/modules/login";
@@ -76,13 +75,18 @@ const login = (formEl: FormInstance | undefined) => {
 
     loading.value = true;
     try {
-      const { data } = await loginApi({ ...loginForm, password: md5(loginForm.password) });
-      userStore.setToken(data.access_token);
-      userStore.setUserInfo({
-        name: data.user_info.name,
-        role: data.user_info.role,
-        userId: data.user_info.user_id
-      });
+      const res = await loginApi({ ...loginForm });
+      const body = res.data || res;
+      if (!userStore.token) {
+        userStore.setToken(body.access_token);
+        userStore.setRefreshToken(body.refresh_token || "");
+        userStore.setUserId(body.user_id || body.user_info?.user_id || "");
+        userStore.setUserInfo({
+          name: body.username || body.user_info?.name || loginForm.username,
+          role: body.role || body.user_info?.role || "",
+          userId: body.user_id || body.user_info?.user_id
+        });
+      }
 
       await initDynamicRouter();
 
@@ -92,7 +96,7 @@ const login = (formEl: FormInstance | undefined) => {
       router.push(HOME_URL);
       ElNotification({
         title: "登录成功",
-        message: `欢迎进入 STSS，当前身份：${data.user_info.name}`,
+        message: `欢迎进入 STSS，当前身份：${userStore.userInfo.name || body.username || body.user_info?.name}`,
         type: "success",
         duration: 3000
       });
