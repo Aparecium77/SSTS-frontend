@@ -1,124 +1,93 @@
-import type { ResPage, ResultData } from "@/api/interface";
 import { SCHEDULE_API } from "@/api/config/servicePort";
 import type { Schedule } from "@/api/interface/schedule";
 import http from "@/api";
+import { useUserStore } from "@/stores/modules/user";
 
-const SCHEDULE_PREFIX = SCHEDULE_API;
+const scheduleHeaders = () => {
+  const userStore = useUserStore();
+  const roleMap: Record<string, string> = {
+    academic_admin: "ACADEMIC_ADMIN",
+    teacher: "TEACHER",
+    student: "STUDENT"
+  };
+  const userId = userStore.userInfo.userId || userStore.token || "anonymous";
+  const role = roleMap[userStore.userInfo.role] ?? userStore.userInfo.role ?? "";
 
-// 课表查询
-export const getScheduleOverview = (params: Schedule.ScheduleQuery) => {
-  return http.post<ResultData<Schedule.ScheduleStats>>(SCHEDULE_PREFIX + "/query/overview", params);
+  return {
+    headers: {
+      "X-User-Id": userId,
+      "X-User-ID": userId,
+      "X-User-Role": role,
+      "X-User-Name": encodeURIComponent(userStore.userInfo.name || "")
+    }
+  };
 };
 
-export const getScheduleRecordPage = (params: Schedule.ScheduleQuery) => {
-  return http.post<ResPage<Schedule.ScheduleRecord>>(SCHEDULE_PREFIX + "/query/page", params);
+export const getClassrooms = (params?: { skip?: number; limit?: number }) => {
+  return http.get<Schedule.Classroom[]>(`${SCHEDULE_API}/classrooms`, params, scheduleHeaders());
 };
 
-export const getScheduleDetail = (id: string) => {
-  return http.get<ResultData<Schedule.ScheduleDetail>>(SCHEDULE_PREFIX + `/query/detail/${id}`);
+export const createClassroom = (params: Schedule.ClassroomCreate) => {
+  return http.post<Schedule.Classroom>(`${SCHEDULE_API}/classrooms`, params, scheduleHeaders());
 };
 
-export const getScheduleDimensionOptions = () => {
-  return http.get<Schedule.OptionItem[]>(SCHEDULE_PREFIX + "/query/dimensions");
+export const updateClassroom = (id: number, params: Schedule.ClassroomUpdate) => {
+  return http.service.patch(`${SCHEDULE_API}/classrooms/${id}`, params, scheduleHeaders());
 };
 
-// 教学资源
-export const getResourceStats = (params: Schedule.ResourceQuery) => {
-  return http.post<ResultData<Schedule.ResourceStats>>(SCHEDULE_PREFIX + "/resources/stats", params);
+export const deleteClassroom = (id: number) => {
+  return http.delete<null>(`${SCHEDULE_API}/classrooms/${id}`, undefined, scheduleHeaders());
 };
 
-export const getResourcePage = (params: Schedule.ResourceQuery) => {
-  return http.post<ResPage<Schedule.ResourceRecord>>(SCHEDULE_PREFIX + "/resources/page", params);
+export const batchImportClassrooms = (file: File, overwrite = false) => {
+  const formData = new FormData();
+  formData.append("file", file);
+  return http.post<Schedule.ClassroomBatchImportResult>(
+    `${SCHEDULE_API}/classrooms/batch-import?overwrite=${overwrite}`,
+    formData,
+    {
+      ...scheduleHeaders(),
+      loading: true
+    }
+  );
 };
 
-export const getResourceDetail = (id: string) => {
-  return http.get<ResultData<Schedule.ResourceDetail>>(SCHEDULE_PREFIX + `/resources/detail/${id}`);
+export const getTeacherPreferences = (params?: { semester?: string; skip?: number; limit?: number }) => {
+  return http.get<Schedule.TeacherPreference[]>(`${SCHEDULE_API}/teacher-preferences`, params, scheduleHeaders());
 };
 
-export const createResource = (params: Schedule.ResourceForm) => {
-  return http.post(SCHEDULE_PREFIX + "/resources/create", params);
+export const createTeacherPreference = (params: Schedule.TeacherPreferenceCreate) => {
+  return http.post<Schedule.TeacherPreference>(`${SCHEDULE_API}/teacher-preferences`, params, scheduleHeaders());
 };
 
-export const updateResource = (params: Schedule.ResourceForm) => {
-  return http.post(SCHEDULE_PREFIX + "/resources/update", params);
+export const updateTeacherPreference = (id: number, params: Schedule.TeacherPreferenceUpdate) => {
+  return http.service.patch(`${SCHEDULE_API}/teacher-preferences/${id}`, params, scheduleHeaders());
 };
 
-export const changeResourceStatus = (params: { id: string; status: Schedule.ResourceStatus }) => {
-  return http.post(SCHEDULE_PREFIX + "/resources/change-status", params);
+export const deleteTeacherPreference = (id: number) => {
+  return http.delete<null>(`${SCHEDULE_API}/teacher-preferences/${id}`, undefined, scheduleHeaders());
 };
 
-export const getResourceCategoryOptions = () => {
-  return http.get<Schedule.OptionItem[]>(SCHEDULE_PREFIX + "/resources/categories");
+export const triggerAutoSchedule = (params: Schedule.AutoScheduleRequest) => {
+  return http.post<Schedule.AutoScheduleResponse>(`${SCHEDULE_API}/auto-schedule`, params, scheduleHeaders());
 };
 
-// 排课规则
-export const getRuleStats = (params: Schedule.RuleQuery) => {
-  return http.post<ResultData<Schedule.RuleStats>>(SCHEDULE_PREFIX + "/rules/stats", params);
+export const getScheduleStatus = (taskId: string) => {
+  return http.get<Schedule.ScheduleStatusResponse>(`${SCHEDULE_API}/schedule-status/${taskId}`, undefined, {
+    ...scheduleHeaders(),
+    loading: false,
+    cancel: false
+  });
 };
 
-export const getRulePage = (params: Schedule.RuleQuery) => {
-  return http.post<ResPage<Schedule.RuleRecord>>(SCHEDULE_PREFIX + "/rules/page", params);
+export const getScheduleEntries = (params: Schedule.ScheduleEntryQuery) => {
+  return http.get<Schedule.ScheduleEntry[]>(`${SCHEDULE_API}/entries`, params, scheduleHeaders());
 };
 
-export const getRuleDetail = (id: string) => {
-  return http.get<ResultData<Schedule.RuleDetail>>(SCHEDULE_PREFIX + `/rules/detail/${id}`);
+export const manualAdjustSchedule = (params: Schedule.ManualAdjustRequest) => {
+  return http.post<Schedule.ScheduleEntry>(`${SCHEDULE_API}/manual-adjust`, params, scheduleHeaders());
 };
 
-export const createRule = (params: Schedule.RuleForm) => {
-  return http.post(SCHEDULE_PREFIX + "/rules/create", params);
-};
-
-export const updateRule = (params: Schedule.RuleForm) => {
-  return http.post(SCHEDULE_PREFIX + "/rules/update", params);
-};
-
-export const changeRuleStatus = (params: { id: string; status: Schedule.RuleStatus }) => {
-  return http.post(SCHEDULE_PREFIX + "/rules/change-status", params);
-};
-
-export const getRuleCategoryOptions = () => {
-  return http.get<Schedule.OptionItem[]>(SCHEDULE_PREFIX + "/rules/categories");
-};
-
-// 手工调课
-export const getAdjustmentPage = (params: Schedule.PageQuery) => {
-  return http.post<ResPage<Schedule.AdjustmentRecord>>(SCHEDULE_PREFIX + "/manual/page", params);
-};
-
-export const detectAdjustmentConflicts = (params: Schedule.AdjustmentForm) => {
-  return http.post<ResultData<Schedule.ConflictRecord[]>>(SCHEDULE_PREFIX + "/manual/conflicts", params);
-};
-
-export const submitAdjustment = (params: Schedule.AdjustmentForm) => {
-  return http.post(SCHEDULE_PREFIX + "/manual/submit", params);
-};
-
-// 课表发布
-export const getPublishPage = (params: Schedule.PublishQuery) => {
-  return http.post<ResPage<Schedule.PublishRecord>>(SCHEDULE_PREFIX + "/publish/page", params);
-};
-
-export const createPublishRecord = (params: Schedule.PublishForm) => {
-  return http.post(SCHEDULE_PREFIX + "/publish/create", params);
-};
-
-export const rollbackPublishRecord = (params: { id: string }) => {
-  return http.post(SCHEDULE_PREFIX + "/publish/rollback", params);
-};
-
-// 自动排课
-export const getAutoTaskPage = (params: Schedule.TaskQuery) => {
-  return http.post<ResPage<Schedule.AutoTaskRecord>>(SCHEDULE_PREFIX + "/auto/page", params);
-};
-
-export const createAutoTask = (params: Schedule.AutoTaskForm) => {
-  return http.post(SCHEDULE_PREFIX + "/auto/create", params);
-};
-
-export const executeAutoTask = (params: { id: string }) => {
-  return http.post(SCHEDULE_PREFIX + "/auto/execute", params);
-};
-
-export const getAutoTaskResult = (id: string) => {
-  return http.get<ResultData<Schedule.AutoTaskResult>>(SCHEDULE_PREFIX + `/auto/result/${id}`);
+export const getTeacherTimetable = (teacherId: string, params: { semester: string; week?: number }) => {
+  return http.get<Schedule.TeacherTimetable>(`${SCHEDULE_API}/teachers/${teacherId}/timetable`, params, scheduleHeaders());
 };

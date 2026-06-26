@@ -1,299 +1,158 @@
-import type { ReqPage } from "@/api/interface";
-
 export namespace Schedule {
-  export type ResourceCategory = "teacher" | "classroom" | "course" | "class";
-  export type RuleCategory = "time" | "teacherConflict" | "classroomCapacity" | "courseArrangement";
-  export type ScheduleDimension = "teacher" | "student" | "class" | "classroom";
-  export type RecordStatus = "draft" | "published" | "adjusting" | "archived";
-  export type PublishStatus = "pending" | "published" | "rolledBack";
-  export type TaskStatus = "draft" | "queued" | "running" | "completed" | "failed";
-  export type AdjustmentStatus = "pending" | "approved" | "rejected";
-  export type ResourceStatus = "enabled" | "disabled";
-  export type RuleStatus = "enabled" | "disabled";
+  export type ClassroomType = "LECTURE" | "LAB_PHYSICS" | "LAB_CHEMISTRY" | "LAB_BIOLOGY" | "COMPUTER_LAB" | "GYM";
+  export type DayOfWeek = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+  export type WeekParity = "ALL" | "ODD" | "EVEN";
+  export type ScheduleTaskStatus = "PENDING" | "STARTED" | "PROGRESS" | "SUCCESS" | "FAILURE" | "RETRY" | "REVOKED" | string;
 
-  export interface OptionItem {
+  export interface OptionItem<T = string> {
     label: string;
-    value: string;
+    value: T;
     description?: string;
   }
 
-  export interface PageQuery extends ReqPage {
-    keyword?: string;
-    academicYear?: string;
-    semesterId?: string;
-    week?: number;
-    status?: string;
+  export interface ClassroomSlot {
+    day: DayOfWeek;
+    slot: number;
   }
 
-  export interface WeekRange {
-    startWeek: number;
-    endWeek: number;
-  }
-
-  export interface SemesterInfo {
-    academicYear: string;
-    semesterId: string;
-    semesterName: string;
-    startDate: string;
-    endDate: string;
-    totalWeeks: number;
-    currentWeek: number;
-  }
-
-  export interface TimeSlot {
-    dayOfWeek: number;
-    sectionStart: number;
-    sectionEnd: number;
-    weekLabel: string;
-    timeRange: string;
-  }
-
-  export interface PersonSummary {
-    id: string;
+  export interface Classroom {
+    id: number;
     code: string;
     name: string;
-    department?: string;
-  }
-
-  export interface ClassroomSummary {
-    id: string;
+    campus: string;
     building: string;
-    roomNumber: string;
     capacity: number;
-    tags: string[];
+    room_type: ClassroomType;
+    available_time: ClassroomSlot[];
+    is_active: boolean;
   }
 
-  export interface CourseSummary {
-    id: string;
+  export interface ClassroomCreate {
     code: string;
     name: string;
-    credits: number;
-    hours: number;
+    campus: string;
+    building: string;
+    capacity: number;
+    room_type: ClassroomType;
+    available_time: ClassroomSlot[];
   }
 
-  export interface ClassSummary {
-    id: string;
-    name: string;
-    grade: string;
-    major: string;
-    studentCount: number;
-  }
-
-  export interface ResourceStats {
-    total: number;
-    enabled: number;
-    disabled: number;
-    warningCount: number;
-  }
-
-  export interface ResourceQuery extends PageQuery {
-    category?: ResourceCategory;
-    department?: string;
-  }
-
-  export interface ResourceRecord {
-    id: string;
-    category: ResourceCategory;
-    name: string;
-    code: string;
-    department: string;
-    status: ResourceStatus;
-    ownerName: string;
+  export interface ClassroomUpdate {
+    name?: string;
+    campus?: string;
+    building?: string;
     capacity?: number;
-    tags: string[];
-    updatedAt: string;
-    remark?: string;
+    room_type?: ClassroomType;
+    available_time?: ClassroomSlot[];
+    is_active?: boolean;
   }
 
-  export interface ResourceDetail extends ResourceRecord {
-    semester: SemesterInfo;
-    usageRate?: number;
-    relatedCourses?: string[];
+  export interface ClassroomImportFailure {
+    row: number;
+    code?: string | null;
+    error: string;
   }
 
-  export interface ResourceForm {
-    id?: string;
-    category: ResourceCategory;
-    name: string;
-    code: string;
-    department: string;
-    ownerName: string;
-    capacity?: number;
-    status: ResourceStatus;
-    tags: string[];
-    remark?: string;
+  export interface ClassroomBatchImportResult {
+    success: number;
+    failed: ClassroomImportFailure[];
   }
 
-  export interface RuleStats {
-    total: number;
-    enabled: number;
-    disabled: number;
-    pendingReview: number;
+  export interface TeacherPreference {
+    id: number;
+    teacher_id: string;
+    semester: string;
+    course_id: string | null;
+    campus: string | null;
+    building: string | null;
+    classroom_code: string | null;
+    room_type: ClassroomType | null;
+    day_of_week: DayOfWeek | null;
+    slot_start: number | null;
+    slot_end: number | null;
+    week_start: number | null;
+    week_end: number | null;
+    week_parity: WeekParity | null;
+    is_negative: boolean;
+    created_at: string;
+    updated_at: string;
   }
 
-  export interface RuleQuery extends PageQuery {
-    category?: RuleCategory;
-    priority?: number;
+  export interface TeacherPreferenceCreate {
+    semester: string;
+    course_id?: string | null;
+    campus?: string | null;
+    building?: string | null;
+    classroom_code?: string | null;
+    room_type?: ClassroomType | null;
+    day_of_week?: DayOfWeek | null;
+    slot_start?: number | null;
+    slot_end?: number | null;
+    week_start?: number | null;
+    week_end?: number | null;
+    week_parity?: WeekParity | null;
+    is_negative: boolean;
   }
 
-  export interface RuleCondition {
-    field: string;
-    operator: string;
-    value: string | number | boolean | string[];
+  export type TeacherPreferenceUpdate = Partial<TeacherPreferenceCreate>;
+
+  export interface AutoScheduleRequest {
+    semester: string;
   }
 
-  export interface RuleRecord {
-    id: string;
-    category: RuleCategory;
-    name: string;
-    code: string;
-    priority: number;
-    status: RuleStatus;
-    scope: string;
-    updatedAt: string;
-    description: string;
+  export interface AutoScheduleResponse {
+    task_id: string;
+    semester: string;
   }
 
-  export interface RuleDetail extends RuleRecord {
-    conditions: RuleCondition[];
-    effectSummary: string[];
-  }
-
-  export interface RuleForm {
-    id?: string;
-    category: RuleCategory;
-    name: string;
-    code: string;
-    priority: number;
-    scope: string;
-    status: RuleStatus;
-    description: string;
-    conditions: RuleCondition[];
-  }
-
-  export interface ScheduleQuery extends PageQuery {
-    dimension: ScheduleDimension;
-    targetId?: string;
-    date?: string;
-  }
-
-  export interface ScheduleStats {
-    totalCourses: number;
-    occupiedClassrooms: number;
-    involvedTeachers: number;
-    conflictCount: number;
-  }
-
-  export interface ScheduleRecord {
-    id: string;
-    semesterId: string;
-    academicYear: string;
-    courseName: string;
-    courseCode: string;
-    teacherName: string;
-    className: string;
-    classroomName: string;
-    studentCount: number;
-    weekText: string;
-    date: string;
-    status: RecordStatus;
-    timeSlot: TimeSlot;
-  }
-
-  export interface ScheduleDetail extends ScheduleRecord {
-    classCode: string;
-    teacherCode: string;
-    classroomCode: string;
-    remark?: string;
-  }
-
-  export interface AdjustmentForm {
-    scheduleId: string;
-    reason: string;
-    targetDate: string;
-    targetDayOfWeek: number;
-    targetSectionStart: number;
-    targetSectionEnd: number;
-    targetClassroomId: string;
-  }
-
-  export interface ConflictRecord {
-    id: string;
-    level: "high" | "medium" | "low";
-    title: string;
+  export interface ScheduleStatusResponse {
+    task_id: string;
+    status: ScheduleTaskStatus;
+    progress: number;
     message: string;
-    relatedEntity: string;
+    result_summary: Record<string, unknown> | null;
   }
 
-  export interface AdjustmentRecord {
-    id: string;
-    scheduleId: string;
-    courseName: string;
-    originSlot: string;
-    targetSlot: string;
-    applicant: string;
-    status: AdjustmentStatus;
-    submittedAt: string;
+  export interface ScheduleEntry {
+    id: number;
+    semester: string;
+    offering_id: string;
+    course_id: string;
+    course_code: string | null;
+    course_name: string | null;
+    teacher_ids: string[];
+    classroom_id: number;
+    day_of_week: DayOfWeek;
+    slot_start: number;
+    slot_end: number;
+    week_start: number;
+    week_end: number;
+    week_parity: WeekParity;
   }
 
-  export interface PublishQuery extends PageQuery {
-    status?: PublishStatus;
-    version?: string;
+  export interface ScheduleEntryQuery {
+    semester: string;
+    teacher_id?: string;
+    course_id?: string;
+    offering_id?: string;
   }
 
-  export interface PublishRecord {
-    id: string;
-    version: string;
-    semesterName: string;
-    publishedAt: string;
-    publishedBy: string;
-    status: PublishStatus;
-    targetScope: string;
-    note?: string;
+  export interface ManualAdjustRequest {
+    entry_id: number;
+    new_teacher_ids?: string[] | null;
+    new_classroom_id?: number | null;
+    new_day_of_week?: DayOfWeek | null;
+    new_slot_start?: number | null;
+    new_slot_end?: number | null;
+    new_week_start?: number | null;
+    new_week_end?: number | null;
+    new_week_parity?: WeekParity | null;
   }
 
-  export interface PublishForm {
-    semesterId: string;
-    targetScope: string;
-    targetIds: string[];
-    note?: string;
-  }
-
-  export interface TaskQuery extends PageQuery {
-    status?: TaskStatus;
-  }
-
-  export interface TaskProgress {
-    processed: number;
-    total: number;
-    percent: number;
-  }
-
-  export interface AutoTaskRecord {
-    id: string;
-    taskName: string;
-    semesterName: string;
-    status: TaskStatus;
-    createdBy: string;
-    createdAt: string;
-    progress: TaskProgress;
-    conflictCount: number;
-  }
-
-  export interface AutoTaskForm {
-    taskName: string;
-    semesterId: string;
-    ruleIds: string[];
-    resourceScope: string[];
-    preferContinuousCourse: boolean;
-    avoidWeekend: boolean;
-  }
-
-  export interface AutoTaskResult {
-    taskId: string;
-    arrangedCourses: number;
-    unresolvedConflicts: number;
-    generatedAt: string;
-    summary: string[];
+  export interface TeacherTimetable {
+    teacher_id: string;
+    semester: string;
+    week: number | null;
+    entries: ScheduleEntry[];
   }
 }

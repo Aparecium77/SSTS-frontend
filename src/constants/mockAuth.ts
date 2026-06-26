@@ -8,7 +8,7 @@ import { courseSelectionMenu } from "@/views/stss/course-selection/menu";
 import { forumMenu } from "@/views/stss/forum/menu";
 import { onlineTestMenu } from "@/views/stss/online-test/menu";
 import { scoreMenu, type ScoreMenuName } from "@/views/stss/score/menu";
-import { cloneMenuList, createGroup, createMenu } from "@/views/stss/menu";
+import { cloneMenuList, createMenu } from "@/views/stss/menu";
 
 type RoleKey = "student" | "teacher" | "academic_admin";
 
@@ -121,13 +121,7 @@ const menuMap: Record<RoleKey, Menu.MenuOptions[]> = {
   student: [homeMenu, courseSelectionMenu(), forumMenu(), onlineTestMenu("student"), scoreMenuForRole("student")],
   teacher: [
     homeMenu,
-    createGroup(
-      "/schedule",
-      "schedule",
-      "排课管理",
-      [createMenu("/schedule/query", "scheduleQuery", "/stss/schedule/query/index", "课表查询")],
-      "Calendar"
-    ),
+    scheduleMenu("teacher"),
     courseSelectionMenu("teacher"),
     forumMenu(),
     onlineTestMenu("teacher"),
@@ -136,7 +130,7 @@ const menuMap: Record<RoleKey, Menu.MenuOptions[]> = {
   academic_admin: [
     homeMenu,
     baseInfoMenu(),
-    scheduleMenu(),
+    scheduleMenu("academic_admin"),
     courseSelectionMenu("academic_admin"),
     forumMenu(),
     onlineTestMenu("teacher"),
@@ -167,6 +161,7 @@ const buttonMap: Record<RoleKey, Login.ResAuthButtons> = {
   teacher: {
     home: ["view"],
     scheduleQuery: ["view", "export"],
+    scheduleTeacherPreferences: ["view", "create", "edit", "delete"],
     teachingRoster: ["view", "export"],
     forumNotices: ["view"],
     forumCourseBoards: ["view"],
@@ -190,11 +185,10 @@ const buttonMap: Record<RoleKey, Login.ResAuthButtons> = {
     baseInfoCalendar: ["view", "create", "edit", "publish"],
     baseInfoTrainingPlans: ["view", "create", "edit", "publish"],
     baseInfoPermissions: ["view", "edit", "restore"],
-    scheduleResources: ["view", "create", "edit"],
-    scheduleRules: ["view", "create", "edit"],
+    scheduleClassrooms: ["view", "create", "edit", "delete", "import"],
+    scheduleTeacherPreferences: ["view", "create", "edit", "delete"],
     scheduleAuto: ["view", "run"],
     scheduleManual: ["view", "adjust"],
-    schedulePublish: ["view", "publish"],
     scheduleQuery: ["view", "export"],
     studyPlans: ["view"],
     courseSearch: ["view", "detail"],
