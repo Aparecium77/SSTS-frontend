@@ -102,12 +102,13 @@ type CurrentAuthIdentity = {
 
 const roleIdsFromAuthRole = (role?: string) => {
   if (!role) return [];
-  return BASE_INFO_ROLE_OPTIONS.filter(option => option.code === role || option.label === role).map(option => option.id);
+  const normalized = role.trim().toUpperCase();
+  return BASE_INFO_ROLE_OPTIONS.filter(option => option.code === normalized || option.label === role).map(option => option.id);
 };
 
 const getCurrentAuthIdentity = async (): Promise<CurrentAuthIdentity> => {
   try {
-    const res = await http.get("/auth/me", {}, { cancel: false, loading: false });
+    const res = await http.get("/auth/me", {}, { cancel: false, loading: false, authRedirect: false });
     const body = unwrap<any>(res as any);
     return {
       user_id: body.user_id ?? "",

@@ -1,13 +1,12 @@
 /**
  * 选课中心组接口封装。页面统一从这里调用，不直接写 axios。
- * baseURL = VITE_API_URL(/api)，统一 Gateway 路由前缀 /api/v1/course-selection，
- * 故此处路径以 /v1/course-selection 开头。页面层不感知后端切换。
+ * 统一走 Gateway 路由前缀 /api/v1/course-selection。页面层不感知后端切换。
  */
 import http from "@/api";
 import { CourseSelection } from "@/api/interface/courseSelection";
 import { useUserStore } from "@/stores/modules/user";
 
-const P = "/v1/course-selection";
+const P = "/api/v1/course-selection";
 
 interface CourseSelectionEnvelope<T> {
   code: number;
@@ -98,9 +97,15 @@ export const sendAiMessageApi = (
   }
 ): Promise<void> => {
   const base = (import.meta.env as any).VITE_API_URL || "";
+  const userStore = useUserStore();
+  const headers = new Headers({ "Content-Type": "application/json" });
+  if (userStore.token) {
+    headers.set("Authorization", `Bearer ${userStore.token}`);
+    headers.set("x-access-token", userStore.token);
+  }
   return fetch(`${base}${P}/ai/conversations/${conversationId}/messages`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     credentials: "include",
     body: JSON.stringify(params)
   }).then(async res => {

@@ -118,7 +118,7 @@ const findPresetUser = (loginKey: string) => {
 };
 
 const menuMap: Record<RoleKey, Menu.MenuOptions[]> = {
-  student: [homeMenu, courseSelectionMenu(), forumMenu(), onlineTestMenu("student"), scoreMenuForRole("student")],
+  student: [homeMenu, courseSelectionMenu("student"), forumMenu(), onlineTestMenu("student"), scoreMenuForRole("student")],
   teacher: [
     homeMenu,
     scheduleMenu("teacher"),

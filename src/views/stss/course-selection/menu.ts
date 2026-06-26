@@ -28,5 +28,5 @@ const menuByRole: Record<CourseSelectionRole, Menu.MenuOptions[]> = {
 };
 
 // 智能选课组可以在这里维护“选课中心”板块下的细分页面名称、路径和图标。
-export const courseSelectionMenu = (role: CourseSelectionRole = "academic_admin") =>
+export const courseSelectionMenu = (role: CourseSelectionRole = "student") =>
   createGroup("/course-selection", "courseSelection", "选课中心", menuByRole[role] ?? adminMenus, "Reading");

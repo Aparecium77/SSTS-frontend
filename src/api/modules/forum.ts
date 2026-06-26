@@ -370,7 +370,7 @@ export namespace ForumAPI {
     export const pushActivityBatch = async (params: ActivityBatchRequest): Promise<ActivityBatchResponse> => {
       try {
         const res = await http.post<ActivityBatchResponse>("/api/v1/forum/activity-batch", params);
-        return res as ActivityBatchResponse;
+        return (res.data ?? res) as ActivityBatchResponse;
       } catch {
         return {
           outbox_id: Date.now(),
@@ -393,7 +393,7 @@ export namespace ForumAPI {
     }): Promise<ActivityQueryResponse> => {
       try {
         const res = await http.get<ActivityQueryResponse>("/internal/forum/activity", params);
-        return res as ActivityQueryResponse;
+        return (res.data ?? res) as ActivityQueryResponse;
       } catch {
         return {
           code: 0,

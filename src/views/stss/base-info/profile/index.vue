@@ -28,7 +28,7 @@
         <div class="stat-card">
           <span class="stat-label">登录账号</span>
           <strong>{{ profileDetail.username || "-" }}</strong>
-          <small>用户 ID：{{ profileDetail.id || "-" }}</small>
+          <small>用户 ID：{{ profileDetail.id || profileDetail.userId || "-" }}</small>
         </div>
         <div class="stat-card">
           <span class="stat-label">联系方式</span>

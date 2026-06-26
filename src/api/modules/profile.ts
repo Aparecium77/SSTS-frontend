@@ -6,6 +6,7 @@ import type { BaseInfo } from "@/api/interface/baseInfo";
 import http from "@/api";
 import { useUserStore } from "@/stores/modules/user";
 import {
+  BASE_INFO_ROLE_OPTIONS,
   enrichBaseInfoUserFromCurrentAuthApi,
   getBaseInfoUserDetailApi,
   getBaseInfoUserIdByAuthIdApi,
@@ -19,6 +20,9 @@ import { getLocalProfileAvatar, saveLocalProfileAvatar } from "@/utils/profileAv
 type AuthIdentity = {
   user_id?: string;
   username?: string;
+  role?: string;
+  status?: string;
+  created_at?: string;
 };
 
 type ProfileAvatarSource = Partial<BaseInfo.UploadedFile> & {
@@ -49,16 +53,42 @@ const toProfileDetail = (
 
 const getCurrentAuthIdentity = async (): Promise<AuthIdentity> => {
   try {
-    const res = await http.get("/auth/me", {}, { cancel: false, loading: false });
+    const res = await http.get("/auth/me", {}, { cancel: false, loading: false, authRedirect: false });
     const body = ((res as any)?.data ?? res) as AuthIdentity;
     return {
       user_id: body.user_id ?? "",
-      username: body.username ?? ""
+      username: body.username ?? "",
+      role: body.role ?? "",
+      status: body.status ?? "",
+      created_at: body.created_at ?? ""
     };
   } catch {
     return {};
   }
 };
+
+const roleNameFromAuthRole = (role?: string) => {
+  const normalized = role?.trim().toUpperCase();
+  return BASE_INFO_ROLE_OPTIONS.find(option => option.code === normalized || option.label === role)?.label ?? role ?? "";
+};
+
+const toAuthProfileDetail = (identity: AuthIdentity, avatar?: ProfileAvatarSource): Profile.ProfileDetail => ({
+  id: "",
+  userId: identity.user_id ?? "",
+  userNo: identity.user_id ?? "",
+  username: identity.username ?? "",
+  fullName: identity.username ?? identity.user_id ?? "",
+  gender: "",
+  email: "",
+  phone: "",
+  status: identity.status === "DISABLED" || identity.status === "INACTIVE" ? "DISABLED" : "ACTIVE",
+  avatarFileId: avatar?.id ?? avatar?.fileId ?? "",
+  avatarUrl: avatar?.accessUrl ?? avatar?.url ?? "",
+  roleNames: roleNameFromAuthRole(identity.role) ? [roleNameFromAuthRole(identity.role)] : [],
+  roleName: roleNameFromAuthRole(identity.role),
+  createdAt: identity.created_at ?? "",
+  updatedAt: ""
+});
 
 const resolveCurrentInfoUserId = async () => {
   const userStore = useUserStore();
@@ -68,10 +98,10 @@ const resolveCurrentInfoUserId = async () => {
 
   if (/^\d+$/.test(authUserId || "")) return authUserId;
 
-  const byAuthId = await getBaseInfoUserIdByAuthIdApi(authUserId);
+  const byAuthId = await getBaseInfoUserIdByAuthIdApi(authUserId).catch(() => "");
   if (byAuthId) return byAuthId;
 
-  const byUsername = await getBaseInfoUserListApi({ pageNum: 1, pageSize: 20, keyword: username });
+  const byUsername = await getBaseInfoUserListApi({ pageNum: 1, pageSize: 20, keyword: username }).catch(() => ({ list: [] }));
   return byUsername.list.find(item => item.username === username || item.userNo === username)?.id ?? "";
 };
 
@@ -88,14 +118,22 @@ const enrichUserRoles = async (user: Awaited<ReturnType<typeof getBaseInfoUserDe
 };
 
 export const getBaseInfoProfileDetailApi = async (userId?: string) => {
+  const identity = await getCurrentAuthIdentity();
+  const avatar = getLocalProfileAvatar({ userId: identity.user_id, username: identity.username });
   const id = userId || (await resolveCurrentInfoUserId());
-  if (!id) throw new Error("无法定位当前用户的基础信息记录");
-  const user = await enrichUserRoles(await getBaseInfoUserDetailApi(id));
-  return toProfileDetail(user, getLocalProfileAvatar({ userId: user.id, username: user.username }));
+  if (!id) return toAuthProfileDetail(identity, avatar);
+  try {
+    const user = await enrichUserRoles(await getBaseInfoUserDetailApi(id));
+    return toProfileDetail(user, getLocalProfileAvatar({ userId: user.id, username: user.username }) || avatar);
+  } catch {
+    return toAuthProfileDetail(identity, avatar);
+  }
 };
 
 export const saveBaseInfoProfileApi = async (params: Profile.UpdateProfileParams) => {
-  const current = await enrichUserRoles(await getBaseInfoUserDetailApi(params.id || (await resolveCurrentInfoUserId())));
+  const infoUserId = params.id || (await resolveCurrentInfoUserId());
+  if (!infoUserId) throw new Error("当前账号暂无可编辑的基础信息档案，请联系基础信息组补齐用户档案映射");
+  const current = await enrichUserRoles(await getBaseInfoUserDetailApi(infoUserId));
   const saved = await saveBaseInfoUserApi({
     id: current.id,
     userNo: current.userNo,

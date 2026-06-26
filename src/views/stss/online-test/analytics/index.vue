@@ -187,7 +187,7 @@ const fetchReview = async () => {
         options: q.options,
         studentAnswer: q.studentAnswer,
         score: q.score,
-        isCorrect: q.isCorrect === 1 || q.isCorrect === true,
+        isCorrect: (q.isCorrect as unknown) === 1 || q.isCorrect === true,
         standardAnswer: q.standardAnswer
       }))
     };

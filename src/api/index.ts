@@ -13,6 +13,7 @@ export interface CustomAxiosRequestConfig extends InternalAxiosRequestConfig {
   loading?: boolean;
   cancel?: boolean;
   skipCodeCheck?: boolean;
+  authRedirect?: boolean;
 }
 
 const config = {
@@ -29,6 +30,8 @@ const axiosCanceler = new AxiosCanceler();
 const successCodes = new Set<number | string>([0, "0", ResultEnum.SUCCESS, String(ResultEnum.SUCCESS)]);
 
 const getResponseMessage = (data: any) => data?.msg ?? data?.message ?? data?.error ?? "请求失败";
+const shouldRedirectToLogin = (config?: CustomAxiosRequestConfig) =>
+  config?.authRedirect ?? String(config?.url || "").startsWith("/auth/");
 
 class RequestHttp {
   service: AxiosInstance;
@@ -75,8 +78,10 @@ class RequestHttp {
         config.loading && tryHideFullScreenLoading();
         // 登录失效
         if (data.code == ResultEnum.OVERDUE) {
-          userStore.resetUserState();
-          router.replace(LOGIN_URL);
+          if (shouldRedirectToLogin(config)) {
+            userStore.resetUserState();
+            router.replace(LOGIN_URL);
+          }
           ElMessage.error(getResponseMessage(data));
           return Promise.reject(data);
         }
@@ -93,7 +98,6 @@ class RequestHttp {
         tryHideFullScreenLoading();
         if (error.message.indexOf("timeout") !== -1) ElMessage.error("请求超时！请您稍后重试");
         if (error.message.indexOf("Network Error") !== -1) ElMessage.error("网络错误！请您稍后重试");
-        if (response) checkStatus(response.status, getResponseMessage(response.data));
 
         // 401 自动用 refresh_token 换新 access_token 后重试
         if (response?.status === 401) {
@@ -102,7 +106,15 @@ class RequestHttp {
           if (userStore.refreshToken && !originalRequest._retry) {
             originalRequest._retry = true;
             try {
-              const refreshRes = await axios.post("/auth/refresh", { refresh_token: userStore.refreshToken });
+              const refreshRes = await axios.post(
+                "/auth/refresh",
+                { refresh_token: userStore.refreshToken },
+                {
+                  baseURL: this.service.defaults.baseURL,
+                  timeout: this.service.defaults.timeout,
+                  withCredentials: this.service.defaults.withCredentials
+                }
+              );
               const newToken = refreshRes.data?.access_token || refreshRes.data?.data?.access_token;
               const newRefreshToken = refreshRes.data?.refresh_token || refreshRes.data?.data?.refresh_token;
               if (newToken) {
@@ -115,11 +127,17 @@ class RequestHttp {
               // refresh 也失败了，跳登录
             }
           }
-          userStore.resetUserState();
-          router.replace(LOGIN_URL);
-          ElMessage.error("登录已失效，请重新登录");
+          if (shouldRedirectToLogin(originalRequest)) {
+            userStore.resetUserState();
+            router.replace(LOGIN_URL);
+            ElMessage.error("登录已失效，请重新登录");
+          } else {
+            ElMessage.error(getResponseMessage(response.data));
+          }
           return Promise.reject(error);
         }
+
+        if (response) checkStatus(response.status, getResponseMessage(response.data));
 
         if (!window.navigator.onLine) router.replace("/500");
         return Promise.reject(error);

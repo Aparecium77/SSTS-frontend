@@ -75,17 +75,9 @@ const login = (formEl: FormInstance | undefined) => {
 
     loading.value = true;
     try {
-      const res = await loginApi({ ...loginForm });
-      const body = res.data || res;
+      await loginApi({ ...loginForm });
       if (!userStore.token) {
-        userStore.setToken(body.access_token);
-        userStore.setRefreshToken(body.refresh_token || "");
-        userStore.setUserId(body.user_id || body.user_info?.user_id || "");
-        userStore.setUserInfo({
-          name: body.username || body.user_info?.name || loginForm.username,
-          role: body.role || body.user_info?.role || "",
-          userId: body.user_id || body.user_info?.user_id
-        });
+        throw new Error("登录响应缺少 token，请检查认证服务返回数据");
       }
 
       await initDynamicRouter();
@@ -96,7 +88,7 @@ const login = (formEl: FormInstance | undefined) => {
       router.push(HOME_URL);
       ElNotification({
         title: "登录成功",
-        message: `欢迎进入 STSS，当前身份：${userStore.userInfo.name || body.username || body.user_info?.name}`,
+        message: `欢迎进入 STSS，当前身份：${userStore.userInfo.name || loginForm.username}`,
         type: "success",
         duration: 3000
       });

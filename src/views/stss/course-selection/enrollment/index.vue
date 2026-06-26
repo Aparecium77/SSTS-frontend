@@ -99,6 +99,10 @@ const CODE_MAP: Record<number, Outcome> = {
   30205: { icon: "info", title: "选课窗口未开放" }
 };
 
+function isEnrollResult(data: CourseSelection.EnrollResult | CourseSelection.QueuePosition): data is CourseSelection.EnrollResult {
+  return "enrollment_id" in data;
+}
+
 async function onEnroll() {
   loading.value = true;
   waiting.value = false;
@@ -115,6 +119,19 @@ async function onEnroll() {
 
     const req = { ...form, idempotency_key: idempotencyKey };
     const { data } = await enrollApi(req);
+    if (!isEnrollResult(data)) {
+      queuePos.value = data.position;
+      retryAfterMs.value = data.retry_after_ms;
+      retryCount.value = 0;
+      waiting.value = true;
+      outcome.value = {
+        icon: "warning",
+        title: "已进入排队（Waiting Room）",
+        sub: `当前排队位置 ${queuePos.value}`
+      };
+      pollQueue();
+      return;
+    }
     outcome.value = { icon: "success", title: "选课成功", sub: data.enrollment_id };
   } catch (e: any) {
     if (e?.code === 30201) {
@@ -173,6 +190,13 @@ async function pollQueue() {
 async function retryEnroll() {
   try {
     const { data } = await enrollApi({ ...form, idempotency_key: idempotencyKey });
+    if (!isEnrollResult(data)) {
+      queuePos.value = data.position;
+      retryAfterMs.value = data.retry_after_ms;
+      retryCount.value++;
+      pollTimer = setTimeout(pollQueue, retryAfterMs.value);
+      return;
+    }
     waiting.value = false;
     outcome.value = { icon: "success", title: "选课成功", sub: data.enrollment_id };
   } catch (e: any) {
