@@ -3,8 +3,7 @@ import type { ExamTaking } from "./types";
 /* ────── 学生信息 ────── */
 export const mockStudentInfo: ExamTaking.StudentInfo = {
   studentId: 91002,
-  studentName: "学生用户",
-  className: "软件工程 2024 级 1 班"
+  studentName: "学生用户"
 };
 
 /* ────── 考试信息映射 ────── */

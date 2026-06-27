@@ -43,9 +43,6 @@
                 <span class="info-label">学号</span><span class="info-val">{{ mockStudentInfo.studentId }}</span>
               </div>
               <div class="info-row">
-                <span class="info-label">班级</span><span class="info-val">{{ mockStudentInfo.className }}</span>
-              </div>
-              <div class="info-row">
                 <span class="info-label">试卷编号</span><span class="info-val">{{ examSession.paperId }}</span>
               </div>
               <div class="info-row">

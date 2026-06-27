@@ -31,6 +31,5 @@ export namespace ExamTaking {
   export interface StudentInfo {
     studentId: number;
     studentName: string;
-    className: string;
   }
 }

@@ -117,7 +117,7 @@
             <p>考试时间：{{ formatTimeRange(selectedExam.startTime, selectedExam.endTime) }}</p>
           </div>
           <div class="confirm-section">
-            <p>姓名：张三 | 学号：91002 | 班级：软件工程2024</p>
+            <p>姓名：张三 | 学号：91002</p>
           </div>
           <el-alert type="warning" :closable="false" show-icon style="margin: 12px 0">
             <template #title>进入后即开始计时，请合理安排时间</template>
