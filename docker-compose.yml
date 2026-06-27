@@ -3,9 +3,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      args:
-        # Override API URL at build time if needed (default: same-origin "")
-        # VITE_API_URL: "https://api.example.com"
     container_name: stss-frontend
     ports:
       - "8080:80"

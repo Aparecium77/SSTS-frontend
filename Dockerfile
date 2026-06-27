@@ -4,7 +4,7 @@
 # =============================================================================
 
 # ---- Stage 1: Build ----
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 # Enable corepack so pnpm version from package.json is used automatically
 RUN corepack enable
@@ -12,10 +12,11 @@ RUN corepack enable
 WORKDIR /app
 
 # Copy dependency manifests first (cache layer)
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
 # Install dependencies (frozen lockfile for reproducible builds)
-RUN pnpm install --frozen-lockfile
+# HUSKY=0: skip git hooks setup (no .git in Docker context)
+RUN HUSKY=0 pnpm install --frozen-lockfile
 
 # Copy the rest of the source code
 COPY . .

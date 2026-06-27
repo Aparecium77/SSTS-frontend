@@ -24,11 +24,7 @@ Thumbs.db
 .env.local
 .env.*.local
 
-# Lint / format configs (not needed at build time)
-.eslintrc.cjs
-.eslintignore
-.prettierrc.cjs
-.prettierignore
+# Lint / format configs used by vite-plugin-eslint during production build
 .stylelintrc.cjs
 .stylelintignore
 commitlint.config.cjs
@@ -45,11 +41,10 @@ CHANGELOG.md
 LICENSE
 README.md
 
-# Docker
+# Docker (nginx.conf is needed by COPY in Dockerfile, so keep it)
 Dockerfile
 .dockerignore
 docker-compose.yml
-nginx.conf
 
 # Misc
 *.md
