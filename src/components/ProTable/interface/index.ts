@@ -1,8 +1,6 @@
-import { VNode, ComponentPublicInstance, Ref } from "vue";
+import { VNode, Ref } from "vue";
 import { BreakPoint, Responsive } from "@/components/Grid/interface";
 import { TableColumnCtx } from "element-plus/es/components/table/src/table-column/defaults";
-import { ProTableProps } from "@/components/ProTable/index.vue";
-import ProTable from "@/components/ProTable/index.vue";
 
 export interface EnumProps {
   label?: string; // 选项框显示的文字
@@ -55,21 +53,23 @@ export type FieldNamesProps = {
   children?: string;
 };
 
-export type RenderScope<T> = {
+export type TableRow = Record<string, any>;
+
+export type RenderScope<T = any> = {
   row: T;
   $index: number;
-  column: TableColumnCtx<T>;
+  column: TableColumnCtx<TableRow>;
   [key: string]: any;
 };
 
-export type HeaderRenderScope<T> = {
+export type HeaderRenderScope = {
   $index: number;
-  column: TableColumnCtx<T>;
+  column: TableColumnCtx<TableRow>;
   [key: string]: any;
 };
 
 export interface ColumnProps<T = any> extends Partial<
-  Omit<TableColumnCtx<T>, "type" | "children" | "renderCell" | "renderHeader">
+  Omit<TableColumnCtx<TableRow>, "type" | "children" | "renderCell" | "renderHeader">
 > {
   type?: TypeProps; // 列类型
   tag?: boolean | Ref<boolean>; // 是否是标签展示
@@ -79,9 +79,27 @@ export interface ColumnProps<T = any> extends Partial<
   enum?: EnumProps[] | Ref<EnumProps[]> | ((params?: any) => Promise<any>); // 枚举字典
   isFilterEnum?: boolean | Ref<boolean>; // 当前单元格值是否根据 enum 格式化（示例：enum 只作为搜索项数据）
   fieldNames?: FieldNamesProps; // 指定 label && value && children 的 key 值
-  headerRender?: (scope: HeaderRenderScope<T>) => VNode; // 自定义表头内容渲染（tsx语法）
+  headerRender?: (scope: HeaderRenderScope) => VNode; // 自定义表头内容渲染（tsx语法）
   render?: (scope: RenderScope<T>) => VNode | string; // 自定义单元格内容渲染（tsx语法）
   _children?: ColumnProps<T>[]; // 多级表头
 }
 
-export type ProTableInstance = Omit<InstanceType<typeof ProTable>, keyof ComponentPublicInstance | keyof ProTableProps>;
+/** ProTable 为 script setup 组件，实例类型保持宽松以兼容模板 demo 与 vue-tsc */
+export type ProTableInstance = {
+  element?: any;
+  tableData: any;
+  pageable: any;
+  searchParam: any;
+  radio: any;
+  getTableList: () => void;
+  search: () => void;
+  reset: () => void;
+  clearSelection: () => void;
+  selectedList: TableRow[];
+  selectedListIds: (string | number)[];
+  isSelected: boolean;
+  searchInitParam?: any;
+  handleSizeChange?: (...args: any[]) => void;
+  handleCurrentChange?: (...args: any[]) => void;
+  enumMap?: any;
+};

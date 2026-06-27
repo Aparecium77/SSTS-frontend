@@ -13,6 +13,8 @@ export interface CustomAxiosRequestConfig extends InternalAxiosRequestConfig {
   loading?: boolean;
   cancel?: boolean;
   skipCodeCheck?: boolean;
+  authRedirect?: boolean;
+  silentError?: boolean;
 }
 
 const config = {
@@ -29,6 +31,8 @@ const axiosCanceler = new AxiosCanceler();
 const successCodes = new Set<number | string>([0, "0", ResultEnum.SUCCESS, String(ResultEnum.SUCCESS)]);
 
 const getResponseMessage = (data: any) => data?.msg ?? data?.message ?? data?.error ?? "请求失败";
+const shouldRedirectToLogin = (config?: CustomAxiosRequestConfig) =>
+  config?.authRedirect ?? String(config?.url || "").startsWith("/auth/");
 
 class RequestHttp {
   service: AxiosInstance;
@@ -75,14 +79,16 @@ class RequestHttp {
         config.loading && tryHideFullScreenLoading();
         // 登录失效
         if (data.code == ResultEnum.OVERDUE) {
-          userStore.setToken("");
-          router.replace(LOGIN_URL);
-          ElMessage.error(getResponseMessage(data));
+          if (shouldRedirectToLogin(config)) {
+            userStore.resetUserState();
+            router.replace(LOGIN_URL);
+          }
+          if (!config.silentError) ElMessage.error(getResponseMessage(data));
           return Promise.reject(data);
         }
         // 全局错误信息拦截（防止下载文件的时候返回数据流，没有 code 直接报错）
         if (!config.skipCodeCheck && data.code !== undefined && !successCodes.has(data.code)) {
-          ElMessage.error(getResponseMessage(data));
+          if (!config.silentError) ElMessage.error(getResponseMessage(data));
           return Promise.reject(data);
         }
         // 成功请求（在页面上除非特殊情况，否则不用处理失败逻辑）
@@ -90,13 +96,52 @@ class RequestHttp {
       },
       async (error: AxiosError) => {
         const { response } = error;
+        const requestConfig = error.config as CustomAxiosRequestConfig | undefined;
+        const silentError = Boolean(requestConfig?.silentError);
         tryHideFullScreenLoading();
-        // 请求超时 && 网络错误单独判断，没有 response
-        if (error.message.indexOf("timeout") !== -1) ElMessage.error("请求超时！请您稍后重试");
-        if (error.message.indexOf("Network Error") !== -1) ElMessage.error("网络错误！请您稍后重试");
-        // 根据服务器响应的错误状态码，做不同的处理
-        if (response) checkStatus(response.status);
-        // 服务器结果都没有返回(可能服务器错误可能客户端断网)，断网处理:可以跳转到断网页面
+        if (!silentError && error.message.indexOf("timeout") !== -1) ElMessage.error("请求超时！请您稍后重试");
+        if (!silentError && error.message.indexOf("Network Error") !== -1) ElMessage.error("网络错误！请您稍后重试");
+
+        // 401 自动用 refresh_token 换新 access_token 后重试
+        if (response?.status === 401) {
+          const userStore = useUserStore();
+          const originalRequest = error.config as CustomAxiosRequestConfig & { _retry?: boolean };
+          if (userStore.refreshToken && !originalRequest._retry) {
+            originalRequest._retry = true;
+            try {
+              const refreshRes = await axios.post(
+                "/auth/refresh",
+                { refresh_token: userStore.refreshToken },
+                {
+                  baseURL: this.service.defaults.baseURL,
+                  timeout: this.service.defaults.timeout,
+                  withCredentials: this.service.defaults.withCredentials
+                }
+              );
+              const newToken = refreshRes.data?.access_token || refreshRes.data?.data?.access_token;
+              const newRefreshToken = refreshRes.data?.refresh_token || refreshRes.data?.data?.refresh_token;
+              if (newToken) {
+                userStore.setToken(newToken);
+                if (newRefreshToken) userStore.setRefreshToken(newRefreshToken);
+                originalRequest.headers.set("Authorization", `Bearer ${newToken}`);
+                return this.service(originalRequest);
+              }
+            } catch {
+              // refresh 也失败了，跳登录
+            }
+          }
+          if (shouldRedirectToLogin(originalRequest)) {
+            userStore.resetUserState();
+            router.replace(LOGIN_URL);
+            if (!originalRequest.silentError) ElMessage.error("登录已失效，请重新登录");
+          } else if (!originalRequest.silentError) {
+            ElMessage.error(getResponseMessage(response.data));
+          }
+          return Promise.reject(error);
+        }
+
+        if (response && !silentError) checkStatus(response.status, getResponseMessage(response.data));
+
         if (!window.navigator.onLine) router.replace("/500");
         return Promise.reject(error);
       }
@@ -114,6 +159,9 @@ class RequestHttp {
   }
   put<T>(url: string, params?: object, _object = {}): Promise<ResultData<T>> {
     return this.service.put(url, params, _object);
+  }
+  patch<T>(url: string, params?: object, _object = {}): Promise<ResultData<T>> {
+    return this.service.patch(url, params, _object);
   }
   delete<T>(url: string, params?: any, _object = {}): Promise<ResultData<T>> {
     return this.service.delete(url, { params, ..._object });

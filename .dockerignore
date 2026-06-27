@@ -1,0 +1,55 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Git
+.git/
+.gitattributes
+.gitignore
+
+# IDE / Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment (local overrides — keep .env.production for build)
+.env.local
+.env.*.local
+
+# Lint / format configs used by vite-plugin-eslint during production build
+.stylelintrc.cjs
+.stylelintignore
+commitlint.config.cjs
+lint-staged.config.cjs
+
+# Git hooks
+.husky/
+
+# CI / CD
+.github/
+
+# Docs
+CHANGELOG.md
+LICENSE
+README.md
+
+# Docker (nginx.conf is needed by COPY in Dockerfile, so keep it)
+Dockerfile
+.dockerignore
+docker-compose.yml
+
+# Misc
+*.md
+setup-frontend-env.ps1
+
+# Lock files for other package managers (pnpm is the one used)
+package-lock.json
+yarn.lock

@@ -1,7 +1,7 @@
 <template>
   <el-form ref="loginFormRef" :model="loginForm" :rules="loginRules" size="large">
     <el-form-item prop="username">
-      <el-input v-model="loginForm.username" placeholder="请输入账号：student / teacher / academic_admin">
+      <el-input v-model="loginForm.username" placeholder="teacher / academic_admin / 20266003 或 联调学生丙">
         <template #prefix>
           <el-icon class="el-input__icon">
             <User />
@@ -39,7 +39,6 @@ import { useRouter } from "vue-router";
 import type { ElForm } from "element-plus";
 import { ElNotification } from "element-plus";
 import { CircleClose, Lock, User, UserFilled } from "@element-plus/icons-vue";
-import md5 from "md5";
 import { HOME_URL } from "@/config";
 import type { Login } from "@/api/interface";
 import { loginApi } from "@/api/modules/login";
@@ -76,9 +75,10 @@ const login = (formEl: FormInstance | undefined) => {
 
     loading.value = true;
     try {
-      const { data } = await loginApi({ ...loginForm, password: md5(loginForm.password) });
-      userStore.setToken(data.access_token);
-      userStore.setUserInfo(data.user_info);
+      await loginApi({ ...loginForm });
+      if (!userStore.token) {
+        throw new Error("登录响应缺少 token，请检查认证服务返回数据");
+      }
 
       await initDynamicRouter();
 
@@ -88,7 +88,7 @@ const login = (formEl: FormInstance | undefined) => {
       router.push(HOME_URL);
       ElNotification({
         title: "登录成功",
-        message: `欢迎进入 STSS，当前身份：${data.user_info.name}`,
+        message: `欢迎进入 STSS，当前身份：${userStore.userInfo.name || loginForm.username}`,
         type: "success",
         duration: 3000
       });

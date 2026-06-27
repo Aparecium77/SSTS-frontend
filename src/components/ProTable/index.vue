@@ -146,7 +146,7 @@ const props = withDefaults(defineProps<ProTableProps>(), {
 });
 
 // table 实例
-const tableRef = ref<InstanceType<typeof ElTable>>();
+const tableRef = ref();
 
 // 生成组件唯一id
 const uuid = ref("id-" + generateUUID());
@@ -196,10 +196,10 @@ const processTableData = computed(() => {
 watch(() => props.initParam, getTableList, { deep: true });
 
 // 接收 columns 并设置为响应式
-const tableColumns = reactive<ColumnProps[]>(props.columns);
+const tableColumns = reactive<ColumnProps[]>(props.columns as ColumnProps[]);
 
-// 扁平化 columns
-const flatColumns = computed(() => flatColumnsFunc(tableColumns));
+// 扁平化 columns（显式返回类型，避免 vue-tsc 对 reactive 列配置做过深推导）
+const flatColumns = computed((): ColumnProps[] => flatColumnsFunc(tableColumns as ColumnProps[]));
 
 // 定义 enumMap 存储 enum 值（避免异步请求无法格式化单元格内容 || 无法填充搜索下拉选择）
 const enumMap = ref(new Map<string, { [key: string]: any }[]>());
@@ -224,7 +224,7 @@ const setEnumMap = async ({ prop, enum: enumValue }: ColumnProps) => {
 provide("enumMap", enumMap);
 
 // 扁平化 columns 的方法
-const flatColumnsFunc = (columns: ColumnProps[], flatArr: ColumnProps[] = []) => {
+const flatColumnsFunc = (columns: ColumnProps[], flatArr: ColumnProps[] = []): ColumnProps[] => {
   columns.forEach(async col => {
     if (col._children?.length) flatArr.push(...flatColumnsFunc(col._children));
     flatArr.push(col);
@@ -260,7 +260,7 @@ searchColumns.value?.forEach((column, index) => {
 
 // 列设置 ==> 需要过滤掉不需要设置的列
 const colRef = ref();
-const colSetting = tableColumns!.filter(item => {
+const colSetting = (tableColumns as ColumnProps[]).filter((item: ColumnProps) => {
   const { type, prop, isSetting } = item;
   return !columnTypes.includes(type!) && prop !== "operation" && isSetting;
 });

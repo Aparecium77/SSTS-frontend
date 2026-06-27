@@ -1,8 +1,6 @@
-// Geeker Admin template service prefixes, kept for the original demo pages.
-export const PORT1 = "/geeker";
-export const PORT2 = "/hooks";
-
-// STSS Gateway route prefixes. See au12321ua/STSS-gateway.
+// 后端微服务模块前缀（通过统一 Gateway 转发，参见 STSS-gateway 路由表）
+export const PORT1 = "/api/v1/info";
+export const PORT2 = "/api/v1/info";
 export const AUTH_API = "/auth";
 export const GATEWAY_HEALTH_API = "/api/v1/health";
 export const BASE_INFO_API = "/api/v1/info";
