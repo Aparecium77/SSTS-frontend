@@ -98,13 +98,13 @@
                 :key="opt"
                 class="q-option"
                 :class="{
-                  'option-chosen': !currentRevealed[q.questionId] && opt.startsWith(q.studentAnswer + '.'),
+                  'option-chosen': isOptionMatch(opt, q.studentAnswer),
                   'option-wrong':
                     currentRevealed[q.questionId] &&
                     review.scoreVisible &&
                     q.isCorrect === false &&
-                    opt.startsWith(q.studentAnswer + '.'),
-                  'option-answer': currentRevealed[q.questionId] && review.answerVisible && opt.startsWith(q.standardAnswer + '.')
+                    isOptionMatch(opt, q.studentAnswer),
+                  'option-answer': currentRevealed[q.questionId] && review.answerVisible && isOptionMatch(opt, q.standardAnswer)
                 }"
               >
                 {{ opt }}
@@ -129,7 +129,7 @@
                   <span class="answer-label">标准答案：</span>
                   <span v-if="q.options.length" class="answer-text">
                     <template v-for="opt in q.options" :key="opt">
-                      <span v-if="opt.startsWith(q.standardAnswer + '.')">{{ opt }}</span>
+                      <span v-if="isOptionMatch(opt, q.standardAnswer)">{{ opt }}</span>
                     </template>
                   </span>
                   <span v-else class="answer-text">
@@ -212,7 +212,7 @@ const judgeBtnClass = (q: ExamAnalytics.QuestionDetail, value: string) => {
   const isChosen = q.studentAnswer === value;
   const isAnswer = q.standardAnswer === value;
   return {
-    "judge-chosen": !revealed && isChosen,
+    "judge-chosen": isChosen,
     "judge-wrong": revealed && !!review.value?.scoreVisible && q.isCorrect === false && isChosen,
     "judge-answer": revealed && !!review.value?.answerVisible && isAnswer
   };
@@ -243,6 +243,12 @@ const formatTime = (iso: string) => {
   const d = new Date(iso);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
+/** 兼容 "A" 和 "A. xxx" 两种选项格式 */
+const isOptionMatch = (opt: string, answer: string | null) => {
+  if (!answer) return false;
+  return opt === answer || opt.startsWith(answer + ".");
 };
 
 /* ────── 操作 ────── */

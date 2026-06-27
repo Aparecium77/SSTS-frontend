@@ -127,8 +127,8 @@
             <el-radio label="D">D</el-radio>
           </el-radio-group>
           <el-radio-group v-if="formData.type === 2" v-model="formData.answer">
-            <el-radio label="正确">正确</el-radio>
-            <el-radio label="错误">错误</el-radio>
+            <el-radio label="true">正确</el-radio>
+            <el-radio label="false">错误</el-radio>
           </el-radio-group>
         </el-form-item>
 
